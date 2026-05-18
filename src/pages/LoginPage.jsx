@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/common/Logo'
-import { Globe, Star } from 'lucide-react'
+import { Globe, Star, UserX } from 'lucide-react'
 
 export default function LoginPage() {
-  const { login } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const { login, loginGuest } = useAuth()
+  const [loading,      setLoading]      = useState(false)
+  const [loadingGuest, setLoadingGuest] = useState(false)
+  const [error, setError]               = useState('')
 
   const handleLogin = async () => {
     setLoading(true)
@@ -21,6 +22,20 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
+
+  const handleGuest = async () => {
+    setLoadingGuest(true)
+    setError('')
+    try {
+      await loginGuest()
+    } catch {
+      setError('No se pudo continuar como invitado. Intenta de nuevo.')
+    } finally {
+      setLoadingGuest(false)
+    }
+  }
+
+  const busy = loading || loadingGuest
 
   return (
     <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-to-br from-cherry via-tangelo to-mustard relative overflow-hidden">
@@ -61,11 +76,21 @@ export default function LoginPage() {
           {/* Sign in button */}
           <button
             onClick={handleLogin}
-            disabled={loading}
+            disabled={busy}
             className="btn-primary btn-lg w-full"
           >
             <Globe size={20} />
             {loading ? 'Conectando…' : 'Entrar con Google'}
+          </button>
+
+          {/* Guest button */}
+          <button
+            onClick={handleGuest}
+            disabled={busy}
+            className="btn-secondary btn-lg w-full"
+          >
+            <UserX size={20} />
+            {loadingGuest ? 'Entrando…' : 'Continuar sin cuenta'}
           </button>
 
           {error && (
@@ -73,7 +98,8 @@ export default function LoginPage() {
           )}
 
           <p className="font-body text-xs text-coal/40 text-center">
-            Personal DeliStars y clientes: inicia sesión con tu cuenta de Google
+            Personal DeliStars: inicia con tu cuenta de Google.<br />
+            Clientes: puedes entrar sin cuenta.
           </p>
         </div>
       </div>

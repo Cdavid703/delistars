@@ -54,10 +54,10 @@ export default function ClientPanel() {
     await addDoc(collection(db, 'orders'), {
       ...data,
       clientUid:   user.uid,
-      clientEmail: user.email,
-      clientName:  user.displayName,
-      sedeId:      sede?.id || '',
-      sedeName:    sede?.name || '',
+      clientEmail: user.email   || null,
+      clientName:  data.name    || user.displayName || 'Invitado',
+      sedeId:      sede?.id     || '',
+      sedeName:    sede?.name   || '',
       status:      'pending',
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
@@ -243,6 +243,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 
   const handleSubmit = async () => {
     const errs = []
+    if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (!form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')

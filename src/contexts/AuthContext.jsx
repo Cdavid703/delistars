@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
-import { auth, db, provider } from '../services/firebase'
+import { auth, db, provider, loginAnon } from '../services/firebase'
 import { resolveRole, getAllRoles, ROLES } from '../services/roles'
 
 const AuthContext = createContext(null)
@@ -58,7 +58,8 @@ export function AuthProvider({ children }) {
     return unsub
   }, [])
 
-  const login = () => signInWithPopup(auth, provider)
+  const login      = () => signInWithPopup(auth, provider)
+  const loginGuest = () => loginAnon()
 
   const logout = async () => {
     await signOut(auth)
@@ -78,7 +79,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, role, allRoles, effectiveRole, viewingAs, setViewingAs,
-      sede, selectSede, loading, login, logout,
+      sede, selectSede, loading, login, loginGuest, logout,
     }}>
       {children}
     </AuthContext.Provider>
