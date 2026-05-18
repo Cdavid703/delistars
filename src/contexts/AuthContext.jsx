@@ -42,9 +42,11 @@ export function AuthProvider({ children }) {
         setAllRoles(resolvedAllRoles)
         setViewingAs(undefined)
 
-        // Restore sede from localStorage
-        const savedSede = localStorage.getItem(`sede_${firebaseUser.uid}`)
-        if (savedSede) setSede(JSON.parse(savedSede))
+        // Restore sede from localStorage — only for staff, never for pure clients
+        if (resolvedRole !== ROLES.CLIENT) {
+          const savedSede = localStorage.getItem(`sede_${firebaseUser.uid}`)
+          if (savedSede) setSede(JSON.parse(savedSede))
+        }
       } else {
         setUser(null)
         setRole(null)
@@ -67,7 +69,7 @@ export function AuthProvider({ children }) {
 
   const selectSede = (sedeObj) => {
     setSede(sedeObj)
-    if (user) localStorage.setItem(`sede_${user.uid}`, JSON.stringify(sedeObj))
+    if (user && role !== ROLES.CLIENT) localStorage.setItem(`sede_${user.uid}`, JSON.stringify(sedeObj))
   }
 
   // Role the user is currently viewing
