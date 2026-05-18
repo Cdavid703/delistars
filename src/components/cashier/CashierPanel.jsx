@@ -12,12 +12,13 @@ import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, LogOut, Users, MapPin, Power, BellRing } from 'lucide-react'
+import { Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
+  { id: 'manual',   label: '?' },
 ]
 
 const ACTIVE_STATUSES   = ['pending','assigned','accepted','in_transit','arrived','delivered_paid','delivered_cash']
@@ -284,23 +285,29 @@ export default function CashierPanel() {
         ))}
       </div>
 
-      {/* Orders list */}
+      {/* Orders list / Manual */}
       <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
-        {filteredOrders.length === 0 && !showForm && (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <p className="font-display text-4xl">🍔</p>
-            <p className="font-body text-coal/40">
-              {tab === 'active' ? 'No hay pedidos activos' : tab === 'cuadre' ? 'No hay cuadres pendientes' : 'No hay pedidos completados hoy'}
-            </p>
-          </div>
+        {tab === 'manual' ? (
+          <ManualTab />
+        ) : (
+          <>
+            {filteredOrders.length === 0 && !showForm && (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <p className="font-display text-4xl">🍔</p>
+                <p className="font-body text-coal/40">
+                  {tab === 'active' ? 'No hay pedidos activos' : tab === 'cuadre' ? 'No hay cuadres pendientes' : 'No hay pedidos completados hoy'}
+                </p>
+              </div>
+            )}
+            {filteredOrders.map(order => (
+              <OrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
+            ))}
+          </>
         )}
-        {filteredOrders.map(order => (
-          <OrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
-        ))}
       </main>
 
       {/* FAB: new order */}
-      {!showForm && (
+      {!showForm && tab !== 'manual' && (
         <div className="fixed bottom-6 right-4 z-30">
           <button onClick={() => setShowForm(true)} className="btn-primary shadow-glow gap-2 pr-5">
             <Plus size={20} />
@@ -379,6 +386,242 @@ export default function CashierPanel() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Manual de usuario ────────────────────────────────────────────────────────
+const MANUAL_SECTIONS = [
+  {
+    id: 'plataforma',
+    emoji: '⚡',
+    title: 'Interruptor de plataforma',
+    color: 'text-mint',
+    content: [
+      { type: 'p', text: 'El botón ⚡ en el encabezado enciende o apaga el acceso de los clientes a la app.' },
+      { type: 'table', rows: [
+        ['Verde parpadeando', 'Plataforma ACTIVA — clientes pueden pedir'],
+        ['Gris apagado',      'Plataforma APAGADA — clientes ven pantalla cerrada'],
+      ]},
+      { type: 'tip', text: 'Actívala al inicio del turno (6:00 PM) y apágala al cierre (11:00 PM).' },
+    ],
+  },
+  {
+    id: 'alarma',
+    emoji: '🔔',
+    title: 'Notificación de nuevo pedido',
+    color: 'text-cherry',
+    content: [
+      { type: 'p', text: 'Cuando un cliente envía un pedido desde la app, suena una alarma fuerte y aparece una pantalla roja parpadeante.' },
+      { type: 'table', rows: [
+        ['"Ver pedido"',  'Silencia la alarma y abre el detalle del pedido directamente'],
+        ['"Silenciar"',   'Para el sonido, el pedido queda en la pestaña Activos'],
+      ]},
+      { type: 'tip', text: 'Mantén el volumen del dispositivo al máximo para no perderte ningún pedido.' },
+    ],
+  },
+  {
+    id: 'confirmar',
+    emoji: '✅',
+    title: 'Confirmar un pedido de cliente',
+    color: 'text-mint',
+    content: [
+      { type: 'p', text: 'Los pedidos que vienen de la app llegan en estado PENDIENTE (número rojo en la pestaña Activos). Para confirmarlos:' },
+      { type: 'steps', items: [
+        'Abre el pedido tocándolo en la lista.',
+        'Revisa la dirección, el pedido y la distancia estimada.',
+        'Selecciona el domiciliario en el menú desplegable.',
+        'Toca "Confirmar" — el domiciliario recibe la notificación al instante.',
+      ]},
+    ],
+  },
+  {
+    id: 'rechazar',
+    emoji: '❌',
+    title: 'Rechazar un pedido',
+    color: 'text-pepper',
+    content: [
+      { type: 'p', text: 'Si el pedido no puede atenderse (distancia muy larga, sin domiciliario, dirección incorrecta):' },
+      { type: 'steps', items: [
+        'Abre el pedido pendiente.',
+        'Toca el botón rojo "Rechazar".',
+        'Elige un motivo rápido o escribe el tuyo.',
+        'Toca "Confirmar rechazo" — el cliente ve el motivo en su panel.',
+      ]},
+      { type: 'tip', text: 'El cliente ve exactamente lo que escribes. Sé claro y amable.' },
+    ],
+  },
+  {
+    id: 'distancia',
+    emoji: '📍',
+    title: 'Verificación de distancia',
+    color: 'text-mustard',
+    content: [
+      { type: 'p', text: 'Al abrir un pedido, la plataforma calcula automáticamente la distancia desde la sede hasta la dirección de entrega.' },
+      { type: 'table', rows: [
+        ['Verde',   'Menos de 3 km — zona cómoda'],
+        ['Amarillo','Entre 3 y 5 km — verifica'],
+        ['Rojo',    'Más de 5 km — fuera de cobertura recomendada'],
+      ]},
+      { type: 'p', text: 'Usa el botón "Ver ruta" para abrir Google Maps con la ruta exacta desde la sede hasta el cliente.' },
+    ],
+  },
+  {
+    id: 'nuevo',
+    emoji: '➕',
+    title: 'Crear pedido manualmente',
+    color: 'text-tangelo',
+    content: [
+      { type: 'p', text: 'Cuando un cliente llame o escriba por WhatsApp, usa el botón rojo "+ Nuevo pedido" en la parte inferior.' },
+      { type: 'table', rows: [
+        ['Nombre y teléfono',   'Obligatorios'],
+        ['Dirección',           'Obligatoria — calle, número, apartamento'],
+        ['Barrio / Referencia', 'Opcionales pero útiles'],
+        ['Pedido',              'Descripción libre de lo que ordenó'],
+        ['Forma de pago',       'Efectivo, Nequi, Daviplata o Transferencia'],
+        ['Domiciliario',        'Selecciona quién lo entregará'],
+      ]},
+      { type: 'tip', text: 'Los pedidos manuales nacen en estado ASIGNADO, sin pasar por pendiente.' },
+    ],
+  },
+  {
+    id: 'cuadre',
+    emoji: '💰',
+    title: 'Cuadre de caja',
+    color: 'text-mustard',
+    content: [
+      { type: 'p', text: 'Los pedidos pagados en efectivo pasan a la pestaña CUADRE cuando el domiciliario los marca como entregados.' },
+      { type: 'steps', items: [
+        'Ve a la pestaña Cuadre (número amarillo indica cuántos hay).',
+        'Abre el pedido correspondiente.',
+        'Cuando el domiciliario te entregue el dinero, toca "Dinero recibido ✓".',
+        'El pedido pasa a Entregados y queda cerrado.',
+      ]},
+      { type: 'tip', text: 'No marques "Dinero recibido" antes de tener el efectivo en mano.' },
+    ],
+  },
+  {
+    id: 'domiciliarios',
+    emoji: '🛵',
+    title: 'Gestionar domiciliarios',
+    color: 'text-coal',
+    content: [
+      { type: 'p', text: 'Toca el ícono 👥 en el encabezado para agregar un nuevo domiciliario.' },
+      { type: 'steps', items: [
+        'Escribe el correo de Google del domiciliario.',
+        'Escribe su nombre completo (opcional pero recomendado).',
+        'Toca "Agregar" — queda activo de inmediato.',
+      ]},
+      { type: 'tip', text: 'Solo los administradores pueden eliminar domiciliarios del sistema.' },
+    ],
+  },
+  {
+    id: 'estados',
+    emoji: '🏷️',
+    title: 'Estados de los pedidos',
+    color: 'text-coal',
+    content: [
+      { type: 'table', rows: [
+        ['📋 PENDIENTE',        'Pedido de cliente esperando confirmación'],
+        ['🛵 ASIGNADO',         'Domiciliario asignado, esperando que acepte'],
+        ['✅ ACEPTADO',          'Domiciliario confirmó que va a entregar'],
+        ['🏃 EN CAMINO',        'Domiciliario en ruta al cliente'],
+        ['📍 LLEGÓ',            'Domiciliario llegó al destino'],
+        ['🎉 ENTREGADO',        'Pedido entregado exitosamente'],
+        ['💰 PDTE. CUADRE',     'Efectivo pendiente de recibir del domiciliario'],
+        ['☑️ COMPLETADO',       'Cuadre confirmado, pedido cerrado'],
+        ['❌ RECHAZADO',        'Pedido rechazado por el cajero'],
+      ]},
+    ],
+  },
+]
+
+function ManualSection({ section }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="card overflow-hidden p-0">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{section.emoji}</span>
+          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+        </div>
+        {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3 animate-fade-in">
+          {section.content.map((block, i) => {
+            if (block.type === 'p') {
+              return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
+            }
+            if (block.type === 'tip') {
+              return (
+                <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
+                  <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                  <p className="font-body text-xs text-coal/70">{block.text}</p>
+                </div>
+              )
+            }
+            if (block.type === 'steps') {
+              return (
+                <div key={i} className="flex flex-col gap-2">
+                  {block.items.map((step, j) => (
+                    <div key={j} className="flex items-start gap-3">
+                      <span className="w-6 h-6 rounded-full bg-cherry text-cream text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {j + 1}
+                      </span>
+                      <p className="font-body text-sm text-coal/80 leading-relaxed">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+            if (block.type === 'table') {
+              return (
+                <div key={i} className="flex flex-col divide-y divide-coal/10 rounded-xl overflow-hidden border border-coal/10">
+                  {block.rows.map(([col1, col2], j) => (
+                    <div key={j} className={`flex gap-3 px-3 py-2 ${j % 2 === 0 ? 'bg-smoked/40' : 'bg-cream'}`}>
+                      <span className="font-body text-xs font-semibold text-coal w-32 flex-shrink-0">{col1}</span>
+                      <span className="font-body text-xs text-coal/60">{col2}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ManualTab() {
+  return (
+    <div className="flex flex-col gap-3 pb-8">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-1">
+        <div className="w-10 h-10 rounded-full bg-cherry/10 flex items-center justify-center flex-shrink-0">
+          <HelpCircle size={20} className="text-cherry" />
+        </div>
+        <div>
+          <p className="font-display text-xl text-coal tracking-wide">Manual del cajero</p>
+          <p className="font-body text-xs text-coal/50">Toca cada sección para ver los detalles</p>
+        </div>
+      </div>
+
+      {MANUAL_SECTIONS.map(section => (
+        <ManualSection key={section.id} section={section} />
+      ))}
+
+      {/* Footer */}
+      <div className="mt-2 text-center">
+        <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · v1.0</p>
+      </div>
     </div>
   )
 }
