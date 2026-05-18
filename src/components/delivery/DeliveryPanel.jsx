@@ -36,8 +36,7 @@ export default function DeliveryPanel() {
     if (!user?.email) return
     const q = query(
       collection(db, 'orders'),
-      where('driverEmail', '==', user.email.toLowerCase()),
-      where('sedeId', '==', sede?.id || '')
+      where('driverEmail', '==', user.email.toLowerCase())
     )
     return onSnapshot(q, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
