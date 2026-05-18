@@ -12,13 +12,12 @@ import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle, ChevronDown, ChevronUp, BookOpen, X } from 'lucide-react'
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
-  { id: 'manual',   label: '?' },
 ]
 
 const ACTIVE_STATUSES   = ['pending','assigned','accepted','in_transit','arrived','delivered_paid','delivered_cash']
@@ -81,8 +80,9 @@ export default function CashierPanel() {
   const [newDriverName,  setNewDriverName]  = useState('')
   const [driverMsg,    setDriverMsg]   = useState('')
   const [platformActive, setPlatformActive] = useState(null)
-  const [newOrderAlert, setNewOrderAlert]   = useState(null) // order that just arrived
+  const [newOrderAlert, setNewOrderAlert]   = useState(null)
   const [alarmActive,   setAlarmActive]     = useState(false)
+  const [showManual,    setShowManual]      = useState(false)
 
   const prevPendingIdsRef = useRef(null) // null = first load not done yet
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
@@ -228,6 +228,14 @@ export default function CashierPanel() {
             <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
           </button>
 
+          <button
+            onClick={() => setShowManual(true)}
+            title="Manual de usuario"
+            className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2"
+          >
+            <BookOpen size={18} />
+            <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
+          </button>
           <button onClick={() => setAddDriver(v => !v)} className="btn-icon relative" title="Gestionar domiciliarios">
             <Users size={20} />
           </button>
@@ -285,29 +293,23 @@ export default function CashierPanel() {
         ))}
       </div>
 
-      {/* Orders list / Manual */}
+      {/* Orders list */}
       <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
-        {tab === 'manual' ? (
-          <ManualTab />
-        ) : (
-          <>
-            {filteredOrders.length === 0 && !showForm && (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                <p className="font-display text-4xl">🍔</p>
-                <p className="font-body text-coal/40">
-                  {tab === 'active' ? 'No hay pedidos activos' : tab === 'cuadre' ? 'No hay cuadres pendientes' : 'No hay pedidos completados hoy'}
-                </p>
-              </div>
-            )}
-            {filteredOrders.map(order => (
-              <OrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
-            ))}
-          </>
+        {filteredOrders.length === 0 && !showForm && (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <p className="font-display text-4xl">🍔</p>
+            <p className="font-body text-coal/40">
+              {tab === 'active' ? 'No hay pedidos activos' : tab === 'cuadre' ? 'No hay cuadres pendientes' : 'No hay pedidos completados hoy'}
+            </p>
+          </div>
         )}
+        {filteredOrders.map(order => (
+          <OrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
+        ))}
       </main>
 
       {/* FAB: new order */}
-      {!showForm && tab !== 'manual' && (
+      {!showForm && (
         <div className="fixed bottom-6 right-4 z-30">
           <button onClick={() => setShowForm(true)} className="btn-primary shadow-glow gap-2 pr-5">
             <Plus size={20} />
@@ -330,6 +332,32 @@ export default function CashierPanel() {
                 onSubmit={handleCreateOrder}
                 onCancel={() => setShowForm(false)}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual de usuario modal */}
+      {showManual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+          onClick={e => { if (e.target === e.currentTarget) setShowManual(false) }}>
+          <div className="bg-cream w-full max-w-2xl rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in mx-4">
+            {/* Header del modal */}
+            <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-6 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <BookOpen size={22} className="text-cream" />
+                <div>
+                  <p className="font-display text-xl text-cream tracking-wide">Manual de usuario</p>
+                  <p className="font-body text-xs text-cream/70">Guía completa del panel de cajero</p>
+                </div>
+              </div>
+              <button onClick={() => setShowManual(false)} className="text-cream/70 hover:text-cream transition-colors">
+                <X size={22} />
+              </button>
+            </div>
+            {/* Contenido scrolleable */}
+            <div className="overflow-y-auto scroll-custom p-5 flex flex-col gap-3">
+              <ManualTab />
             </div>
           </div>
         </div>
