@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import {
   collection, addDoc, onSnapshot, query, where,
-  orderBy, serverTimestamp, doc, setDoc, getDoc, getDocs
+  serverTimestamp, doc, setDoc, getDocs
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
 import Logo from '../common/Logo'
 import OrderCard from './OrderCard'
 import OrderForm from './OrderForm'
@@ -43,11 +43,12 @@ export default function CashierPanel() {
     if (!sede) return
     const q = query(
       collection(db, 'orders'),
-      where('sedeId', '==', sede.id),
-      orderBy('createdAt', 'desc')
+      where('sedeId', '==', sede.id)
     )
     return onSnapshot(q, snap => {
-      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      docs.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
+      setOrders(docs)
     })
   }, [sede])
 
@@ -59,7 +60,7 @@ export default function CashierPanel() {
       const firestoreIds = firestoreDrivers.map(d => d.id)
       const defaultDriverObjs = DEFAULT_DRIVERS
         .filter(email => !firestoreIds.includes(email))
-        .map(email => ({ id: email, name: email }))
+        .map(email => ({ id: email, name: DEFAULT_DRIVER_NAMES[email] || email }))
       setDrivers([...defaultDriverObjs, ...firestoreDrivers])
     }
     loadDrivers()
@@ -109,7 +110,7 @@ export default function CashierPanel() {
       const firestoreIds = firestoreDrivers.map(d => d.id)
       const defaultDriverObjs = DEFAULT_DRIVERS
         .filter(e => !firestoreIds.includes(e))
-        .map(e => ({ id: e, name: e }))
+        .map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e }))
       setDrivers([...defaultDriverObjs, ...firestoreDrivers])
     } catch (err) {
       setDriverMsg('❌ Error al agregar domiciliario')

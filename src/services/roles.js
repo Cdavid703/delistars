@@ -17,8 +17,12 @@ export const DEFAULT_CASHIERS = [
 ]
 
 export const DEFAULT_DRIVERS = [
-  'cdavid.jaramillo@gmail.com', // también admin y cliente según contexto
+  'cdavid.jaramillo@gmail.com',
 ]
+
+export const DEFAULT_DRIVER_NAMES = {
+  'cdavid.jaramillo@gmail.com': 'Carlos David Jaramillo',
+}
 
 export const ROLES = {
   ADMIN:    'admin',
