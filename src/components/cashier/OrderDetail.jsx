@@ -5,16 +5,32 @@ import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  X, MapPin, Phone, User, ShoppingBag, FileText,
+  X, MapPin, Phone, User, ShoppingBag,
   CreditCard, Bike, DollarSign, Navigation, ExternalLink
 } from 'lucide-react'
 
-export default function OrderDetail({ order, onClose }) {
-  const [loading, setLoading] = useState(false)
+export default function OrderDetail({ order, onClose, drivers = [] }) {
+  const [loading,          setLoading]          = useState(false)
+  const [selectedDriverId, setSelectedDriverId] = useState('')
 
   const time = order.createdAt?.toDate
     ? format(order.createdAt.toDate(), "dd MMM yyyy 'a las' HH:mm", { locale: es })
     : '--'
+
+  const assignDriver = async () => {
+    if (!selectedDriverId) return
+    const driver = drivers.find(d => d.id === selectedDriverId)
+    setLoading(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:      'assigned',
+        driverEmail: driver?.id || selectedDriverId,
+        driverName:  driver?.name || selectedDriverId,
+        updatedAt:   serverTimestamp(),
+      })
+      onClose()
+    } finally { setLoading(false) }
+  }
 
   const markCashReceived = async () => {
     setLoading(true)
@@ -101,6 +117,27 @@ export default function OrderDetail({ order, onClose }) {
           <Section title="Pago">
             <Row icon={CreditCard} label="Forma de pago" value={order.payment} />
           </Section>
+
+          {/* Assign driver for pending client orders */}
+          {order.status === 'pending' && (
+            <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-lg text-coal tracking-wide">🛵 Asignar domiciliario</p>
+              <p className="font-body text-xs text-coal/60">Pedido enviado por el cliente. Asígnale un domiciliario para confirmarlo.</p>
+              <select
+                value={selectedDriverId}
+                onChange={e => setSelectedDriverId(e.target.value)}
+                className="input-field"
+              >
+                <option value="">— Selecciona domiciliario —</option>
+                {drivers.map(d => (
+                  <option key={d.id} value={d.id}>{d.name || d.id}</option>
+                ))}
+              </select>
+              <button onClick={assignDriver} disabled={loading || !selectedDriverId} className="btn-primary w-full">
+                {loading ? 'Asignando…' : '✅ Confirmar pedido'}
+              </button>
+            </div>
+          )}
 
           {/* Driver */}
           {order.driverName && (

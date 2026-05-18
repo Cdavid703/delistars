@@ -217,7 +217,7 @@ export default function CashierPanel() {
       )}
 
       {/* Order detail modal */}
-      {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} />}
+      {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} drivers={drivers} />}
     </div>
   )
 }
