@@ -43,10 +43,10 @@ export default function DeliveryPanel() {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const newPending = all.filter(o => o.status === 'assigned').length
       if (newPending > prevCount.current) {
-        if (Notification.permission === 'granted') {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification('🔔 DeliStars — Nuevo pedido', {
             body: `Tienes ${newPending} pedido(s) por aceptar`,
-            icon: '/logo_sello.png',
+            icon: '/domicilios/logo_sello.png',
           })
         }
       }
@@ -58,7 +58,9 @@ export default function DeliveryPanel() {
 
   // Request notification permission
   useEffect(() => {
-    if (Notification.permission === 'default') Notification.requestPermission()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
   }, [])
 
   // Start GPS tracking when driver has an active order
