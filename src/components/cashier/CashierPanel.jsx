@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   collection, addDoc, onSnapshot, query, where,
-  serverTimestamp, doc, setDoc, getDocs
+  serverTimestamp, doc, setDoc, getDocs, getDoc
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -12,7 +12,7 @@ import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, LogOut, Users, MapPin, ChevronRight } from 'lucide-react'
+import { Plus, LogOut, Users, MapPin, Power, BellRing } from 'lucide-react'
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
@@ -22,37 +22,125 @@ const TABS = [
 
 const ACTIVE_STATUSES   = ['pending','assigned','accepted','in_transit','arrived','delivered_paid','delivered_cash']
 const CUADRE_STATUSES   = ['pending_cuadre']
-const COMPLETE_STATUSES = ['completed']
+const COMPLETE_STATUSES = ['completed', 'rejected']
+
+// ─── Audio alarm ─────────────────────────────────────────────────────────────
+function createAlarmPlayer() {
+  let ctx = null
+  let intervalId = null
+
+  const getCtx = () => {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') ctx.resume()
+    return ctx
+  }
+
+  const playPattern = () => {
+    const c = getCtx()
+    const now = c.currentTime
+    const seq = [880, 1100, 880, 1100, 1320, 1100, 880]
+    seq.forEach((freq, i) => {
+      const osc  = c.createOscillator()
+      const gain = c.createGain()
+      osc.connect(gain)
+      gain.connect(c.destination)
+      osc.type = 'square'
+      osc.frequency.value = freq
+      const t = now + i * 0.16
+      gain.gain.setValueAtTime(0.6, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14)
+      osc.start(t)
+      osc.stop(t + 0.15)
+    })
+  }
+
+  return {
+    play() {
+      playPattern()
+      intervalId = setInterval(playPattern, 2000)
+    },
+    stop() {
+      clearInterval(intervalId)
+      intervalId = null
+    },
+  }
+}
+
+const alarm = createAlarmPlayer()
 
 export default function CashierPanel() {
   const { user, sede, logout, selectSede } = useAuth()
-  const [tab,         setTab]         = useState('active')
-  const [orders,      setOrders]      = useState([])
-  const [drivers,     setDrivers]     = useState([])
-  const [showForm,    setShowForm]    = useState(false)
-  const [selected,    setSelected]    = useState(null)
-  const [addDriver,   setAddDriver]   = useState(false)
+  const [tab,          setTab]         = useState('active')
+  const [orders,       setOrders]      = useState([])
+  const [drivers,      setDrivers]     = useState([])
+  const [showForm,     setShowForm]    = useState(false)
+  const [selected,     setSelected]    = useState(null)
+  const [addDriver,    setAddDriver]   = useState(false)
   const [newDriverEmail, setNewDriverEmail] = useState('')
   const [newDriverName,  setNewDriverName]  = useState('')
-  const [driverMsg,   setDriverMsg]   = useState('')
+  const [driverMsg,    setDriverMsg]   = useState('')
+  const [platformActive, setPlatformActive] = useState(null)
+  const [newOrderAlert, setNewOrderAlert]   = useState(null) // order that just arrived
+  const [alarmActive,   setAlarmActive]     = useState(false)
 
+  const prevPendingIdsRef = useRef(null) // null = first load not done yet
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
-  // Listen orders for this sede
+  // ── Platform toggle listener ──────────────────────────────────────────────
+  useEffect(() => {
+    return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
+      setPlatformActive(snap.exists() ? snap.data().active : false)
+    })
+  }, [])
+
+  const togglePlatform = async () => {
+    const newState = !platformActive
+    await setDoc(doc(db, 'config', 'client_platform'), {
+      active:    newState,
+      updatedBy: user.email,
+      updatedAt: serverTimestamp(),
+    })
+  }
+
+  // ── Dismiss notification ──────────────────────────────────────────────────
+  const dismissAlert = useCallback(() => {
+    alarm.stop()
+    setAlarmActive(false)
+    setNewOrderAlert(null)
+  }, [])
+
+  // ── Orders listener ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!sede) return
-    const q = query(
-      collection(db, 'orders'),
-      where('sedeId', '==', sede.id)
-    )
+    const q = query(collection(db, 'orders'), where('sedeId', '==', sede.id))
     return onSnapshot(q, snap => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
+
+      // New-pending-order detection
+      const pendingDocs = docs.filter(o => o.status === 'pending')
+      if (prevPendingIdsRef.current === null) {
+        // First snapshot — record existing, don't alert
+        prevPendingIdsRef.current = new Set(pendingDocs.map(o => o.id))
+      } else {
+        pendingDocs.forEach(o => {
+          if (!prevPendingIdsRef.current.has(o.id)) {
+            prevPendingIdsRef.current.add(o.id)
+            alarm.play()
+            setAlarmActive(true)
+            setNewOrderAlert(o)
+          }
+        })
+      }
+
       setOrders(docs)
     })
   }, [sede])
 
-  // Load drivers (hardcoded + Firestore)
+  // ── Cleanup alarm on unmount ──────────────────────────────────────────────
+  useEffect(() => () => alarm.stop(), [])
+
+  // ── Load drivers ──────────────────────────────────────────────────────────
   useEffect(() => {
     const loadDrivers = async () => {
       const snap = await getDocs(collection(db, 'roles_drivers'))
@@ -74,6 +162,7 @@ export default function CashierPanel() {
   })
 
   const cuadreCount = orders.filter(o => CUADRE_STATUSES.includes(o.status)).length
+  const pendingCount = orders.filter(o => o.status === 'pending').length
 
   const handleCreateOrder = async (data) => {
     const driver = drivers.find(d => d.id === data.driverId)
@@ -98,13 +187,12 @@ export default function CashierPanel() {
     try {
       await setDoc(doc(db, 'roles_drivers', email), {
         email,
-        name:     newDriverName.trim() || email,
-        addedBy:  user.email,
-        addedAt:  serverTimestamp(),
+        name:    newDriverName.trim() || email,
+        addedBy: user.email,
+        addedAt: serverTimestamp(),
       })
       setDriverMsg(`✅ ${email} agregado como domiciliario`)
       setNewDriverEmail(''); setNewDriverName('')
-      // Refresh drivers
       const snap = await getDocs(collection(db, 'roles_drivers'))
       const firestoreDrivers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const firestoreIds = firestoreDrivers.map(d => d.id)
@@ -112,7 +200,7 @@ export default function CashierPanel() {
         .filter(e => !firestoreIds.includes(e))
         .map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e }))
       setDrivers([...defaultDriverObjs, ...firestoreDrivers])
-    } catch (err) {
+    } catch {
       setDriverMsg('❌ Error al agregar domiciliario')
     }
   }
@@ -129,6 +217,16 @@ export default function CashierPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {/* Platform toggle */}
+          <button
+            onClick={togglePlatform}
+            title={platformActive ? 'Plataforma cliente: ACTIVA — click para apagar' : 'Plataforma cliente: APAGADA — click para activar'}
+            className={`btn-icon relative ${platformActive ? 'text-mint' : 'text-coal/40'}`}
+          >
+            <Power size={20} />
+            <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
+          </button>
+
           <button onClick={() => setAddDriver(v => !v)} className="btn-icon relative" title="Gestionar domiciliarios">
             <Users size={20} />
           </button>
@@ -140,6 +238,16 @@ export default function CashierPanel() {
           </button>
         </div>
       </header>
+
+      {/* Platform status banner */}
+      {platformActive !== null && (
+        <div className={`mx-4 mt-2 flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
+          platformActive ? 'bg-mint/15 text-mint' : 'bg-coal/10 text-coal/50'
+        }`}>
+          <Power size={12} />
+          Plataforma clientes: {platformActive ? 'ACTIVA' : 'APAGADA'}
+        </div>
+      )}
 
       {/* Add driver panel */}
       {addDriver && (
@@ -167,6 +275,11 @@ export default function CashierPanel() {
                 {cuadreCount}
               </span>
             )}
+            {t.id === 'active' && pendingCount > 0 && (
+              <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                {pendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -181,7 +294,6 @@ export default function CashierPanel() {
             </p>
           </div>
         )}
-
         {filteredOrders.map(order => (
           <OrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
         ))}
@@ -218,6 +330,55 @@ export default function CashierPanel() {
 
       {/* Order detail modal */}
       {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} drivers={drivers} />}
+
+      {/* ══ NEW ORDER ALERT MODAL ══ */}
+      {newOrderAlert && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-fade-in">
+          {/* Flashing overlay */}
+          <div className="absolute inset-0 bg-cherry animate-pulse opacity-90" />
+
+          <div className="relative z-10 mx-4 bg-cream rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-4 animate-scale-in">
+            <div className="text-6xl animate-bounce">🔔</div>
+            <p className="font-display text-3xl text-cherry tracking-widest text-center">
+              ¡NUEVO PEDIDO!
+            </p>
+            <p className="font-body text-sm text-coal/70 text-center">
+              Pedido recibido de un cliente. Atender de inmediato.
+            </p>
+
+            {/* Order summary */}
+            <div className="w-full bg-smoked/60 rounded-2xl p-4">
+              <p className="font-body text-sm font-semibold text-coal">
+                {newOrderAlert.name || newOrderAlert.clientName || 'Cliente'}
+              </p>
+              <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">
+                {newOrderAlert.items}
+              </p>
+              <p className="font-body text-xs text-coal/50 mt-1">
+                📍 {newOrderAlert.fullAddress}
+              </p>
+            </div>
+
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={dismissAlert}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-coal/20 text-coal/60 font-semibold text-sm hover:bg-smoked transition-colors"
+              >
+                Silenciar
+              </button>
+              <button
+                onClick={() => {
+                  dismissAlert()
+                  setSelected(newOrderAlert)
+                }}
+                className="flex-1 btn-primary"
+              >
+                <BellRing size={16} /> Ver pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

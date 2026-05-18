@@ -8,6 +8,7 @@ const STATUS_MAP = {
   delivered_cash: { label: 'Entregado · Efectivo', cls: 'badge-cash' },
   pending_cuadre: { label: 'Pdte. cuadre',     cls: 'badge-cuadre' },
   completed: { label: 'Completado',            cls: 'badge-completed' },
+  rejected:  { label: 'Rechazado',             cls: 'badge-rejected' },
 }
 
 export default function StatusBadge({ status }) {

@@ -75,6 +75,7 @@
   .badge-cash      { @apply badge bg-mustard/30 text-coal; }
   .badge-cuadre    { @apply badge bg-mustard/20 text-mustard; }
   .badge-completed { @apply badge bg-smoked text-coal/60; }
+  .badge-rejected  { @apply badge bg-pepper/20 text-pepper; }
 
   .page-header {
     @apply sticky top-0 z-40 bg-cream/95 backdrop-blur-md border-b border-coal/10

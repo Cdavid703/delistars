@@ -13,7 +13,7 @@ import { es } from 'date-fns/locale'
 import {
   Users, LayoutDashboard, ClipboardList, BarChart2,
   LogOut, MapPin, Plus, Trash2, Receipt, Bike,
-  TrendingUp, Package, CheckCircle, Clock
+  TrendingUp, Package, CheckCircle, Clock, Power
 } from 'lucide-react'
 
 const TABS = [
@@ -25,8 +25,23 @@ const TABS = [
 
 export default function AdminPanel() {
   const { user, sede, logout, selectSede } = useAuth()
-  const [tab, setTab] = useState('dashboard')
+  const [tab,            setTab]            = useState('dashboard')
+  const [platformActive, setPlatformActive] = useState(null)
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
+      setPlatformActive(snap.exists() ? snap.data().active : false)
+    })
+  }, [])
+
+  const togglePlatform = async () => {
+    await setDoc(doc(db, 'config', 'client_platform'), {
+      active:    !platformActive,
+      updatedBy: user.email,
+      updatedAt: serverTimestamp(),
+    })
+  }
 
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
@@ -42,6 +57,14 @@ export default function AdminPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={togglePlatform}
+            title={platformActive ? 'Plataforma cliente: ACTIVA — click para apagar' : 'Plataforma cliente: APAGADA — click para activar'}
+            className={`btn-icon relative ${platformActive ? 'text-mint' : 'text-coal/40'}`}
+          >
+            <Power size={20} />
+            <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
+          </button>
           <button onClick={() => selectSede(null)} className="btn-icon" title="Cambiar sede">
             <MapPin size={20} />
           </button>

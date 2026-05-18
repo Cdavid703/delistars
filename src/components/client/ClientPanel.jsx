@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -8,7 +8,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation,
-  LogOut, Info, Star, Plus, X, AlertCircle
+  LogOut, Info, Star, Plus, X, AlertCircle, Clock
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 
@@ -21,17 +21,27 @@ const STATUS_STEPS = [
   { key: 'delivered_paid',  label: '¡Entregado!',      emoji: '🎉' },
   { key: 'pending_cuadre',  label: '¡Entregado!',      emoji: '🎉' },
   { key: 'completed',       label: '¡Entregado!',      emoji: '🎉' },
+  { key: 'rejected',        label: 'Pedido rechazado', emoji: '❌' },
 ]
 
 const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
+const CLOSED_STATUSES    = ['rejected']
 
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
-  const [orders,   setOrders]   = useState([])
-  const [selected, setSelected] = useState(null)
-  const [showForm, setShowForm] = useState(false)
+  const [orders,         setOrders]         = useState([])
+  const [selected,       setSelected]       = useState(null)
+  const [showForm,       setShowForm]       = useState(false)
+  const [platformActive, setPlatformActive] = useState(null) // null = loading
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
+
+  // Listen to platform active state
+  useEffect(() => {
+    return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
+      setPlatformActive(snap.exists() ? snap.data().active : false)
+    })
+  }, [])
 
   // Only show THIS client's orders
   useEffect(() => {
@@ -47,8 +57,48 @@ export default function ClientPanel() {
     })
   }, [user])
 
-  const activeOrders    = orders.filter(o => !DELIVERED_STATUSES.includes(o.status))
+  const activeOrders    = orders.filter(o => !DELIVERED_STATUSES.includes(o.status) && !CLOSED_STATUSES.includes(o.status))
   const deliveredOrders = orders.filter(o => DELIVERED_STATUSES.includes(o.status))
+  const rejectedOrders  = orders.filter(o => CLOSED_STATUSES.includes(o.status))
+
+  // ── Platform closed screen ────────────────────────────────────────────────
+  if (platformActive === false && effectiveRole === 'client') {
+    return (
+      <div className="min-h-screen-safe flex flex-col bg-gradient-to-br from-cherry via-tangelo to-mustard">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
+          <div className="text-6xl mb-4">🔒</div>
+          <h1 className="font-display text-3xl text-cream tracking-widest mb-3">
+            Plataforma cerrada
+          </h1>
+          <p className="font-body text-cream/80 text-sm max-w-xs">
+            El servicio de domicilios no está disponible en este momento.
+          </p>
+          <div className="mt-4 bg-cream/10 rounded-2xl px-6 py-4 flex items-center gap-3">
+            <Clock size={18} className="text-cream/70 flex-shrink-0" />
+            <p className="font-body text-cream/70 text-sm text-left">
+              Horario habitual:<br />
+              <span className="font-semibold text-cream">6:00 PM – 11:00 PM</span>
+            </p>
+          </div>
+          <button
+            onClick={logout}
+            className="mt-8 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors"
+          >
+            <LogOut size={14} /> Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Loading platform state
+  if (platformActive === null && effectiveRole === 'client') {
+    return (
+      <div className="min-h-screen-safe flex items-center justify-center bg-gradient-soft">
+        <p className="font-body text-coal/40 text-sm">Cargando…</p>
+      </div>
+    )
+  }
 
   const handleCreateOrder = async (data) => {
     await addDoc(collection(db, 'orders'), {
@@ -151,7 +201,7 @@ export default function ClientPanel() {
 
       {/* Delivered orders */}
       {deliveredOrders.length > 0 && (
-        <div className="px-4 mt-4 mb-8">
+        <div className="px-4 mt-4">
           <p className="section-title mb-3">Entregados</p>
           <div className="flex flex-col gap-2">
             {deliveredOrders.slice(0, 5).map(o => (
@@ -162,6 +212,30 @@ export default function ClientPanel() {
                 </div>
                 <span className="text-lg">✅</span>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rejected orders */}
+      {rejectedOrders.length > 0 && (
+        <div className="px-4 mt-4">
+          <p className="section-title mb-3">Rechazados</p>
+          <div className="flex flex-col gap-2">
+            {rejectedOrders.map(o => (
+              <button key={o.id} onClick={() => setSelected(o)}
+                className="card w-full text-left border-l-4 border-pepper/50">
+                <div className="flex items-start gap-2">
+                  <span className="text-xl">❌</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-body text-sm font-semibold text-pepper">Pedido rechazado</p>
+                    {o.rejectionReason && (
+                      <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{o.rejectionReason}</p>
+                    )}
+                    <p className="font-body text-xs text-coal/40 mt-1 line-clamp-1">{o.items}</p>
+                  </div>
+                </div>
+              </button>
             ))}
           </div>
         </div>
@@ -454,6 +528,21 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="text-3xl mb-2">🎉</p>
               <p className="font-display text-lg tracking-wide text-mint">¡Pedido entregado!</p>
               <p className="font-body text-xs text-coal/50 mt-1">Gracias por tu pedido en DeliStars</p>
+            </div>
+          )}
+
+          {order.status === 'rejected' && (
+            <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 text-center">
+              <p className="text-3xl mb-2">❌</p>
+              <p className="font-display text-lg tracking-wide text-pepper">Pedido rechazado</p>
+              {order.rejectionReason && (
+                <p className="font-body text-sm text-coal/70 mt-2">
+                  Motivo: {order.rejectionReason}
+                </p>
+              )}
+              <p className="font-body text-xs text-coal/50 mt-3">
+                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
+              </p>
             </div>
           )}
         </div>
