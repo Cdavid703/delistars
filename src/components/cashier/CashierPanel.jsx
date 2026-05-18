@@ -12,7 +12,7 @@ import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle, ChevronDown, ChevronUp, BookOpen, X } from 'lucide-react'
+import { Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle, ChevronDown, ChevronUp, BookOpen, X, ShoppingBag } from 'lucide-react'
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
@@ -69,7 +69,7 @@ function createAlarmPlayer() {
 const alarm = createAlarmPlayer()
 
 export default function CashierPanel() {
-  const { user, sede, logout, selectSede } = useAuth()
+  const { user, sede, logout, selectSede, setViewingAs } = useAuth()
   const [tab,          setTab]         = useState('active')
   const [orders,       setOrders]      = useState([])
   const [drivers,      setDrivers]     = useState([])
@@ -228,6 +228,14 @@ export default function CashierPanel() {
             <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
           </button>
 
+          <button
+            onClick={() => setViewingAs('client')}
+            title="Ver como cliente"
+            className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2"
+          >
+            <ShoppingBag size={18} />
+            <span className="font-body text-xs font-semibold hidden sm:inline">Cliente</span>
+          </button>
           <button
             onClick={() => setShowManual(true)}
             title="Manual de usuario"

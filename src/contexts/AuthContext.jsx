@@ -40,7 +40,22 @@ export function AuthProvider({ children }) {
         setUser(firebaseUser)
         setRole(resolvedRole)
         setAllRoles(resolvedAllRoles)
-        setViewingAs(undefined)
+
+        // Restore viewingAs from localStorage so role choice survives page refresh
+        if (resolvedRole !== ROLES.CLIENT) {
+          const saved = localStorage.getItem(`viewingAs_${firebaseUser.uid}`)
+          if (saved !== null) {
+            // stored as 'null' string (own role) or a role string like 'client'
+            const parsed = saved === 'null' ? null : saved
+            // validate it's still a valid option for this user
+            const valid = parsed === null || resolvedAllRoles.includes(parsed)
+            setViewingAs(valid ? parsed : undefined)
+          } else {
+            setViewingAs(undefined) // first visit — show role choice
+          }
+        } else {
+          setViewingAs(null)
+        }
 
         // Restore sede from localStorage — only for staff, never for pure clients
         if (resolvedRole !== ROLES.CLIENT) {
@@ -61,11 +76,27 @@ export function AuthProvider({ children }) {
   const login      = () => signInWithPopup(auth, provider)
   const loginGuest = () => loginAnon()
 
+  // Persists role choice across page refreshes
+  const selectViewingAs = (v) => {
+    setViewingAs(v)
+    if (user) {
+      if (v === undefined) {
+        localStorage.removeItem(`viewingAs_${user.uid}`)
+      } else {
+        localStorage.setItem(`viewingAs_${user.uid}`, v === null ? 'null' : String(v))
+      }
+    }
+  }
+
   const logout = async () => {
+    const uid = user?.uid
     await signOut(auth)
     setSede(null)
     setViewingAs(null)
-    localStorage.removeItem(`sede_${user?.uid}`)
+    if (uid) {
+      localStorage.removeItem(`sede_${uid}`)
+      localStorage.removeItem(`viewingAs_${uid}`)
+    }
   }
 
   const selectSede = (sedeObj) => {
@@ -78,7 +109,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, role, allRoles, effectiveRole, viewingAs, setViewingAs,
+      user, role, allRoles, effectiveRole, viewingAs, setViewingAs: selectViewingAs,
       sede, selectSede, loading, login, loginGuest, logout,
     }}>
       {children}
