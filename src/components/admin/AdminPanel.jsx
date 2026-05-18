@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   collection, getDocs, doc, setDoc, deleteDoc,
-  query, where, orderBy, onSnapshot, serverTimestamp
+  query, where, onSnapshot, serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -261,14 +261,24 @@ function UsersTab() {
 
 // ─── Orders history ───────────────────────────────────────────────────────────
 function OrdersTab({ sede }) {
-  const [orders, setOrders] = useState([])
-  const [filter, setFilter] = useState('all')
+  const [orders,    setOrders]    = useState([])
+  const [filter,    setFilter]    = useState('all')
+  const [confirmId, setConfirmId] = useState(null)
 
   useEffect(() => {
     if (!sede) return
-    const q = query(collection(db, 'orders'), where('sedeId', '==', sede.id), orderBy('createdAt', 'desc'))
-    return onSnapshot(q, snap => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+    const q = query(collection(db, 'orders'), where('sedeId', '==', sede.id))
+    return onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      docs.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
+      setOrders(docs)
+    })
   }, [sede])
+
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, 'orders', id))
+    setConfirmId(null)
+  }
 
   const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
 
@@ -276,11 +286,11 @@ function OrdersTab({ sede }) {
     <div className="flex flex-col gap-3 animate-fade-in">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[
-          { v: 'all', l: 'Todos' },
-          { v: 'assigned', l: 'Asignados' },
-          { v: 'in_transit', l: 'En camino' },
-          { v: 'pending_cuadre', l: 'Cuadre' },
-          { v: 'completed', l: 'Completados' },
+          { v: 'all',           l: 'Todos' },
+          { v: 'assigned',      l: 'Asignados' },
+          { v: 'in_transit',    l: 'En camino' },
+          { v: 'pending_cuadre',l: 'Cuadre' },
+          { v: 'completed',     l: 'Completados' },
         ].map(f => (
           <button key={f.v} onClick={() => setFilter(f.v)}
             className={`px-4 py-2 rounded-full text-xs font-semibold font-body uppercase tracking-wider whitespace-nowrap transition-all ${
@@ -306,10 +316,29 @@ function OrdersTab({ sede }) {
               <p className="font-body text-xs text-coal/40 mt-0.5">
                 🛵 {o.driverName || '—'} · {o.cashierName || '—'}
               </p>
+              <p className="font-body text-xs text-coal/40">
+                {o.createdAt?.toDate ? format(o.createdAt.toDate(), 'dd/MM HH:mm') : '--'}
+              </p>
             </div>
-            <p className="font-body text-xs text-coal/40 flex-shrink-0">
-              {o.createdAt?.toDate ? format(o.createdAt.toDate(), 'dd/MM HH:mm') : '--'}
-            </p>
+
+            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+              {confirmId === o.id ? (
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmId(null)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-smoked text-coal font-body">
+                    Cancelar
+                  </button>
+                  <button onClick={() => handleDelete(o.id)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-pepper text-cream font-body">
+                    Eliminar
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmId(o.id)} className="btn-icon text-pepper/60 hover:text-pepper">
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
           </div>
         ))
       )}
