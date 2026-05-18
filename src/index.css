@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    @apply bg-cream text-coal font-body antialiased;
+    min-height: 100dvh;
+  }
+  #root { min-height: 100dvh; }
+  h1,h2,h3,h4 { @apply font-display tracking-wide uppercase; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-gradient-to-r from-cherry to-tangelo
+           text-cream font-body font-semibold px-6 py-3 rounded-full shadow-soft
+           transition-all duration-300 hover:-translate-y-0.5 hover:shadow-glow
+           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 select-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 bg-smoked text-coal font-body font-semibold
+           px-6 py-3 rounded-full border border-coal/10 transition-all duration-300
+           hover:bg-cream hover:-translate-y-0.5 active:scale-95 select-none;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 bg-transparent text-cherry font-body font-semibold
+           px-6 py-3 rounded-full border border-cherry/30 transition-all duration-300
+           hover:bg-cherry/10 active:scale-95 select-none;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 bg-pepper text-cream font-body font-semibold
+           px-6 py-3 rounded-full shadow-card transition-all duration-300
+           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
+  }
+  .btn-mint {
+    @apply inline-flex items-center justify-center gap-2 bg-mint text-cream font-body font-semibold
+           px-6 py-3 rounded-full shadow-card transition-all duration-300
+           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
+  }
+  .btn-mustard {
+    @apply inline-flex items-center justify-center gap-2 bg-mustard text-coal font-body font-semibold
+           px-6 py-3 rounded-full shadow-card transition-all duration-300
+           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
+  }
+  .btn-sm { @apply px-4 py-2 text-sm rounded-full; }
+  .btn-lg { @apply px-8 py-4 text-lg rounded-full; }
+
+  .card {
+    @apply bg-white/70 backdrop-blur-sm rounded-2xl shadow-card border border-white/60 p-4;
+  }
+  .card-dark { @apply bg-coal text-cream rounded-2xl shadow-card p-4; }
+
+  .input-field {
+    @apply w-full bg-white/80 border border-coal/20 rounded-xl px-4 py-3
+           font-body text-coal placeholder-coal/40 focus:outline-none
+           focus:ring-2 focus:ring-cherry/40 focus:border-cherry/60
+           transition-all duration-200 text-base;
+  }
+  .textarea-field { @apply input-field resize-none; }
+  .label-field {
+    @apply block font-body font-semibold text-xs text-coal/60 mb-1.5 uppercase tracking-wider;
+  }
+
+  .badge { @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider; }
+  .badge-pending   { @apply badge bg-mustard/20 text-mustard; }
+  .badge-assigned  { @apply badge bg-tangelo/20 text-tangelo; }
+  .badge-accepted  { @apply badge bg-mint/20 text-mint; }
+  .badge-transit   { @apply badge bg-cherry/20 text-cherry; }
+  .badge-arrived   { @apply badge bg-tangelo/30 text-tangelo; }
+  .badge-delivered { @apply badge bg-mint/30 text-mint; }
+  .badge-cash      { @apply badge bg-mustard/30 text-coal; }
+  .badge-cuadre    { @apply badge bg-mustard/20 text-mustard; }
+  .badge-completed { @apply badge bg-smoked text-coal/60; }
+
+  .page-header {
+    @apply sticky top-0 z-40 bg-cream/95 backdrop-blur-md border-b border-coal/10
+           px-4 py-3 flex items-center justify-between;
+  }
+  .section-title { @apply font-display text-2xl text-coal tracking-widest uppercase; }
+  .hover-lift { @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-card; }
+
+  .notif-badge {
+    @apply absolute -top-1 -right-1 w-5 h-5 bg-cherry rounded-full
+           flex items-center justify-center text-white text-[10px] font-bold animate-pulse;
+  }
+
+  .scroll-custom { scrollbar-width: thin; scrollbar-color: rgba(234,51,41,0.3) transparent; }
+  .scroll-custom::-webkit-scrollbar { width: 4px; }
+  .scroll-custom::-webkit-scrollbar-thumb { background: rgba(234,51,41,0.3); border-radius: 9999px; }
+
+  .tab-btn {
+    @apply flex-1 py-3 text-sm font-semibold font-body uppercase tracking-wider
+           border-b-2 transition-all duration-200;
+  }
+  .tab-btn-active { @apply tab-btn border-cherry text-cherry; }
+  .tab-btn-inactive { @apply tab-btn border-transparent text-coal/50 hover:text-coal/80; }
+
+  .order-card {
+    @apply card hover-lift cursor-pointer border-l-4 animate-fade-in;
+  }
+}
