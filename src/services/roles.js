@@ -12,6 +12,8 @@ export const DEFAULT_CASHIERS = [
   'josemanuellondonorivillas@gmail.com',
   'vvillegasmazo@gmail.com',
   'yencytp@gmail.com',
+  'cdavid.jaramillo@gmail.com',
+  'thebesta4321@gmail.com',
 ]
 
 export const DEFAULT_DRIVERS = [
