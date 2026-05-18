@@ -38,10 +38,12 @@ export default function SedeSelectionPage() {
 
         {/* Title */}
         <h2 className="font-display text-2xl text-coal text-center tracking-widest mb-2">
-          Selecciona tu sede
+          Selecciona una sede
         </h2>
         <p className="font-body text-sm text-coal/50 text-center mb-6">
-          ¿Desde cuál sede estás trabajando hoy?
+          {role === 'client'
+            ? '¿Desde cuál sede quieres hacer tu pedido?'
+            : '¿Desde cuál sede estás trabajando hoy?'}
         </p>
 
         {/* Sede options */}

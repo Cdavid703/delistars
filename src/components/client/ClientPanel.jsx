@@ -103,13 +103,19 @@ export default function ClientPanel() {
       <div className="mx-4 -mt-8 relative z-10">
         <div className="card bg-white shadow-soft">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-cherry/10 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-cherry/10 rounded-full flex items-center justify-center flex-shrink-0">
               <MapPin size={18} className="text-cherry" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="font-display text-base text-coal tracking-wide">Sede {sede?.name}</p>
               <p className="font-body text-xs text-coal/50">{sede?.address}</p>
             </div>
+            <button
+              onClick={() => selectSede(null)}
+              className="flex-shrink-0 text-xs font-semibold font-body text-cherry underline underline-offset-2"
+            >
+              Cambiar
+            </button>
           </div>
         </div>
       </div>
