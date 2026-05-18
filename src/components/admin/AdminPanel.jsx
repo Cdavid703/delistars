@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS } from '../../services/roles'
 import Logo from '../common/Logo'
 import StatusBadge from '../common/StatusBadge'
 import { format, startOfDay, endOfDay } from 'date-fns'
@@ -162,8 +163,21 @@ function UsersTab() {
       getDocs(collection(db, 'roles_cashiers')),
       getDocs(collection(db, 'roles_drivers')),
     ])
-    setCashiers(cs.docs.map(d => ({ id: d.id, ...d.data() })))
-    setDrivers(ds.docs.map(d => ({ id: d.id, ...d.data() })))
+    const firestoreCashiers = cs.docs.map(d => ({ id: d.id, ...d.data() }))
+    const firestoreDrivers  = ds.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    const cashierIds = firestoreCashiers.map(d => d.id)
+    const defaultCashierObjs = DEFAULT_CASHIERS
+      .filter(e => !cashierIds.includes(e))
+      .map(e => ({ id: e, name: e, isDefault: true }))
+
+    const driverIds = firestoreDrivers.map(d => d.id)
+    const defaultDriverObjs = DEFAULT_DRIVERS
+      .filter(e => !driverIds.includes(e))
+      .map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e, isDefault: true }))
+
+    setCashiers([...defaultCashierObjs, ...firestoreCashiers])
+    setDrivers([...defaultDriverObjs, ...firestoreDrivers])
   }
 
   useEffect(() => { load() }, [])
@@ -221,12 +235,13 @@ function UsersTab() {
             {cashiers.map(c => (
               <div key={c.id} className="card flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-body font-semibold text-sm">{c.name}</p>
+                  <p className="font-body font-semibold text-sm">{c.name || c.id}</p>
                   <p className="font-body text-xs text-coal/50">{c.id}</p>
                 </div>
-                <button onClick={() => removeUser(c.id, 'cashier')} className="btn-icon text-pepper">
-                  <Trash2 size={16} />
-                </button>
+                {c.isDefault
+                  ? <span className="font-body text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
+                  : <button onClick={() => removeUser(c.id, 'cashier')} className="btn-icon text-pepper"><Trash2 size={16} /></button>
+                }
               </div>
             ))}
           </div>
@@ -244,12 +259,13 @@ function UsersTab() {
             {drivers.map(d => (
               <div key={d.id} className="card flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-body font-semibold text-sm">{d.name}</p>
+                  <p className="font-body font-semibold text-sm">{d.name || d.id}</p>
                   <p className="font-body text-xs text-coal/50">{d.id}</p>
                 </div>
-                <button onClick={() => removeUser(d.id, 'driver')} className="btn-icon text-pepper">
-                  <Trash2 size={16} />
-                </button>
+                {d.isDefault
+                  ? <span className="font-body text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
+                  : <button onClick={() => removeUser(d.id, 'driver')} className="btn-icon text-pepper"><Trash2 size={16} /></button>
+                }
               </div>
             ))}
           </div>
