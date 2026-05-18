@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS, DEFAULT_CASHIER_NAMES } from '../../services/roles'
 import Logo from '../common/Logo'
 import StatusBadge from '../common/StatusBadge'
 import { format, startOfDay, endOfDay } from 'date-fns'
@@ -169,7 +169,7 @@ function UsersTab() {
     const cashierIds = firestoreCashiers.map(d => d.id)
     const defaultCashierObjs = DEFAULT_CASHIERS
       .filter(e => !cashierIds.includes(e))
-      .map(e => ({ id: e, name: e, isDefault: true }))
+      .map(e => ({ id: e, name: DEFAULT_CASHIER_NAMES[e] || e, isDefault: true }))
 
     const driverIds = firestoreDrivers.map(d => d.id)
     const defaultDriverObjs = DEFAULT_DRIVERS

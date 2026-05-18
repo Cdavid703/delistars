@@ -16,6 +16,15 @@ export const DEFAULT_CASHIERS = [
   'thebesta4321@gmail.com',
 ]
 
+export const DEFAULT_CASHIER_NAMES = {
+  'lluis02martinez@gmail.com':          'Jose Luis Martinez Villegas',
+  'josemanuellondonorivillas@gmail.com': 'Jose Manuel Londoño Rivillas',
+  'vvillegasmazo@gmail.com':            'Valentina Villegas Mazo',
+  'yencytp@gmail.com':                  'Yency Torres Parra',
+  'cdavid.jaramillo@gmail.com':         'Carlos David Jaramillo',
+  'thebesta4321@gmail.com':             'Andrés Elías Arango Monsalve',
+}
+
 export const DEFAULT_DRIVERS = [
   'cdavid.jaramillo@gmail.com',
 ]
