@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
+import { DEFAULT_DRIVERS } from '../../services/roles'
 import Logo from '../common/Logo'
 import OrderCard from './OrderCard'
 import OrderForm from './OrderForm'
@@ -50,11 +51,16 @@ export default function CashierPanel() {
     })
   }, [sede])
 
-  // Load drivers
+  // Load drivers (hardcoded + Firestore)
   useEffect(() => {
     const loadDrivers = async () => {
       const snap = await getDocs(collection(db, 'roles_drivers'))
-      setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const firestoreDrivers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const firestoreIds = firestoreDrivers.map(d => d.id)
+      const defaultDriverObjs = DEFAULT_DRIVERS
+        .filter(email => !firestoreIds.includes(email))
+        .map(email => ({ id: email, name: email }))
+      setDrivers([...defaultDriverObjs, ...firestoreDrivers])
     }
     loadDrivers()
   }, [])
@@ -99,7 +105,12 @@ export default function CashierPanel() {
       setNewDriverEmail(''); setNewDriverName('')
       // Refresh drivers
       const snap = await getDocs(collection(db, 'roles_drivers'))
-      setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const firestoreDrivers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const firestoreIds = firestoreDrivers.map(d => d.id)
+      const defaultDriverObjs = DEFAULT_DRIVERS
+        .filter(e => !firestoreIds.includes(e))
+        .map(e => ({ id: e, name: e }))
+      setDrivers([...defaultDriverObjs, ...firestoreDrivers])
     } catch (err) {
       setDriverMsg('❌ Error al agregar domiciliario')
     }
