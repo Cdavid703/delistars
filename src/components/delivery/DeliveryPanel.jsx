@@ -53,7 +53,7 @@ export default function DeliveryPanel() {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification('🔔 DeliStars — Nuevo pedido', {
             body: `Tienes ${newPending} pedido(s) por aceptar`,
-            icon: '/domicilios/logo_sello.png',
+            icon: '/logo_sello.png',
           })
         }
       }

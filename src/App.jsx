@@ -1,7 +1,9 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import LoginPage         from './pages/LoginPage'
 import SedeSelectionPage from './pages/SedeSelectionPage'
 import RoleChoicePage    from './pages/RoleChoicePage'
+import VacantesPage      from './pages/VacantesPage'
 import CashierPanel      from './components/cashier/CashierPanel'
 import DeliveryPanel     from './components/delivery/DeliveryPanel'
 import ClientPanel       from './components/client/ClientPanel'
@@ -19,26 +21,28 @@ function LoadingScreen() {
   )
 }
 
-export default function App() {
+function DomiciliosApp() {
   const { user, role, effectiveRole, viewingAs, sede, loading } = useAuth()
 
   if (loading) return <LoadingScreen />
-
-  // 1. Not logged in
   if (!user) return <LoginPage />
-
-  // 2. No sede selected yet
   if (!sede) return <SedeSelectionPage />
-
-  // 3. Non-client users: ask how they want to view the app (only once per session)
-  //    viewingAs=undefined means "hasn't chosen yet"
   if (role !== ROLES.CLIENT && viewingAs === undefined) return <RoleChoicePage />
 
-  // 4. Route by effective role (null = own role, ROLES.CLIENT = client view)
   const view = effectiveRole || role
 
   if (view === ROLES.ADMIN)   return <AdminPanel />
   if (view === ROLES.CASHIER) return <CashierPanel />
   if (view === ROLES.DRIVER)  return <DeliveryPanel />
   return <ClientPanel />
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/vacantes" element={<VacantesPage />} />
+      <Route path="/domicilios/*" element={<DomiciliosApp />} />
+      <Route path="*" element={<Navigate to="/domicilios" replace />} />
+    </Routes>
+  )
 }

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey:            "AIzaSyCLB7z7lDPeNDa0qEYFVWXyCLlzNsJzrww",
@@ -11,10 +12,11 @@ const firebaseConfig = {
   appId:             "1:757400771350:web:57cb5b1affd8e170850e37",
 }
 
-const app      = initializeApp(firebaseConfig)
-export const auth         = getAuth(app)
-export const db           = getFirestore(app)
-export const provider     = new GoogleAuthProvider()
-export const loginAnon    = () => signInAnonymously(auth)
+const app             = initializeApp(firebaseConfig)
+export const auth     = getAuth(app)
+export const db       = getFirestore(app)
+export const storage  = getStorage(app)
+export const provider = new GoogleAuthProvider()
+export const loginAnon = () => signInAnonymously(auth)
 
 provider.setCustomParameters({ prompt: 'select_account' })
