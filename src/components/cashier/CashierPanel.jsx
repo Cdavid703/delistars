@@ -306,6 +306,11 @@ export default function CashierPanel() {
         </div>
       )}
 
+      {/* Summary for completed tab */}
+      {tab === 'completed' && filteredOrders.length > 0 && (
+        <EntregadosSummary orders={filteredOrders} />
+      )}
+
       {/* Orders list */}
       <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
         {filteredOrders.length === 0 && !showForm && (
@@ -429,6 +434,46 @@ export default function CashierPanel() {
                 <BellRing size={16} /> Ver pedido
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Entregados summary ───────────────────────────────────────────────────────
+function EntregadosSummary({ orders }) {
+  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+  const totalFees     = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+
+  return (
+    <div className="mx-4 mt-3 bg-gradient-to-r from-cherry/10 to-tangelo/10 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-display text-base tracking-wide text-coal">Resumen del día</p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-cherry">{orders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Domicilios</p>
+        </div>
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-mustard">{cashOrders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Efectivo</p>
+        </div>
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-mint">{digitalOrders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Digital</p>
+        </div>
+      </div>
+      {totalRevenue > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+            <span className="font-body text-xs text-coal/60">Total recaudado:</span>
+            <span className="font-display text-base text-coal">{fmt(totalRevenue)}</span>
+          </div>
+          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+            <span className="font-body text-xs text-coal/60">Total en domicilios:</span>
+            <span className="font-display text-base text-mint">{fmt(totalFees)}</span>
           </div>
         </div>
       )}

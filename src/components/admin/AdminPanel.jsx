@@ -13,7 +13,8 @@ import { es } from 'date-fns/locale'
 import {
   Users, LayoutDashboard, ClipboardList, BarChart2,
   LogOut, MapPin, Plus, Trash2, Receipt, Bike,
-  TrendingUp, Package, CheckCircle, Clock, Power
+  TrendingUp, Package, CheckCircle, Clock, Power,
+  BookOpen, X, Search, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react'
 
 const TABS = [
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'users',     label: 'Usuarios',   icon: Users },
   { id: 'orders',    label: 'Pedidos',    icon: ClipboardList },
   { id: 'reports',   label: 'Reportes',   icon: BarChart2 },
+  { id: 'manual',    label: 'Manual',     icon: BookOpen },
 ]
 
 export default function AdminPanel() {
@@ -104,6 +106,7 @@ export default function AdminPanel() {
         {tab === 'users'     && <UsersTab />}
         {tab === 'orders'    && <OrdersTab sede={sede} />}
         {tab === 'reports'   && <ReportsTab sede={sede} />}
+        {tab === 'manual'    && <AdminManualTab />}
       </main>
     </div>
   )
@@ -299,10 +302,54 @@ function UsersTab() {
 }
 
 // ─── Orders history ───────────────────────────────────────────────────────────
+const isAdminDay = (ts, targetDate) => {
+  if (!ts?.toDate) return false
+  const target = targetDate ? new Date(targetDate + 'T00:00:00') : new Date()
+  return ts.toDate().toDateString() === target.toDateString()
+}
+
+function AdminEntregadosSummary({ orders }) {
+  const fmt2 = v => v ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+  const totalFees     = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+  return (
+    <div className="bg-gradient-to-r from-cherry/10 to-tangelo/10 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-display text-base tracking-wide text-coal">Resumen del día filtrado</p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-cherry">{orders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Total</p>
+        </div>
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-mustard">{cashOrders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Efectivo</p>
+        </div>
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-mint">{digitalOrders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Digital</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+          <span className="font-body text-xs text-coal/60">Total recaudado:</span>
+          <span className="font-display text-base text-coal">{fmt2(totalRevenue)}</span>
+        </div>
+        <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+          <span className="font-body text-xs text-coal/60">Total en domicilios:</span>
+          <span className="font-display text-base text-mint">{fmt2(totalFees)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function OrdersTab({ sede }) {
-  const [orders,    setOrders]    = useState([])
-  const [filter,    setFilter]    = useState('all')
-  const [confirmId, setConfirmId] = useState(null)
+  const [orders,      setOrders]      = useState([])
+  const [filter,      setFilter]      = useState('all')
+  const [confirmId,   setConfirmId]   = useState(null)
+  const [historyDate, setHistoryDate] = useState('')
 
   useEffect(() => {
     if (!sede) return
@@ -319,7 +366,14 @@ function OrdersTab({ sede }) {
     setConfirmId(null)
   }
 
-  const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
+  const COMPLETED_STATUSES = ['completed', 'delivered_paid', 'delivered_cash', 'pending_cuadre']
+
+  const filtered = orders.filter(o => {
+    if (filter !== 'all' && filter !== 'entregados' && o.status !== filter) return false
+    if (filter === 'entregados' && !COMPLETED_STATUSES.includes(o.status)) return false
+    if (filter === 'entregados') return isAdminDay(o.createdAt, historyDate)
+    return true
+  })
 
   return (
     <div className="flex flex-col gap-3 animate-fade-in">
@@ -329,7 +383,7 @@ function OrdersTab({ sede }) {
           { v: 'assigned',      l: 'Asignados' },
           { v: 'in_transit',    l: 'En camino' },
           { v: 'pending_cuadre',l: 'Cuadre' },
-          { v: 'completed',     l: 'Completados' },
+          { v: 'entregados',    l: 'Entregados' },
         ].map(f => (
           <button key={f.v} onClick={() => setFilter(f.v)}
             className={`px-4 py-2 rounded-full text-xs font-semibold font-body uppercase tracking-wider whitespace-nowrap transition-all ${
@@ -339,6 +393,28 @@ function OrdersTab({ sede }) {
           </button>
         ))}
       </div>
+
+      {/* Date picker for entregados */}
+      {filter === 'entregados' && (
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <Search size={16} className="text-coal/40 flex-shrink-0" />
+            <input type="date" className="input-field py-2 text-sm"
+              value={historyDate} onChange={e => setHistoryDate(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')} />
+          </div>
+          {historyDate && (
+            <button onClick={() => setHistoryDate('')} className="text-xs font-body text-cherry underline whitespace-nowrap">
+              Ver hoy
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Summary when viewing entregados */}
+      {filter === 'entregados' && filtered.length > 0 && (
+        <AdminEntregadosSummary orders={filtered} />
+      )}
 
       {filtered.length === 0 ? (
         <p className="font-body text-coal/40 text-sm py-8 text-center">Sin pedidos</p>
@@ -431,13 +507,150 @@ function ReportsTab({ sede }) {
             <span className="text-mint">✓ {stats.completed} completados</span>
             <span className="text-mustard">💰 {stats.cash} pdte. cuadre</span>
           </div>
-          {/* Bar */}
           <div className="mt-2 w-full bg-smoked rounded-full h-1.5">
             <div className="bg-gradient-to-r from-cherry to-tangelo h-1.5 rounded-full"
               style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }} />
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Admin manual ─────────────────────────────────────────────────────────────
+const ADMIN_MANUAL_SECTIONS = [
+  {
+    id: 'overview', emoji: '🏢', title: 'Visión general', color: 'text-cherry',
+    content: [
+      { type: 'p', text: 'El administrador tiene acceso completo a la plataforma DeliStars: gestión de usuarios, visualización de todos los pedidos, reportes por domiciliario, y control de la plataforma.' },
+      { type: 'table', rows: [
+        ['Dashboard',  'Resumen de pedidos activos en tiempo real'],
+        ['Usuarios',   'Agregar o eliminar cajeros y domiciliarios'],
+        ['Pedidos',    'Historial completo de pedidos con filtros'],
+        ['Reportes',   'Estadísticas agrupadas por domiciliario'],
+        ['Manual',     'Esta guía de uso'],
+      ]},
+    ],
+  },
+  {
+    id: 'plataforma', emoji: '⚡', title: 'Control de plataforma', color: 'text-mint',
+    content: [
+      { type: 'p', text: 'El botón de encendido en el encabezado activa o desactiva la plataforma para los clientes.' },
+      { type: 'table', rows: [
+        ['Verde parpadeando', 'ACTIVA — clientes pueden hacer pedidos'],
+        ['Gris apagado',      'APAGADA — clientes ven pantalla cerrada'],
+      ]},
+      { type: 'tip', text: 'El cajero también puede controlar este interruptor desde su panel.' },
+    ],
+  },
+  {
+    id: 'usuarios', emoji: '👥', title: 'Gestión de usuarios', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'En la pestaña "Usuarios" puedes agregar cajeros y domiciliarios usando su correo de Google. Los usuarios fijos del sistema no se pueden eliminar.' },
+      { type: 'steps', items: [
+        'Escribe el correo de Google del usuario.',
+        'Escribe el nombre (opcional — si no, se usa el correo).',
+        'Selecciona el rol: Cajero o Domiciliario.',
+        'Toca "Agregar". El usuario podrá ingresar en su próximo login.',
+      ]},
+    ],
+  },
+  {
+    id: 'flujo', emoji: '📋', title: 'Flujo completo de un pedido', color: 'text-cherry',
+    content: [
+      { type: 'steps', items: [
+        'Cliente hace el pedido → estado PENDIENTE.',
+        'Cajero cotiza el precio → estado COTIZADO (cliente ve los precios).',
+        'Cajero asigna domiciliario → estado ASIGNADO.',
+        'Domiciliario acepta → ACEPTADO.',
+        'Domiciliario sale → EN CAMINO.',
+        'Domiciliario llega → LLEGÓ.',
+        'Domiciliario entrega → si efectivo: PDTE. CUADRE; si digital: COMPLETADO.',
+        'Cajero confirma el efectivo recibido del domiciliario → COMPLETADO.',
+      ]},
+    ],
+  },
+  {
+    id: 'pedidos', emoji: '📦', title: 'Filtros de pedidos', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'En la pestaña "Pedidos" usa los filtros para ver pedidos por estado. El filtro "Entregados" incluye un selector de fecha y muestra el resumen del día.' },
+      { type: 'tip', text: 'Los pedidos se pueden eliminar desde la pestaña de Pedidos (ícono de basurero). Úsalo con cuidado.' },
+    ],
+  },
+  {
+    id: 'reportes', emoji: '📊', title: 'Reportes', color: 'text-tangelo',
+    content: [
+      { type: 'p', text: 'La pestaña "Reportes" muestra el total de pedidos de la sede, cuántos fueron completados, cuántos están pendientes de cuadre, y el desglose por cada domiciliario.' },
+    ],
+  },
+]
+
+function AdminManualSection({ section }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card overflow-hidden p-0">
+      <button onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{section.emoji}</span>
+          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+        </div>
+        {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3 animate-fade-in">
+          {section.content.map((block, i) => {
+            if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
+            if (block.type === 'tip') return (
+              <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
+                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <p className="font-body text-xs text-coal/70">{block.text}</p>
+              </div>
+            )
+            if (block.type === 'steps') return (
+              <div key={i} className="flex flex-col gap-2">
+                {block.items.map((step, j) => (
+                  <div key={j} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-cherry text-cream text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{j+1}</span>
+                    <p className="font-body text-sm text-coal/80 leading-relaxed">{step}</p>
+                  </div>
+                ))}
+              </div>
+            )
+            if (block.type === 'table') return (
+              <div key={i} className="flex flex-col divide-y divide-coal/10 rounded-xl overflow-hidden border border-coal/10">
+                {block.rows.map(([col1, col2], j) => (
+                  <div key={j} className={`flex gap-3 px-3 py-2 ${j % 2 === 0 ? 'bg-smoked/40' : 'bg-cream'}`}>
+                    <span className="font-body text-xs font-semibold text-coal w-32 flex-shrink-0">{col1}</span>
+                    <span className="font-body text-xs text-coal/60">{col2}</span>
+                  </div>
+                ))}
+              </div>
+            )
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AdminManualTab() {
+  return (
+    <div className="flex flex-col gap-3 pb-8 animate-fade-in">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="w-10 h-10 rounded-full bg-cherry/10 flex items-center justify-center flex-shrink-0">
+          <HelpCircle size={20} className="text-cherry" />
+        </div>
+        <div>
+          <p className="font-display text-xl text-coal tracking-wide">Manual del administrador</p>
+          <p className="font-body text-xs text-coal/50">Toca cada sección para ver los detalles</p>
+        </div>
+      </div>
+      {ADMIN_MANUAL_SECTIONS.map(s => <AdminManualSection key={s.id} section={s} />)}
+      <div className="mt-2 text-center">
+        <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · v2.0</p>
+      </div>
     </div>
   )
 }

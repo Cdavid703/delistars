@@ -12,7 +12,8 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, Phone, User, ShoppingBag, Navigation,
   ExternalLink, CheckCircle, Banknote, LogOut, Bell,
-  DollarSign, Calculator, X, MessageSquare
+  DollarSign, Calculator, X, MessageSquare, BookOpen,
+  Search, ChevronDown, ChevronUp, HelpCircle
 } from 'lucide-react'
 
 const TABS = [
@@ -30,11 +31,13 @@ const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toL
 
 export default function DeliveryPanel() {
   const { user, sede, logout, selectSede } = useAuth()
-  const [orders,      setOrders]      = useState([])
-  const [tab,         setTab]         = useState('pending')
-  const [selected,    setSelected]    = useState(null)
-  const [notifCount,  setNotifCount]  = useState(0)
-  const [showCuadre,  setShowCuadre]  = useState(false)
+  const [orders,       setOrders]      = useState([])
+  const [tab,          setTab]         = useState('pending')
+  const [selected,     setSelected]    = useState(null)
+  const [notifCount,   setNotifCount]  = useState(0)
+  const [showCuadre,   setShowCuadre]  = useState(false)
+  const [showManual,   setShowManual]  = useState(false)
+  const [historyDate,  setHistoryDate] = useState('')
   const prevCount   = useRef(0)
   const geoWatchId  = useRef(null)
 
@@ -95,9 +98,12 @@ export default function DeliveryPanel() {
 
   const pendingOrders   = orders.filter(o => o.status === 'assigned')
   const activeOrders    = orders.filter(o => ['accepted','in_transit','arrived'].includes(o.status))
-  const completedOrders = orders.filter(o =>
-    ['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status) && isToday(o.createdAt)
-  )
+  const completedOrders = orders.filter(o => {
+    if (!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status)) return false
+    const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
+    if (!o.createdAt?.toDate) return false
+    return o.createdAt.toDate().toDateString() === target.toDateString()
+  })
 
   const tabOrders = tab === 'pending' ? pendingOrders : tab === 'active' ? activeOrders : completedOrders
 
@@ -112,6 +118,11 @@ export default function DeliveryPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={() => setShowManual(true)} title="Manual"
+            className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
+            <BookOpen size={18} />
+            <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
+          </button>
           <button onClick={() => setShowCuadre(true)} title="Cuadre de turno"
             className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
             <Calculator size={18} />
@@ -154,12 +165,40 @@ export default function DeliveryPanel() {
         })}
       </div>
 
+      {/* Date picker for completed tab */}
+      {tab === 'completed' && (
+        <div className="mx-4 mt-3 flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <Search size={16} className="text-coal/40 flex-shrink-0" />
+            <input
+              type="date"
+              className="input-field py-2 text-sm"
+              value={historyDate}
+              onChange={e => setHistoryDate(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')}
+            />
+          </div>
+          {historyDate && (
+            <button onClick={() => setHistoryDate('')}
+              className="text-xs font-body text-cherry underline whitespace-nowrap">
+              Ver hoy
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Summary for completed tab */}
+      {tab === 'completed' && tabOrders.length > 0 && (
+        <DriverEntregadosSummary orders={tabOrders} />
+      )}
+
       <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
         {tabOrders.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-16">
             <p className="text-4xl">{tab === 'pending' ? '🛵' : tab === 'active' ? '🗺️' : '✅'}</p>
             <p className="font-body text-coal/40 text-center">
-              {tab === 'pending' ? 'Sin pedidos nuevos' : tab === 'active' ? 'No tienes pedidos en curso' : 'No hay entregados hoy'}
+              {tab === 'pending' ? 'Sin pedidos nuevos' : tab === 'active' ? 'No tienes pedidos en curso' :
+               historyDate ? `No hay entregados para esa fecha` : 'No hay entregados hoy'}
             </p>
           </div>
         )}
@@ -172,6 +211,10 @@ export default function DeliveryPanel() {
 
       {showCuadre && (
         <DriverCuadreTurnoModal orders={orders} onClose={() => setShowCuadre(false)} />
+      )}
+
+      {showManual && (
+        <DriverManualModal onClose={() => setShowManual(false)} />
       )}
     </div>
   )
@@ -380,6 +423,43 @@ function DriverOrderDetail({ order, onClose }) {
   )
 }
 
+// ─── Driver entregados summary ────────────────────────────────────────────────
+function DriverEntregadosSummary({ orders }) {
+  const cashOrders   = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const totalFees    = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+  const totalCash    = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+
+  return (
+    <div className="mx-4 mt-3 bg-gradient-to-r from-mint/10 to-mustard/10 border border-mint/20 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-display text-base tracking-wide text-coal">Resumen del día</p>
+      <div className="grid grid-cols-2 gap-2 text-center">
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-cherry">{orders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Domicilios</p>
+        </div>
+        <div className="bg-cream/80 rounded-xl p-2">
+          <p className="font-display text-2xl text-mustard">{cashOrders.length}</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Efectivo</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {totalFees > 0 && (
+          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+            <span className="font-body text-xs text-coal/60">Domicilios ganados:</span>
+            <span className="font-display text-base text-mint">{`$${Number(totalFees).toLocaleString('es-CO')}`}</span>
+          </div>
+        )}
+        {totalCash > 0 && (
+          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
+            <span className="font-body text-xs text-coal/60">Efectivo a entregar:</span>
+            <span className="font-display text-base text-mustard">{`$${Number(totalCash).toLocaleString('es-CO')}`}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Cuadre de turno del domiciliario ────────────────────────────────────────
 function DriverCuadreTurnoModal({ orders, onClose }) {
   const completedToday = orders.filter(o =>
@@ -456,6 +536,152 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Manual del domiciliario ──────────────────────────────────────────────────
+const DRIVER_MANUAL_SECTIONS = [
+  {
+    id: 'flujo', emoji: '📋', title: 'Flujo de trabajo', color: 'text-cherry',
+    content: [
+      { type: 'steps', items: [
+        'Recibes el pedido en "Pedidos" con una notificación. Ábrelo y toca "Aceptar pedido".',
+        'Toca "Iniciar entrega" cuando salgas a recoger y llevar el pedido.',
+        'Toca "Llegué al destino" cuando llegues donde el cliente.',
+        'Toca "Marcar como entregado" al entregar. Si fue efectivo → queda en Cuadre.',
+        'Ve al cajero para hacer el cuadre de caja con el efectivo recibido.',
+      ]},
+    ],
+  },
+  {
+    id: 'estados', emoji: '🏷️', title: 'Estados del pedido', color: 'text-coal',
+    content: [
+      { type: 'table', rows: [
+        ['🛵 ASIGNADO',   'Te asignaron el pedido — acéptalo'],
+        ['✅ ACEPTADO',   'Confirmaste que vas'],
+        ['🏃 EN CAMINO',  'Estás en ruta al cliente'],
+        ['📍 LLEGÓ',      'Llegaste al destino'],
+        ['💰 CUADRE',     'Entregado en efectivo — pendiente cuadre de caja'],
+        ['☑️ COMPLETADO', 'Todo listo, pedido cerrado'],
+      ]},
+    ],
+  },
+  {
+    id: 'navegacion', emoji: '🗺️', title: 'Navegación', color: 'text-mint',
+    content: [
+      { type: 'p', text: 'Dentro del detalle del pedido encontrarás dos botones: Google Maps y Waze. Úsalos para llegar al destino del cliente.' },
+      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está en curso.' },
+    ],
+  },
+  {
+    id: 'efectivo', emoji: '💵', title: 'Pedidos en efectivo', color: 'text-mustard',
+    content: [
+      { type: 'table', rows: [
+        ['Paga exacto',    'El cajero marcó que el cliente paga exacto — no necesitas devolver cambio'],
+        ['Necesita cambio','El cajero indica cuánto paga el cliente y cuánto debes devolver de cambio'],
+      ]},
+      { type: 'tip', text: 'Revisa siempre la sección de "Pago" en el detalle antes de llegar donde el cliente.' },
+    ],
+  },
+  {
+    id: 'cuadre', emoji: '💰', title: 'Cuadre de turno', color: 'text-mustard',
+    content: [
+      { type: 'p', text: 'Al final del turno usa el botón "Cuadre" para ver cuánto efectivo debes entregar en caja y cuánto te deben por los domicilios.' },
+      { type: 'tip', text: 'Muéstrale al cajero la pantalla de cuadre para hacer el recuento juntos.' },
+    ],
+  },
+  {
+    id: 'historial', emoji: '📅', title: 'Historial de entregas', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'En la pestaña "Entregados" puedes filtrar por fecha usando el selector de fecha. Por defecto muestra el día de hoy.' },
+    ],
+  },
+]
+
+function DriverManualSection({ section }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card overflow-hidden p-0">
+      <button onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{section.emoji}</span>
+          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+        </div>
+        {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3 animate-fade-in">
+          {section.content.map((block, i) => {
+            if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
+            if (block.type === 'tip') return (
+              <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
+                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <p className="font-body text-xs text-coal/70">{block.text}</p>
+              </div>
+            )
+            if (block.type === 'steps') return (
+              <div key={i} className="flex flex-col gap-2">
+                {block.items.map((step, j) => (
+                  <div key={j} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-cherry text-cream text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{j+1}</span>
+                    <p className="font-body text-sm text-coal/80 leading-relaxed">{step}</p>
+                  </div>
+                ))}
+              </div>
+            )
+            if (block.type === 'table') return (
+              <div key={i} className="flex flex-col divide-y divide-coal/10 rounded-xl overflow-hidden border border-coal/10">
+                {block.rows.map(([col1, col2], j) => (
+                  <div key={j} className={`flex gap-3 px-3 py-2 ${j % 2 === 0 ? 'bg-smoked/40' : 'bg-cream'}`}>
+                    <span className="font-body text-xs font-semibold text-coal w-32 flex-shrink-0">{col1}</span>
+                    <span className="font-body text-xs text-coal/60">{col2}</span>
+                  </div>
+                ))}
+              </div>
+            )
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DriverManualModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-cream w-full max-w-2xl rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in mx-4">
+        <div className="sticky top-0 bg-gradient-to-r from-mint to-mustard px-6 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <BookOpen size={22} className="text-cream" />
+            <div>
+              <p className="font-display text-xl text-cream tracking-wide">Manual del domiciliario</p>
+              <p className="font-body text-xs text-cream/70">Guía completa para tus entregas</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-cream/70 hover:text-cream transition-colors">
+            <X size={22} />
+          </button>
+        </div>
+        <div className="overflow-y-auto scroll-custom p-5 flex flex-col gap-3 pb-8">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-full bg-mint/10 flex items-center justify-center flex-shrink-0">
+              <HelpCircle size={20} className="text-mint" />
+            </div>
+            <div>
+              <p className="font-display text-xl text-coal tracking-wide">Manual del domiciliario</p>
+              <p className="font-body text-xs text-coal/50">Toca cada sección para ver los detalles</p>
+            </div>
+          </div>
+          {DRIVER_MANUAL_SECTIONS.map(s => <DriverManualSection key={s.id} section={s} />)}
+          <div className="mt-2 text-center">
+            <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · v2.0</p>
           </div>
         </div>
       </div>

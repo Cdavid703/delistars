@@ -8,7 +8,8 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation,
-  LogOut, Info, Star, Plus, X, AlertCircle, Clock, DollarSign, MessageSquare
+  LogOut, Info, Star, Plus, X, AlertCircle, Clock, DollarSign, MessageSquare,
+  HelpCircle, ChevronDown, ChevronUp, BookOpen
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 
@@ -42,6 +43,7 @@ export default function ClientPanel() {
   const [selected,       setSelected]       = useState(null)
   const [showForm,       setShowForm]       = useState(false)
   const [platformActive, setPlatformActive] = useState(null)
+  const [showHelp,       setShowHelp]       = useState(false)
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
@@ -131,6 +133,9 @@ export default function ClientPanel() {
                 Volver a mi panel
               </button>
             )}
+            <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
+              <HelpCircle size={20} />
+            </button>
             <button onClick={() => selectSede(null)} className="btn-icon text-cream hover:bg-cream/10">
               <MapPin size={20} />
             </button>
@@ -279,6 +284,9 @@ export default function ClientPanel() {
 
       {/* Order detail modal */}
       {selected && <ClientOrderDetail order={selected} onClose={() => setSelected(null)} />}
+
+      {/* Help modal */}
+      {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   )
 }
@@ -585,6 +593,148 @@ function ClientOrderDetail({ order, onClose }) {
               </p>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Client help modal ────────────────────────────────────────────────────────
+const CLIENT_HELP_SECTIONS = [
+  {
+    id: 'pedido', emoji: '🍔', title: '¿Cómo hago un pedido?', color: 'text-cherry',
+    content: [
+      { type: 'steps', items: [
+        'Toca el botón rojo "Hacer pedido" en la parte inferior de la pantalla.',
+        'Llena tus datos: nombre, teléfono / WhatsApp y dirección de entrega.',
+        'Escribe lo que quieres pedir en el campo "¿Qué vas a pedir?".',
+        'Selecciona cómo vas a pagar (Efectivo, Transferencia o Nequi).',
+        'Toca "Enviar pedido" y espera la cotización del cajero.',
+      ]},
+    ],
+  },
+  {
+    id: 'cotizacion', emoji: '💰', title: '¿Qué es la cotización?', color: 'text-tangelo',
+    content: [
+      { type: 'p', text: 'Después de enviar tu pedido, un cajero revisa la disponibilidad y te envía el precio del pedido más el valor del domicilio. Verás el total directamente en tu pedido activo.' },
+      { type: 'tip', text: 'No pagues hasta recibir la cotización. El cajero puede enviarte notas adicionales (horario, disponibilidad, etc.).' },
+    ],
+  },
+  {
+    id: 'seguimiento', emoji: '📍', title: '¿Cómo sigo mi pedido?', color: 'text-mint',
+    content: [
+      { type: 'table', rows: [
+        ['📋 Pedido enviado',        'Esperando cotización del cajero'],
+        ['💰 Cotización recibida',   'Revisa el precio — puedes pagar'],
+        ['🛵 Domiciliario asignado', 'Te asignaron un repartidor'],
+        ['✅ Domiciliario aceptó',   'El repartidor confirmó que va'],
+        ['🏃 En camino',             'El repartidor está en ruta'],
+        ['📍 Llegó al destino',      'Ya está en tu puerta'],
+        ['🎉 ¡Entregado!',           'Pedido completado'],
+      ]},
+    ],
+  },
+  {
+    id: 'pago', emoji: '💳', title: 'Formas de pago', color: 'text-coal',
+    content: [
+      { type: 'table', rows: [
+        ['Efectivo',      'Pagas al domiciliario al recibir el pedido'],
+        ['Transferencia', 'Transferencia bancaria antes de la entrega'],
+        ['Nequi',         'Pago por Nequi antes de la entrega'],
+      ]},
+      { type: 'tip', text: 'Para transferencia o Nequi, el cajero te enviará los datos de pago en la nota de cotización.' },
+    ],
+  },
+  {
+    id: 'sede', emoji: '📍', title: 'Selección de sede', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'Tu pedido se atiende desde la sede que seleccionaste al entrar. Puedes cambiarla tocando el ícono de ubicación en la parte superior o el botón "Cambiar" en la tarjeta de sede.' },
+      { type: 'table', rows: [
+        ['Santa Lucía',    'Cra. 87 #48e-3'],
+        ['Santa Teresita', 'Cl 35B #87A-165'],
+      ]},
+    ],
+  },
+  {
+    id: 'horario', emoji: '🕕', title: 'Horario de atención', color: 'text-mustard',
+    content: [
+      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 6:00 PM a 11:00 PM. Si la plataforma aparece cerrada, intenta más tarde o escríbenos por WhatsApp.' },
+    ],
+  },
+]
+
+function ClientHelpSection({ section }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card overflow-hidden p-0">
+      <button onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{section.emoji}</span>
+          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+        </div>
+        {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3 animate-fade-in">
+          {section.content.map((block, i) => {
+            if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
+            if (block.type === 'tip') return (
+              <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
+                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <p className="font-body text-xs text-coal/70">{block.text}</p>
+              </div>
+            )
+            if (block.type === 'steps') return (
+              <div key={i} className="flex flex-col gap-2">
+                {block.items.map((step, j) => (
+                  <div key={j} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-cherry text-cream text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{j+1}</span>
+                    <p className="font-body text-sm text-coal/80 leading-relaxed">{step}</p>
+                  </div>
+                ))}
+              </div>
+            )
+            if (block.type === 'table') return (
+              <div key={i} className="flex flex-col divide-y divide-coal/10 rounded-xl overflow-hidden border border-coal/10">
+                {block.rows.map(([col1, col2], j) => (
+                  <div key={j} className={`flex gap-3 px-3 py-2 ${j % 2 === 0 ? 'bg-smoked/40' : 'bg-cream'}`}>
+                    <span className="font-body text-xs font-semibold text-coal w-36 flex-shrink-0">{col1}</span>
+                    <span className="font-body text-xs text-coal/60">{col2}</span>
+                  </div>
+                ))}
+              </div>
+            )
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ClientHelpModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-cream w-full max-w-2xl rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in mx-4">
+        <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-6 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <HelpCircle size={22} className="text-cream" />
+            <div>
+              <p className="font-display text-xl text-cream tracking-wide">Centro de ayuda</p>
+              <p className="font-body text-xs text-cream/70">Todo lo que necesitas saber</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-cream/70 hover:text-cream transition-colors">
+            <X size={22} />
+          </button>
+        </div>
+        <div className="overflow-y-auto scroll-custom p-5 flex flex-col gap-3 pb-8">
+          {CLIENT_HELP_SECTIONS.map(s => <ClientHelpSection key={s.id} section={s} />)}
+          <div className="mt-2 text-center">
+            <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · v2.0</p>
+          </div>
         </div>
       </div>
     </div>
