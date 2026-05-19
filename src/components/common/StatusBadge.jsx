@@ -1,5 +1,6 @@
 const STATUS_MAP = {
   pending:   { label: 'Pendiente',             cls: 'badge-pending' },
+  quoted:    { label: 'Cotizado',              cls: 'badge-quoted' },
   assigned:  { label: 'Asignado',              cls: 'badge-assigned' },
   accepted:  { label: 'Aceptado',              cls: 'badge-accepted' },
   in_transit:{ label: 'En camino',             cls: 'badge-transit' },

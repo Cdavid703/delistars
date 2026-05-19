@@ -5,6 +5,7 @@ import { MapPin, Phone, Clock, User, Bike } from 'lucide-react'
 
 const BORDER_COLOR = {
   pending:        'border-mustard',
+  quoted:         'border-tangelo',
   assigned:       'border-tangelo',
   accepted:       'border-mint',
   in_transit:     'border-cherry',

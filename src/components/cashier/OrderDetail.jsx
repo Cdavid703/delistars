@@ -7,8 +7,9 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   X, MapPin, Phone, User, ShoppingBag,
-  CreditCard, Bike, DollarSign, Navigation, ExternalLink,
-  AlertTriangle, XCircle, CheckCircle2
+  CreditCard, Bike, Navigation, ExternalLink,
+  AlertTriangle, XCircle, CheckCircle2, BellOff,
+  Printer, Hash, DollarSign, MessageSquare, Clock
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -21,30 +22,41 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.asin(Math.sqrt(a))
 }
 
-export default function OrderDetail({ order, onClose, drivers = [] }) {
+const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+
+const fmtTime = (ts) => {
+  if (!ts?.toDate) return null
+  return format(ts.toDate(), "dd MMM HH:mm", { locale: es })
+}
+
+export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm }) {
   const [loading,          setLoading]          = useState(false)
-  const [selectedDriverId, setSelectedDriverId] = useState('')
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
   const [distanceKm,       setDistanceKm]       = useState(null)
 
+  // Quote form state (for pending orders)
+  const [localOrderNumber,   setLocalOrderNumber]   = useState(order.orderNumber   || '')
+  const [localQuotedPrice,   setLocalQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
+  const [localDeliveryPrice, setLocalDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
+  const [localCashierNotes,  setLocalCashierNotes]  = useState(order.cashierNotes  || '')
+  const [quoteErrors,        setQuoteErrors]         = useState([])
+
   const orderSede = SEDES[order.sedeId]
 
-  // Try to geocode delivery address and calculate distance
   useEffect(() => {
     if (!order.fullAddress || !orderSede) return
-    const query = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
-    fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`, {
+    const q = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
+    fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
       headers: { 'Accept-Language': 'es' },
     })
       .then(r => r.json())
       .then(results => {
         if (results[0]) {
-          const km = haversineKm(
+          setDistanceKm(haversineKm(
             orderSede.coords.lat, orderSede.coords.lng,
             parseFloat(results[0].lat), parseFloat(results[0].lon)
-          )
-          setDistanceKm(km)
+          ))
         }
       })
       .catch(() => {})
@@ -54,16 +66,25 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
     ? format(order.createdAt.toDate(), "dd MMM yyyy 'a las' HH:mm", { locale: es })
     : '--'
 
-  const assignDriver = async () => {
-    if (!selectedDriverId) return
-    const driver = drivers.find(d => d.id === selectedDriverId)
+  const lqp   = parseFloat(localQuotedPrice)   || 0
+  const ldp   = parseFloat(localDeliveryPrice) || 0
+  const localTotal = lqp + ldp
+
+  const sendQuote = async () => {
+    const errs = []
+    if (!localOrderNumber.trim()) errs.push('El número de orden es obligatorio')
+    if (errs.length) { setQuoteErrors(errs); return }
     setLoading(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
-        status:      'assigned',
-        driverEmail: driver?.id || selectedDriverId,
-        driverName:  driver?.name || selectedDriverId,
-        updatedAt:   serverTimestamp(),
+        status:        'quoted',
+        orderNumber:   localOrderNumber.trim(),
+        quotedPrice:   lqp,
+        deliveryPrice: ldp,
+        totalPrice:    localTotal,
+        cashierNotes:  localCashierNotes.trim(),
+        quotedAt:      serverTimestamp(),
+        updatedAt:     serverTimestamp(),
       })
       onClose()
     } finally { setLoading(false) }
@@ -86,8 +107,9 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
     setLoading(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
-        status: 'completed',
-        cashReceivedAt: serverTimestamp(),
+        status:          'completed',
+        completedAt:     serverTimestamp(),
+        updatedAt:       serverTimestamp(),
       })
       onClose()
     } finally { setLoading(false) }
@@ -104,33 +126,105 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
   }
 
   const openWaze = () => {
-    const addr = encodeURIComponent(order.fullAddress)
-    window.open(`https://waze.com/ul?q=${addr}`, '_blank')
+    window.open(`https://waze.com/ul?q=${encodeURIComponent(order.fullAddress)}`, '_blank')
   }
 
   const openDriverTracking = () => {
     if (order.driverLat && order.driverLng) {
-      window.open(
-        `https://www.google.com/maps/search/?api=1&query=${order.driverLat},${order.driverLng}`,
-        '_blank'
-      )
+      window.open(`https://www.google.com/maps/search/?api=1&query=${order.driverLat},${order.driverLng}`, '_blank')
     }
+  }
+
+  const handlePrint = () => {
+    const orderNum    = order.orderNumber  || ''
+    const clientName  = order.name || order.clientName || '—'
+    const qp          = fmt(order.quotedPrice)
+    const dp          = fmt(order.deliveryPrice)
+    const tp          = fmt(order.totalPrice)
+    const paymentStr  = order.payment || '—'
+    const items       = (order.items || '').replace(/\n/g, '<br/>')
+    const notesStr    = order.notes ? `<p><em>Indicaciones: ${order.notes}</em></p>` : ''
+    const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${order.cashierNotes}</em></p>` : ''
+    const date        = new Date().toLocaleString('es-CO')
+
+    const win = window.open('', '_blank', 'width=420,height=700')
+    win.document.write(`<!DOCTYPE html><html><head><title>Pedido ${orderNum ? '#'+orderNum : ''}</title>
+    <style>
+      body{font-family:monospace;padding:20px;max-width:380px;margin:0 auto}
+      h2{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}
+      .row{display:flex;justify-content:space-between;margin:5px 0;font-size:13px}
+      .bold{font-weight:bold}.divider{border-top:1px dashed #999;margin:10px 0}
+      .total{font-size:16px;font-weight:bold}.center{text-align:center}
+      .items{background:#f5f5f5;padding:10px;margin:8px 0;font-size:13px;white-space:pre-wrap}
+      .num{font-size:22px;font-weight:bold;text-align:center;margin:5px 0}
+    </style></head><body>
+    <h2>⭐ DeliStars ⭐</h2>
+    ${orderNum ? `<div class="num">#${orderNum}</div>` : ''}
+    <p class="center" style="font-size:11px">${date}</p>
+    <div class="divider"></div>
+    <div class="row"><span class="bold">Cliente:</span><span>${clientName}</span></div>
+    <div class="row"><span class="bold">Tel:</span><span>${order.phone || '—'}</span></div>
+    <div class="row"><span class="bold">Dirección:</span><span>${order.fullAddress || '—'}</span></div>
+    ${order.barrio ? `<div class="row"><span class="bold">Barrio:</span><span>${order.barrio}</span></div>` : ''}
+    <div class="divider"></div>
+    <p class="bold">Pedido:</p>
+    <div class="items">${items}</div>
+    ${notesStr}
+    <div class="divider"></div>
+    <div class="row"><span>Valor pedido:</span><span>${qp}</span></div>
+    <div class="row"><span>Domicilio:</span><span>${dp}</span></div>
+    <div class="divider"></div>
+    <div class="row total"><span>TOTAL:</span><span>${tp}</span></div>
+    <div class="row"><span class="bold">Pago:</span><span>${paymentStr}</span></div>
+    ${cajeroNote}
+    <div class="divider"></div>
+    <p class="center">¡Gracias por tu pedido!</p>
+    <script>window.onload=function(){window.print();}</script>
+    </body></html>`)
+    win.document.close()
   }
 
   const distColor = distanceKm === null ? '' : distanceKm > 5 ? 'text-pepper' : distanceKm > 3 ? 'text-mustard' : 'text-mint'
   const distLabel = distanceKm === null ? 'Calculando distancia…' : `~${distanceKm.toFixed(1)} km de la sede`
 
+  // Timestamps
+  const timestamps = [
+    { label: 'Recibido',          ts: order.createdAt },
+    { label: 'Cotizado',          ts: order.quotedAt },
+    { label: 'Asignado',          ts: order.assignedAt },
+    { label: 'Aceptado',          ts: order.acceptedAt },
+    { label: 'En camino',         ts: order.inTransitAt },
+    { label: 'Llegó al destino',  ts: order.arrivedAt },
+    { label: 'Entregado',         ts: order.deliveredAt },
+    { label: 'Completado',        ts: order.completedAt },
+  ].filter(t => t.ts)
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] overflow-y-auto scroll-custom animate-slide-in-right sm:animate-scale-in">
+
         {/* Header */}
         <div className="sticky top-0 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
           <div className="flex items-center gap-2">
             {order.orderNumber && <span className="font-display text-2xl text-cherry">#{order.orderNumber}</span>}
             <StatusBadge status={order.status} />
           </div>
-          <button onClick={onClose} className="btn-icon"><X size={20} /></button>
+          <div className="flex items-center gap-1">
+            {alarmActive && onDismissAlarm && (
+              <button
+                onClick={onDismissAlarm}
+                title="Silenciar alarma"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-cherry/10 border border-cherry/30 text-cherry text-xs font-semibold font-body hover:bg-cherry/20 transition-colors"
+              >
+                <BellOff size={14} /> Silenciar
+              </button>
+            )}
+            <button onClick={handlePrint} title="Imprimir pedido" className="btn-icon text-coal/50 hover:text-coal">
+              <Printer size={18} />
+            </button>
+            <button onClick={onClose} className="btn-icon"><X size={20} /></button>
+          </div>
         </div>
 
         <div className="p-5 flex flex-col gap-4">
@@ -144,11 +238,10 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
 
           {/* Address + distance */}
           <Section title="Dirección de entrega">
-            <Row icon={MapPin} label="Dirección" value={order.fullAddress} />
+            <Row icon={MapPin} label="Dirección"  value={order.fullAddress} />
             {order.barrio    && <Row icon={MapPin} label="Barrio"     value={order.barrio} />}
             {order.reference && <Row icon={MapPin} label="Referencia" value={order.reference} />}
 
-            {/* Distance indicator */}
             {order.fullAddress && (
               <div className={`flex items-center gap-1.5 mt-1 ${distColor}`}>
                 {distanceKm !== null && distanceKm > 5 && <AlertTriangle size={14} />}
@@ -187,41 +280,111 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
             <Row icon={CreditCard} label="Forma de pago" value={order.payment} />
           </Section>
 
-          {/* Assign driver OR reject — for pending client orders */}
+          {/* Quoted prices (if already set) */}
+          {order.totalPrice > 0 && (
+            <div className="card bg-tangelo/5 border border-tangelo/20">
+              <p className="font-display text-base tracking-wide mb-3">💰 Cotización enviada</p>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-coal/60">Valor pedido:</span>
+                  <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+                </div>
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-coal/60">Domicilio:</span>
+                  <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
+                </div>
+                <div className="border-t border-tangelo/20 pt-2 flex justify-between">
+                  <span className="font-body font-bold text-coal">TOTAL:</span>
+                  <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
+                </div>
+              </div>
+              {order.cashierNotes && (
+                <div className="mt-3 bg-mustard/10 rounded-xl p-3">
+                  <p className="font-body text-xs text-coal/50 uppercase tracking-wider mb-1">Nota al cliente</p>
+                  <p className="font-body text-sm text-coal">{order.cashierNotes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── COTIZACIÓN FORM (only for pending orders) ── */}
           {order.status === 'pending' && !rejecting && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">🛵 Asignar domiciliario</p>
-              <p className="font-body text-xs text-coal/60">
-                Pedido enviado por el cliente. Asígnale un domiciliario para confirmarlo.
-              </p>
+              <p className="font-display text-lg text-coal tracking-wide">📋 Cotizar pedido al cliente</p>
+
               {distanceKm !== null && distanceKm > 5 && (
                 <div className="flex items-center gap-2 bg-pepper/10 border border-pepper/30 rounded-xl px-3 py-2">
                   <AlertTriangle size={14} className="text-pepper flex-shrink-0" />
                   <p className="font-body text-xs text-pepper">
-                    La dirección está a {distanceKm.toFixed(1)} km de la sede. Verifica antes de confirmar.
+                    {distanceKm.toFixed(1)} km de la sede — verifica antes de confirmar.
                   </p>
                 </div>
               )}
-              <select
-                value={selectedDriverId}
-                onChange={e => setSelectedDriverId(e.target.value)}
-                className="input-field"
-              >
-                <option value="">— Selecciona domiciliario —</option>
-                {drivers.map(d => (
-                  <option key={d.id} value={d.id}>{d.name || d.id}</option>
-                ))}
-              </select>
+
+              {quoteErrors.length > 0 && (
+                <div className="bg-pepper/10 border border-pepper/20 rounded-xl p-3">
+                  {quoteErrors.map(e => (
+                    <p key={e} className="text-xs text-pepper font-body flex items-center gap-1">
+                      <AlertTriangle size={12} /> {e}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Order number */}
+              <div>
+                <label className="label-field">Número de orden *</label>
+                <div className="relative">
+                  <Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-coal/40" />
+                  <input className="input-field pl-9" value={localOrderNumber}
+                    onChange={e => setLocalOrderNumber(e.target.value)} placeholder="Ej: 001" />
+                </div>
+              </div>
+
+              {/* Prices */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-field">Valor pedido</label>
+                  <input className="input-field" value={localQuotedPrice}
+                    onChange={e => setLocalQuotedPrice(e.target.value)} placeholder="$0" type="number" />
+                </div>
+                <div>
+                  <label className="label-field">Domicilio</label>
+                  <input className="input-field" value={localDeliveryPrice}
+                    onChange={e => setLocalDeliveryPrice(e.target.value)} placeholder="$0" type="number" />
+                </div>
+              </div>
+
+              {/* Total */}
+              {(lqp > 0 || ldp > 0) && (
+                <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <span className="font-body font-semibold text-sm text-coal">TOTAL</span>
+                  <span className="font-display text-xl text-cherry">{fmt(localTotal)}</span>
+                </div>
+              )}
+
+              {/* Cashier note to client */}
+              <div>
+                <label className="label-field">
+                  <MessageSquare size={12} className="inline mr-1" />
+                  Comentario para el cliente
+                </label>
+                <textarea className="textarea-field h-16 scroll-custom" value={localCashierNotes}
+                  onChange={e => setLocalCashierNotes(e.target.value)}
+                  placeholder="Ej: Tu pedido estará listo en 30 min, espera la confirmación de pago…" />
+              </div>
+
+              {/* Buttons */}
               <div className="flex gap-2">
                 <button
                   onClick={() => setRejecting(true)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-pepper/40 text-pepper font-semibold text-sm hover:bg-pepper/10 transition-colors"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-pepper/40 text-pepper font-semibold text-sm hover:bg-pepper/10 transition-colors"
                 >
                   <XCircle size={16} /> Rechazar
                 </button>
-                <button onClick={assignDriver} disabled={loading || !selectedDriverId} className="btn-primary flex-1">
+                <button onClick={sendQuote} disabled={loading || !localOrderNumber.trim()} className="btn-primary flex-1">
                   <CheckCircle2 size={16} />
-                  {loading ? 'Asignando…' : 'Confirmar'}
+                  {loading ? 'Enviando…' : 'Enviar cotización al cliente'}
                 </button>
               </div>
             </div>
@@ -231,63 +394,64 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
           {order.status === 'pending' && rejecting && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 flex flex-col gap-3">
               <p className="font-display text-lg text-pepper tracking-wide">❌ Rechazar pedido</p>
-              <p className="font-body text-xs text-coal/60">
-                Escribe el motivo del rechazo. El cliente lo verá en su panel.
-              </p>
+              <p className="font-body text-xs text-coal/60">Escribe el motivo del rechazo. El cliente lo verá en su panel.</p>
               <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => setRejectReason('Fuera del área de cobertura (más de 5 km de la sede)')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline"
-                >
+                <button onClick={() => setRejectReason('Fuera del área de cobertura (más de 5 km de la sede)')}
+                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
                   → Fuera de cobertura (&gt;5 km)
                 </button>
-                <button
-                  onClick={() => setRejectReason('No tenemos disponibilidad en este momento')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline"
-                >
+                <button onClick={() => setRejectReason('No tenemos disponibilidad en este momento')}
+                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
                   → Sin disponibilidad
                 </button>
-                <button
-                  onClick={() => setRejectReason('Dirección incompleta o no encontrada')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline"
-                >
+                <button onClick={() => setRejectReason('Dirección incompleta o no encontrada')}
+                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
                   → Dirección no encontrada
                 </button>
               </div>
-              <textarea
-                className="textarea-field h-20 scroll-custom"
-                placeholder="Motivo del rechazo…"
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-              />
+              <textarea className="textarea-field h-20 scroll-custom" placeholder="Motivo del rechazo…"
+                value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
               <div className="flex gap-2">
-                <button onClick={() => setRejecting(false)} className="btn-secondary flex-1">
-                  Cancelar
-                </button>
-                <button
-                  onClick={rejectOrder}
-                  disabled={loading || !rejectReason.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-pepper text-cream font-semibold text-sm hover:bg-pepper/90 disabled:opacity-50 transition-colors"
-                >
+                <button onClick={() => setRejecting(false)} className="btn-secondary flex-1">Cancelar</button>
+                <button onClick={rejectOrder} disabled={loading || !rejectReason.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-pepper text-cream font-semibold text-sm hover:bg-pepper/90 disabled:opacity-50 transition-colors">
                   {loading ? 'Rechazando…' : '❌ Confirmar rechazo'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Driver */}
+          {/* Driver info */}
           {order.driverName && (
             <Section title="Domiciliario">
               <Row icon={Bike} label="Asignado a" value={order.driverName} />
+              {order.driverNotes && <Row icon={MessageSquare} label="Notas" value={order.driverNotes} />}
               {['in_transit','arrived'].includes(order.status) && order.driverLat && (
                 <button onClick={openDriverTracking} className="btn-primary btn-sm w-full mt-2">
                   <Navigation size={14} /> Ver ubicación en tiempo real
                 </button>
               )}
-              {['in_transit','arrived'].includes(order.status) && !order.driverLat && (
-                <p className="text-xs text-coal/40 font-body mt-2">Esperando posición del domiciliario…</p>
-              )}
             </Section>
+          )}
+
+          {/* Cash cuadre action */}
+          {order.status === 'pending_cuadre' && (
+            <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-lg text-coal tracking-wide">💰 Cuadre de caja</p>
+              <p className="font-body text-sm text-coal/70">
+                El domiciliario ya entregó el pedido. Marca como recibido cuando te entregue el dinero.
+              </p>
+              {order.totalPrice > 0 && (
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-coal/60">Total que debe entregar:</span>
+                  <span className="font-bold text-mustard">{fmt(order.totalPrice)}</span>
+                </div>
+              )}
+              <button onClick={markCashReceived} disabled={loading} className="btn-mustard w-full">
+                <DollarSign size={16} />
+                {loading ? 'Procesando…' : 'Dinero recibido ✓'}
+              </button>
+            </div>
           )}
 
           {/* Rejection info */}
@@ -298,17 +462,21 @@ export default function OrderDetail({ order, onClose, drivers = [] }) {
             </div>
           )}
 
-          {/* Cash cuadre action */}
-          {order.status === 'pending_cuadre' && (
-            <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">💰 Cuadre de caja</p>
-              <p className="font-body text-sm text-coal/70">
-                El domiciliario ya entregó el pedido. Marca como recibido cuando te entregue el dinero.
-              </p>
-              <button onClick={markCashReceived} disabled={loading} className="btn-mustard w-full">
-                <DollarSign size={16} />
-                {loading ? 'Procesando…' : 'Dinero recibido ✓'}
-              </button>
+          {/* Timestamps */}
+          {timestamps.length > 0 && (
+            <div className="card">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock size={16} className="text-coal/40" />
+                <p className="font-display text-sm tracking-wide text-coal/60">Registro de tiempos</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {timestamps.map(t => (
+                  <div key={t.label} className="flex items-center justify-between">
+                    <span className="font-body text-xs text-coal/50">{t.label}</span>
+                    <span className="font-body text-xs font-semibold text-coal">{fmtTime(t.ts)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

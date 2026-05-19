@@ -8,48 +8,52 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation,
-  LogOut, Info, Star, Plus, X, AlertCircle, Clock
+  LogOut, Info, Star, Plus, X, AlertCircle, Clock, DollarSign, MessageSquare
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 
 const STATUS_STEPS = [
-  { key: 'pending',    label: 'Pedido enviado',       emoji: '📋' },
+  { key: 'pending',    label: 'Pedido enviado',        emoji: '📋' },
+  { key: 'quoted',     label: 'Cotización recibida',   emoji: '💰' },
   { key: 'assigned',   label: 'Domiciliario asignado', emoji: '🛵' },
-  { key: 'accepted',   label: 'Domiciliario aceptó',  emoji: '✅' },
-  { key: 'in_transit', label: 'En camino',             emoji: '🏃' },
-  { key: 'arrived',    label: 'Llegó al destino',      emoji: '📍' },
-  { key: 'delivered_paid',  label: '¡Entregado!',      emoji: '🎉' },
-  { key: 'pending_cuadre',  label: '¡Entregado!',      emoji: '🎉' },
-  { key: 'completed',       label: '¡Entregado!',      emoji: '🎉' },
-  { key: 'rejected',        label: 'Pedido rechazado', emoji: '❌' },
+  { key: 'accepted',   label: 'Domiciliario aceptó',   emoji: '✅' },
+  { key: 'in_transit', label: 'En camino',              emoji: '🏃' },
+  { key: 'arrived',    label: 'Llegó al destino',       emoji: '📍' },
+  { key: 'delivered_paid',  label: '¡Entregado!',       emoji: '🎉' },
+  { key: 'pending_cuadre',  label: '¡Entregado!',       emoji: '🎉' },
+  { key: 'completed',       label: '¡Entregado!',       emoji: '🎉' },
+  { key: 'rejected',        label: 'Pedido rechazado',  emoji: '❌' },
 ]
 
 const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
 const CLOSED_STATUSES    = ['rejected']
+
+const isToday = ts => {
+  if (!ts?.toDate) return false
+  const d = ts.toDate(), n = new Date()
+  return d.toDateString() === n.toDateString()
+}
+
+const fmt = v => v ? `$${Number(v).toLocaleString('es-CO')}` : null
 
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
   const [orders,         setOrders]         = useState([])
   const [selected,       setSelected]       = useState(null)
   const [showForm,       setShowForm]       = useState(false)
-  const [platformActive, setPlatformActive] = useState(null) // null = loading
+  const [platformActive, setPlatformActive] = useState(null)
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
-  // Listen to platform active state
   useEffect(() => {
     return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
       setPlatformActive(snap.exists() ? snap.data().active : false)
     })
   }, [])
 
-  // Only show THIS client's orders
   useEffect(() => {
     if (!user?.uid) return
-    const q = query(
-      collection(db, 'orders'),
-      where('clientUid', '==', user.uid)
-    )
+    const q = query(collection(db, 'orders'), where('clientUid', '==', user.uid))
     return onSnapshot(q, snap => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
@@ -57,19 +61,18 @@ export default function ClientPanel() {
     })
   }, [user])
 
+  // Active orders: show regardless of date (could be from yesterday and still in transit)
   const activeOrders    = orders.filter(o => !DELIVERED_STATUSES.includes(o.status) && !CLOSED_STATUSES.includes(o.status))
-  const deliveredOrders = orders.filter(o => DELIVERED_STATUSES.includes(o.status))
-  const rejectedOrders  = orders.filter(o => CLOSED_STATUSES.includes(o.status))
+  // Delivered: only today
+  const deliveredOrders = orders.filter(o => DELIVERED_STATUSES.includes(o.status) && isToday(o.createdAt))
+  const rejectedOrders  = orders.filter(o => CLOSED_STATUSES.includes(o.status) && isToday(o.createdAt))
 
-  // ── Platform closed screen ────────────────────────────────────────────────
   if (platformActive === false && effectiveRole === 'client') {
     return (
       <div className="min-h-screen-safe flex flex-col bg-gradient-to-br from-cherry via-tangelo to-mustard">
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
           <div className="text-6xl mb-4">🔒</div>
-          <h1 className="font-display text-3xl text-cream tracking-widest mb-3">
-            Plataforma cerrada
-          </h1>
+          <h1 className="font-display text-3xl text-cream tracking-widest mb-3">Plataforma cerrada</h1>
           <p className="font-body text-cream/80 text-sm max-w-xs">
             El servicio de domicilios no está disponible en este momento.
           </p>
@@ -80,10 +83,7 @@ export default function ClientPanel() {
               <span className="font-semibold text-cream">6:00 PM – 11:00 PM</span>
             </p>
           </div>
-          <button
-            onClick={logout}
-            className="mt-8 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors"
-          >
+          <button onClick={logout} className="mt-8 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors">
             <LogOut size={14} /> Cerrar sesión
           </button>
         </div>
@@ -91,7 +91,6 @@ export default function ClientPanel() {
     )
   }
 
-  // Loading platform state
   if (platformActive === null && effectiveRole === 'client') {
     return (
       <div className="min-h-screen-safe flex items-center justify-center bg-gradient-soft">
@@ -160,10 +159,7 @@ export default function ClientPanel() {
               <p className="font-display text-base text-coal tracking-wide">Sede {sede?.name}</p>
               <p className="font-body text-xs text-coal/50">{sede?.address}</p>
             </div>
-            <button
-              onClick={() => selectSede(null)}
-              className="flex-shrink-0 text-xs font-semibold font-body text-cherry underline underline-offset-2"
-            >
+            <button onClick={() => selectSede(null)} className="flex-shrink-0 text-xs font-semibold font-body text-cherry underline underline-offset-2">
               Cambiar
             </button>
           </div>
@@ -186,9 +182,7 @@ export default function ClientPanel() {
         {activeOrders.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-8">
             <p className="text-4xl">🍔</p>
-            <p className="font-body text-coal/40 text-center text-sm">
-              No tienes pedidos activos. ¡Haz uno!
-            </p>
+            <p className="font-body text-coal/40 text-center text-sm">No tienes pedidos activos. ¡Haz uno!</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -202,16 +196,16 @@ export default function ClientPanel() {
       {/* Delivered orders */}
       {deliveredOrders.length > 0 && (
         <div className="px-4 mt-4">
-          <p className="section-title mb-3">Entregados</p>
+          <p className="section-title mb-3">Entregados hoy</p>
           <div className="flex flex-col gap-2">
             {deliveredOrders.slice(0, 5).map(o => (
-              <div key={o.id} className="card flex items-center justify-between gap-3 opacity-60">
+              <button key={o.id} onClick={() => setSelected(o)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
                 <div>
                   {o.orderNumber && <span className="font-display text-base text-cherry mr-2">#{o.orderNumber}</span>}
                   <span className="font-body text-sm">{o.items?.slice(0, 40)}…</span>
                 </div>
                 <span className="text-lg">✅</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -223,15 +217,12 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Rechazados</p>
           <div className="flex flex-col gap-2">
             {rejectedOrders.map(o => (
-              <button key={o.id} onClick={() => setSelected(o)}
-                className="card w-full text-left border-l-4 border-pepper/50">
+              <button key={o.id} onClick={() => setSelected(o)} className="card w-full text-left border-l-4 border-pepper/50">
                 <div className="flex items-start gap-2">
                   <span className="text-xl">❌</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-body text-sm font-semibold text-pepper">Pedido rechazado</p>
-                    {o.rejectionReason && (
-                      <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{o.rejectionReason}</p>
-                    )}
+                    {o.rejectionReason && <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{o.rejectionReason}</p>}
                     <p className="font-body text-xs text-coal/40 mt-1 line-clamp-1">{o.items}</p>
                   </div>
                 </div>
@@ -280,12 +271,7 @@ export default function ClientPanel() {
               <button onClick={() => setShowForm(false)} className="btn-icon"><X size={20} /></button>
             </div>
             <div className="p-5">
-              <ClientOrderForm
-                user={user}
-                sede={sede}
-                onSubmit={handleCreateOrder}
-                onCancel={() => setShowForm(false)}
-              />
+              <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={() => setShowForm(false)} />
             </div>
           </div>
         </div>
@@ -306,9 +292,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     barrio:      '',
     reference:   '',
     items:       '',
-    payment:     'Efectivo',
+    payment:     '',
     notes:       '',
-    orderNumber: '',
   })
   const [loading, setLoading] = useState(false)
   const [errors,  setErrors]  = useState([])
@@ -321,18 +306,27 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (!form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
+    if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
-    try {
-      await onSubmit(form)
-    } finally { setLoading(false) }
+    try { await onSubmit(form) } finally { setLoading(false) }
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Info banner */}
       <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-3">
         <p className="font-body text-xs text-coal/60">
-          Sede: <span className="font-semibold text-cherry">{sede?.name}</span> · Un cajero te confirmará el pedido pronto.
+          Sede: <span className="font-semibold text-cherry">{sede?.name}</span>
+        </p>
+      </div>
+
+      {/* Notice about quote */}
+      <div className="bg-tangelo/10 border border-tangelo/30 rounded-xl px-4 py-3 flex items-start gap-2">
+        <Info size={16} className="text-tangelo flex-shrink-0 mt-0.5" />
+        <p className="font-body text-xs text-coal/70 leading-relaxed">
+          Después de realizar tu pedido, <strong>espera a que el cajero cotice el precio</strong> y te lo devuelva
+          por este mismo medio. No pagues hasta recibir la cotización.
         </p>
       </div>
 
@@ -388,12 +382,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
       </div>
 
       <div>
-        <label className="label-field">Forma de pago</label>
-        <select className="input-field" value={form.payment} onChange={e => set('payment', e.target.value)}>
+        <label className="label-field">Forma de pago *</label>
+        <select
+          className={`input-field ${!form.payment ? 'text-coal/40' : ''}`}
+          value={form.payment}
+          onChange={e => set('payment', e.target.value)}
+        >
+          <option value="" disabled>— Selecciona cómo vas a pagar —</option>
           <option>Efectivo</option>
           <option>Transferencia</option>
           <option>Nequi</option>
-          <option>Daviplata</option>
         </select>
       </div>
 
@@ -412,6 +410,7 @@ function ClientOrderCard({ order, onClick }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
+  const hasQuote = order.totalPrice > 0
 
   return (
     <button onClick={onClick} className="order-card w-full text-left border-l-4 border-cherry">
@@ -422,6 +421,15 @@ function ClientOrderCard({ order, onClick }) {
         </div>
         <span className="text-2xl">{step.emoji}</span>
       </div>
+
+      {/* Quote highlight */}
+      {hasQuote && (
+        <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
+          <span className="font-body text-xs font-semibold text-tangelo">💰 Total cotizado</span>
+          <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
+        </div>
+      )}
+
       <div className="mb-2">
         <p className="font-body text-sm font-semibold text-cherry mb-1">{step.label}</p>
         <div className="w-full bg-smoked rounded-full h-2">
@@ -439,14 +447,14 @@ function ClientOrderDetail({ order, onClose }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
+  const isDelivered = DELIVERED_STATUSES.includes(order.status)
+  const hasQuote = order.totalPrice > 0
 
   const openDriverMap = () => {
     if (order.driverLat && order.driverLng) {
       window.open(`https://www.google.com/maps/search/?api=1&query=${order.driverLat},${order.driverLng}`, '_blank')
     }
   }
-
-  const isDelivered = DELIVERED_STATUSES.includes(order.status)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
@@ -467,6 +475,40 @@ function ClientOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Quote section */}
+          {hasQuote && (
+            <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-base tracking-wide text-tangelo">💰 Cotización del cajero</p>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Valor pedido:</span>
+                <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+              </div>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Domicilio:</span>
+                <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
+              </div>
+              <div className="border-t border-tangelo/20 pt-2 flex justify-between">
+                <span className="font-body font-bold text-coal">TOTAL:</span>
+                <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
+              </div>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Forma de pago:</span>
+                <span className="font-semibold">{order.payment}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Cashier note to client */}
+          {order.cashierNotes && (
+            <div className="bg-mustard/10 border border-mustard/20 rounded-2xl p-4 flex items-start gap-3">
+              <MessageSquare size={18} className="text-mustard flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-display text-sm tracking-wide text-coal mb-1">Nota del cajero</p>
+                <p className="font-body text-sm text-coal/80">{order.cashierNotes}</p>
+              </div>
+            </div>
+          )}
+
           {/* Timeline */}
           <div className="flex flex-col gap-2">
             {STATUS_STEPS.filter((s, i, arr) => {
@@ -486,7 +528,7 @@ function ClientOrderDetail({ order, onClose }) {
             })}
           </div>
 
-          {/* Driver location — only while active */}
+          {/* Driver location */}
           {['in_transit','arrived'].includes(order.status) && (
             <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4">
               <p className="font-display text-base tracking-wide mb-2">🛵 Domiciliario en camino</p>
@@ -536,9 +578,7 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="text-3xl mb-2">❌</p>
               <p className="font-display text-lg tracking-wide text-pepper">Pedido rechazado</p>
               {order.rejectionReason && (
-                <p className="font-body text-sm text-coal/70 mt-2">
-                  Motivo: {order.rejectionReason}
-                </p>
+                <p className="font-body text-sm text-coal/70 mt-2">Motivo: {order.rejectionReason}</p>
               )}
               <p className="font-body text-xs text-coal/50 mt-3">
                 Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
