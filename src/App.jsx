@@ -1,9 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import LoginPage         from './pages/LoginPage'
 import SedeSelectionPage from './pages/SedeSelectionPage'
 import RoleChoicePage    from './pages/RoleChoicePage'
-import VacantesPage      from './pages/VacantesPage'
 import CashierPanel      from './components/cashier/CashierPanel'
 import DeliveryPanel     from './components/delivery/DeliveryPanel'
 import ClientPanel       from './components/client/ClientPanel'
@@ -21,10 +19,11 @@ function LoadingScreen() {
   )
 }
 
-function DomiciliosApp() {
+export default function App() {
   const { user, role, effectiveRole, viewingAs, sede, loading } = useAuth()
 
   if (loading) return <LoadingScreen />
+
   if (!user) return <LoginPage />
   if (!sede) return <SedeSelectionPage />
   if (role !== ROLES.CLIENT && viewingAs === undefined) return <RoleChoicePage />
@@ -35,14 +34,4 @@ function DomiciliosApp() {
   if (view === ROLES.CASHIER) return <CashierPanel />
   if (view === ROLES.DRIVER)  return <DeliveryPanel />
   return <ClientPanel />
-}
-
-export default function App() {
-  return (
-    <Routes>
-      <Route path="/vacantes" element={<VacantesPage />} />
-      <Route path="/domicilios/*" element={<DomiciliosApp />} />
-      <Route path="*" element={<Navigate to="/domicilios" replace />} />
-    </Routes>
-  )
 }

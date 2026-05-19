@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import logoSello from '../assets/logos/logo_sello.png'
 import {
   collection, addDoc, onSnapshot, serverTimestamp, query, orderBy
 } from 'firebase/firestore'
@@ -83,7 +84,7 @@ export default function VacantesPage() {
       <header className="bg-cream/95 backdrop-blur-sm border-b border-coal/10 sticky top-0 z-40">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo_sello.png" alt="DeliStars" className="h-9 w-9 object-contain" />
+            <img src={logoSello} alt="DeliStars" className="h-9 w-9 object-contain" />
             <div>
               <p className="font-display text-base text-coal tracking-wide leading-tight">DeliStars</p>
               <p className="font-body text-[10px] text-coal/40 uppercase tracking-widest">Trabaja con nosotros</p>

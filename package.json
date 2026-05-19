@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vacantes": "vite --config vite.vacantes.config.js",
     "build": "vite build",
+    "build:vacantes": "vite build --config vite.vacantes.config.js && node scripts/postbuild-vacantes.cjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:vacantes": "vite preview --config vite.vacantes.config.js"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
