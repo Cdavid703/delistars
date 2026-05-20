@@ -36,6 +36,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
     const driver = drivers.find(d => d.id === driverId)
     setLoading(true)
     try {
+      const resolvedEmail = (driver?.id || driverId).toLowerCase().trim()
       await updateDoc(doc(db, 'orders', order.id), {
         status:        'assigned',
         orderNumber:   orderNumber.trim(),
@@ -46,7 +47,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
         payExact:      cashOnDelivery ? payExact : null,
         payAmount:     cashOnDelivery && !payExact ? pa || null : null,
         change:        cashOnDelivery && !payExact ? change : null,
-        driverEmail:   driver?.id || driverId,
+        driverEmail:   resolvedEmail,
         driverName:    driver?.name || driver?.id || driverId,
         driverNotes:   driverNotes.trim(),
         assignedAt:    serverTimestamp(),

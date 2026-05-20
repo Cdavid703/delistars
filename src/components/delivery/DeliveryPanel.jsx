@@ -45,7 +45,8 @@ export default function DeliveryPanel() {
 
   useEffect(() => {
     if (!user?.email) return
-    const q = query(collection(db, 'orders'), where('driverEmail', '==', user.email.toLowerCase()))
+    const email = user.email.toLowerCase().trim()
+    const q = query(collection(db, 'orders'), where('driverEmail', '==', email))
     return onSnapshot(q, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const newPending = all.filter(o => o.status === 'assigned').length
@@ -60,6 +61,8 @@ export default function DeliveryPanel() {
       prevCount.current = newPending
       setNotifCount(newPending)
       setOrders(all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))
+    }, err => {
+      console.error('[DeliveryPanel] Error al leer pedidos:', err.code, err.message)
     })
   }, [user, sede])
 

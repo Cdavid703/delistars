@@ -64,6 +64,8 @@ export default function ClientPanel() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
       setOrders(docs)
+    }, err => {
+      console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message)
     })
   }, [user])
 

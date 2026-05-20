@@ -160,6 +160,7 @@ export default function CashierPanel() {
 
   const handleCreateOrder = async (data) => {
     const driver = drivers.find(d => d.id === data.driverId)
+    const driverEmail = (driver?.id || data.driverId || '').toLowerCase().trim()
     await addDoc(collection(db, 'orders'), {
       ...data,
       sedeId:        sede.id,
@@ -167,7 +168,7 @@ export default function CashierPanel() {
       status:        'assigned',
       cashierId:     user.uid,
       cashierName:   user.displayName,
-      driverEmail:   driver?.id || '',
+      driverEmail,
       driverName:    driver?.name || driver?.id || '',
       cashOnDelivery: data.payment === 'Efectivo',
       assignedAt:    serverTimestamp(),
