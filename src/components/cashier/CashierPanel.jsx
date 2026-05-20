@@ -397,6 +397,7 @@ export default function CashierPanel() {
           drivers={drivers}
           alarmActive={alarmActive}
           onDismissAlarm={dismissAlert}
+          onReassign={order => { setSelected(null); setAssigning(order) }}
         />
       )}
 

@@ -29,7 +29,7 @@ const fmtTime = (ts) => {
   return format(ts.toDate(), "dd MMM HH:mm", { locale: es })
 }
 
-export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm }) {
+export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign }) {
   const [loading,          setLoading]          = useState(false)
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
@@ -432,6 +432,22 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </button>
               )}
             </Section>
+          )}
+
+          {/* Reasignar domiciliario — solo cuando está asignado pero el driver no ha aceptado */}
+          {order.status === 'assigned' && onReassign && (
+            <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-base tracking-wide text-tangelo">🔄 Reasignar domiciliario</p>
+              <p className="font-body text-xs text-coal/60">
+                El domiciliario aún no ha aceptado. Puedes cambiar la asignación o actualizar los datos del envío.
+              </p>
+              <button
+                onClick={() => { onClose(); onReassign(order) }}
+                className="btn-primary w-full"
+              >
+                <Bike size={16} /> Cambiar domiciliario
+              </button>
+            </div>
           )}
 
           {/* Cash cuadre action */}
