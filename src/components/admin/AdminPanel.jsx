@@ -14,7 +14,7 @@ import {
   Users, LayoutDashboard, ClipboardList, BarChart2,
   LogOut, MapPin, Plus, Trash2, Receipt, Bike,
   TrendingUp, Package, CheckCircle, Clock, Power,
-  BookOpen, X, Search, ChevronDown, ChevronUp, HelpCircle
+  BookOpen, X, Search, ChevronDown, ChevronUp, HelpCircle, Star, Phone, Download
 } from 'lucide-react'
 
 const TABS = [
@@ -22,6 +22,7 @@ const TABS = [
   { id: 'users',     label: 'Usuarios',   icon: Users },
   { id: 'orders',    label: 'Pedidos',    icon: ClipboardList },
   { id: 'reports',   label: 'Reportes',   icon: BarChart2 },
+  { id: 'clientes',  label: 'Clientes',   icon: Star },
   { id: 'manual',    label: 'Manual',     icon: BookOpen },
 ]
 
@@ -53,9 +54,12 @@ export default function AdminPanel() {
           <Logo variant="light" size="sm" />
           <div>
             <p className="font-display text-base text-coal tracking-wide leading-tight">
-              Administrador
+              {user?.displayName?.split(' ')[0] || 'Admin'}
             </p>
-            <p className="font-body text-xs text-coal/50 capitalize">{today}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-cherry/15 text-cherry">Admin</span>
+              <p className="font-body text-xs text-coal/50 capitalize">{today}</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -106,6 +110,7 @@ export default function AdminPanel() {
         {tab === 'users'     && <UsersTab />}
         {tab === 'orders'    && <OrdersTab sede={sede} />}
         {tab === 'reports'   && <ReportsTab sede={sede} />}
+        {tab === 'clientes'  && <ClientsTab />}
         {tab === 'manual'    && <AdminManualTab />}
       </main>
     </div>
@@ -462,8 +467,13 @@ function OrdersTab({ sede }) {
 }
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
+const COMPLETED_STATUSES_R = ['completed', 'delivered_paid', 'pending_cuadre', 'delivered_cash']
+
 function ReportsTab({ sede }) {
-  const [orders, setOrders] = useState([])
+  const [orders,      setOrders]      = useState([])
+  const [range,       setRange]       = useState('today')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd,   setCustomEnd]   = useState('')
 
   useEffect(() => {
     if (!sede) return
@@ -471,48 +481,203 @@ function ReportsTab({ sede }) {
     return onSnapshot(q, snap => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
   }, [sede])
 
-  // Group by driver
-  const byDriver = orders.reduce((acc, o) => {
-    const key = o.driverName || 'Sin asignar'
-    if (!acc[key]) acc[key] = { total: 0, completed: 0, cash: 0, paid: 0 }
-    acc[key].total++
-    if (['completed','delivered_paid'].includes(o.status)) acc[key].completed++
-    if (o.status === 'pending_cuadre') acc[key].cash++
-    if (o.status === 'delivered_paid') acc[key].paid++
+  const getRangeStart = () => {
+    const now = new Date()
+    if (range === 'today') return startOfDay(now)
+    if (range === 'week') {
+      const d = new Date(now)
+      const day = d.getDay()
+      d.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+      return startOfDay(d)
+    }
+    if (range === 'month') return new Date(now.getFullYear(), now.getMonth(), 1)
+    if (range === 'custom' && customStart) return new Date(customStart + 'T00:00:00')
+    return null
+  }
+
+  const filtered = orders.filter(o => {
+    if (!o.createdAt?.toDate) return false
+    const d = o.createdAt.toDate()
+    const start = getRangeStart()
+    const end = range === 'custom' && customEnd ? new Date(customEnd + 'T23:59:59') : new Date()
+    if (start && d < start) return false
+    if (d > end) return false
+    return true
+  })
+
+  const completed     = filtered.filter(o => COMPLETED_STATUSES_R.includes(o.status))
+  const cashOrders    = completed.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const digitalOrders = completed.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const totalRevenue  = completed.reduce((s, o) => s + (o.totalPrice    || 0), 0)
+  const totalFees     = completed.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+
+  const byPayment = completed.reduce((acc, o) => {
+    const key = o.payment || 'Sin especificar'
+    if (!acc[key]) acc[key] = { count: 0, total: 0 }
+    acc[key].count++
+    acc[key].total += (o.totalPrice || 0)
     return acc
   }, {})
 
-  const totalCompleted    = orders.filter(o => ['completed','delivered_paid'].includes(o.status)).length
-  const totalCashPending  = orders.filter(o => o.status === 'pending_cuadre').length
+  const byDriver = completed.reduce((acc, o) => {
+    const key = o.driverName || 'Sin asignar'
+    if (!acc[key]) acc[key] = { count: 0, fees: 0, total: 0 }
+    acc[key].count++
+    acc[key].fees  += (o.deliveryPrice || 0)
+    acc[key].total += (o.totalPrice    || 0)
+    return acc
+  }, {})
+
+  const fmt2 = v => `$${Number(v || 0).toLocaleString('es-CO')}`
+
+  const exportCSV = () => {
+    const headers = ['Número','Fecha','Cliente','Dirección','Método pago','Domicilio','Total','Estado','Domiciliario','Cajero']
+    const rows = filtered.map(o => [
+      o.orderNumber || '',
+      o.createdAt?.toDate ? format(o.createdAt.toDate(), 'dd/MM/yyyy HH:mm') : '',
+      o.name || '',
+      o.fullAddress || '',
+      o.payment || '',
+      o.deliveryPrice || 0,
+      o.totalPrice || 0,
+      o.status || '',
+      o.driverName || '',
+      o.cashierName || '',
+    ])
+    const csv = [headers, ...rows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `delistars-reporte-${format(new Date(), 'yyyy-MM-dd')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
+      {/* Range selector */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          { v: 'today',  l: 'Hoy' },
+          { v: 'week',   l: 'Esta semana' },
+          { v: 'month',  l: 'Este mes' },
+          { v: 'custom', l: 'Personalizado' },
+        ].map(r => (
+          <button key={r.v} onClick={() => setRange(r.v)}
+            className={`px-4 py-2 rounded-full text-xs font-semibold font-body uppercase tracking-wider whitespace-nowrap transition-all ${
+              range === r.v ? 'bg-cherry text-cream' : 'bg-smoked text-coal/60 hover:bg-smoked/80'
+            }`}>
+            {r.l}
+          </button>
+        ))}
+      </div>
+
+      {range === 'custom' && (
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="label-field">Desde</label>
+            <input type="date" className="input-field py-2 text-sm"
+              value={customStart} onChange={e => setCustomStart(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')} />
+          </div>
+          <div className="flex-1">
+            <label className="label-field">Hasta</label>
+            <input type="date" className="input-field py-2 text-sm"
+              value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')} />
+          </div>
+        </div>
+      )}
+
+      {/* Revenue summary card */}
       <div className="card bg-coal text-cream">
-        <p className="font-display text-2xl tracking-wide">{orders.length}</p>
-        <p className="font-body text-sm opacity-60">Pedidos totales · {sede?.name}</p>
-        <div className="flex gap-4 mt-3 text-sm font-body">
-          <span className="text-mint">✓ {totalCompleted} completados</span>
-          <span className="text-mustard">⏳ {totalCashPending} pdte. cuadre</span>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="font-display text-3xl tracking-wide">{fmt2(totalRevenue)}</p>
+            <p className="font-body text-sm opacity-60">Total recaudado · {sede?.name}</p>
+          </div>
+          <button onClick={exportCSV}
+            className="flex items-center gap-1.5 bg-cream/10 hover:bg-cream/20 px-3 py-2 rounded-xl text-xs font-semibold font-body transition-colors">
+            <Download size={14} /> Excel
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-cream/10 rounded-xl p-2">
+            <p className="font-display text-xl">{completed.length}</p>
+            <p className="font-body text-[10px] opacity-60 uppercase tracking-wider">Pedidos</p>
+          </div>
+          <div className="bg-cream/10 rounded-xl p-2">
+            <p className="font-display text-xl text-mustard">{fmt2(totalFees)}</p>
+            <p className="font-body text-[10px] opacity-60 uppercase tracking-wider">Domicilios</p>
+          </div>
+          <div className="bg-cream/10 rounded-xl p-2">
+            <p className="font-display text-xl text-mint">
+              {completed.length > 0 ? fmt2(Math.round(totalRevenue / completed.length)) : '$0'}
+            </p>
+            <p className="font-body text-[10px] opacity-60 uppercase tracking-wider">Promedio</p>
+          </div>
         </div>
       </div>
 
-      <p className="section-title">Por domiciliario</p>
-      {Object.entries(byDriver).map(([name, stats]) => (
-        <div key={name} className="card">
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-display text-base tracking-wide">{name}</p>
-            <span className="font-display text-xl text-cherry">{stats.total}</span>
+      {/* By payment method */}
+      <div>
+        <p className="section-title mb-2">Por método de pago</p>
+        {Object.keys(byPayment).length === 0 ? (
+          <p className="font-body text-sm text-coal/40">Sin datos en este período</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {Object.entries(byPayment)
+              .sort(([, a], [, b]) => b.total - a.total)
+              .map(([method, { count, total }]) => (
+                <div key={method} className="card flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-body font-semibold text-sm">{method}</p>
+                    <p className="font-body text-xs text-coal/50">{count} pedido{count !== 1 ? 's' : ''}</p>
+                  </div>
+                  <p className="font-display text-base text-cherry">{fmt2(total)}</p>
+                </div>
+              ))}
+            <div className="flex gap-2 text-center">
+              <div className="flex-1 bg-mustard/10 border border-mustard/20 rounded-xl p-2">
+                <p className="font-display text-base text-mustard">{cashOrders.length}</p>
+                <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Efectivo</p>
+              </div>
+              <div className="flex-1 bg-mint/10 border border-mint/20 rounded-xl p-2">
+                <p className="font-display text-base text-mint">{digitalOrders.length}</p>
+                <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Digital</p>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-3 text-xs font-body text-coal/60">
-            <span className="text-mint">✓ {stats.completed} completados</span>
-            <span className="text-mustard">💰 {stats.cash} pdte. cuadre</span>
+        )}
+      </div>
+
+      {/* By driver */}
+      <div>
+        <p className="section-title mb-2">Por domiciliario</p>
+        {Object.keys(byDriver).length === 0 ? (
+          <p className="font-body text-sm text-coal/40">Sin datos en este período</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {Object.entries(byDriver)
+              .sort(([, a], [, b]) => b.count - a.count)
+              .map(([name, stats]) => (
+                <div key={name} className="card">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="font-display text-base tracking-wide">{name}</p>
+                    <span className="font-display text-xl text-cherry">{stats.count}</span>
+                  </div>
+                  <div className="flex gap-3 text-xs font-body text-coal/60">
+                    <span className="text-mint">🛵 {fmt2(stats.fees)} domicilios</span>
+                    <span className="text-coal/40">· {fmt2(stats.total)} total</span>
+                  </div>
+                </div>
+              ))}
           </div>
-          <div className="mt-2 w-full bg-smoked rounded-full h-1.5">
-            <div className="bg-gradient-to-r from-cherry to-tangelo h-1.5 rounded-full"
-              style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }} />
-          </div>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
   )
 }
@@ -630,6 +795,78 @@ function AdminManualSection({ section }) {
             return null
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Clientes frecuentes ──────────────────────────────────────────────────────
+function ClientsTab() {
+  const [customers, setCustomers] = useState([])
+  const [search,    setSearch]    = useState('')
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'customers'), snap => {
+      const docs = snap.docs.map(d => d.data())
+      docs.sort((a, b) => (b.lastOrderAt?.seconds || 0) - (a.lastOrderAt?.seconds || 0))
+      setCustomers(docs)
+    })
+  }, [])
+
+  const filtered = customers.filter(c => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return c.name?.toLowerCase().includes(q) || c.phone?.includes(q)
+  })
+
+  return (
+    <div className="flex flex-col gap-3 animate-fade-in">
+      <div className="flex items-center gap-2">
+        <Search size={16} className="text-coal/40 flex-shrink-0" />
+        <input
+          className="input-field"
+          placeholder="Buscar por nombre o teléfono…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      <p className="font-body text-xs text-coal/40">
+        {filtered.length} cliente{filtered.length !== 1 ? 's' : ''} registrados
+      </p>
+
+      {filtered.length === 0 ? (
+        <p className="font-body text-sm text-coal/40 py-8 text-center">
+          {search ? 'Sin resultados' : 'No hay clientes registrados aún'}
+        </p>
+      ) : (
+        filtered.map(c => (
+          <div key={c.uid} className="card flex items-start gap-3">
+            <div className="w-10 h-10 bg-cherry/10 rounded-full flex items-center justify-center flex-shrink-0 font-display text-base text-cherry">
+              {(c.name || 'C').charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-body font-semibold text-sm">{c.name || 'Sin nombre'}</p>
+              {c.phone ? (
+                <a href={`tel:${c.phone}`} className="flex items-center gap-1 font-body text-xs text-cherry mt-0.5">
+                  <Phone size={11} /> {c.phone}
+                </a>
+              ) : (
+                <p className="font-body text-xs text-coal/40">Sin teléfono</p>
+              )}
+              {c.addresses?.length > 0 && (
+                <p className="font-body text-xs text-coal/40 mt-0.5 truncate">
+                  📍 {[...c.addresses].reverse()[0]}
+                </p>
+              )}
+              {c.orderCount > 0 && (
+                <p className="font-body text-xs text-tangelo mt-0.5">
+                  {c.orderCount} pedido{c.orderCount !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          </div>
+        ))
       )}
     </div>
   )

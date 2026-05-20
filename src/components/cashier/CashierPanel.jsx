@@ -204,8 +204,13 @@ export default function CashierPanel() {
         <div className="flex items-center gap-3">
           <Logo variant="light" size="sm" />
           <div>
-            <p className="font-display text-base text-coal tracking-wide leading-tight">{sede?.name}</p>
-            <p className="font-body text-xs text-coal/50 capitalize">{today}</p>
+            <p className="font-display text-base text-coal tracking-wide leading-tight">
+              {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Cajero'}
+            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-tangelo/15 text-tangelo">Cajero</span>
+              <p className="font-body text-xs text-coal/50">{sede?.name}</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">

@@ -10,6 +10,7 @@ const STATUS_MAP = {
   pending_cuadre: { label: 'Pdte. cuadre',     cls: 'badge-cuadre' },
   completed: { label: 'Completado',            cls: 'badge-completed' },
   rejected:  { label: 'Rechazado',             cls: 'badge-rejected' },
+  cancelled: { label: 'Cancelado',             cls: 'badge-rejected' },
 }
 
 export default function StatusBadge({ status }) {

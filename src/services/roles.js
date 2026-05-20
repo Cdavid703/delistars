@@ -43,16 +43,18 @@ export const ROLES = {
 // ─── Sedes ───────────────────────────────────────────────────────────────────
 export const SEDES = {
   santa_lucia: {
-    id:      'santa_lucia',
-    name:    'Santa Lucía',
-    address: 'Cra. 87 #48e-3, Santa Rosa De Lima, Medellín',
-    coords:  { lat: 6.2397, lng: -75.6111 },
+    id:        'santa_lucia',
+    name:      'Santa Lucía',
+    address:   'Cra. 87 #48e-3, Santa Rosa De Lima, Medellín',
+    coords:    { lat: 6.2397, lng: -75.6111 },
+    whatsapp:  '573135065720',
   },
   santa_teresita: {
-    id:      'santa_teresita',
-    name:    'Santa Teresita',
-    address: 'Cl 35B #87A-165, La América, Medellín',
-    coords:  { lat: 6.2477, lng: -75.6020 },
+    id:        'santa_teresita',
+    name:      'Santa Teresita',
+    address:   'Cl 35B #87A-165, La América, Medellín',
+    coords:    { lat: 6.2477, lng: -75.6020 },
+    whatsapp:  '573150634084',
   },
 }
 

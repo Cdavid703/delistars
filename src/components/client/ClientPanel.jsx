@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore'
+import {
+  collection, query, where, onSnapshot, addDoc, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, arrayUnion, increment
+} from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -27,7 +30,7 @@ const STATUS_STEPS = [
 ]
 
 const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
-const CLOSED_STATUSES    = ['rejected']
+const CLOSED_STATUSES    = ['rejected', 'cancelled']
 
 const isToday = ts => {
   if (!ts?.toDate) return false
@@ -44,6 +47,7 @@ export default function ClientPanel() {
   const [showForm,       setShowForm]       = useState(false)
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
+  const [showHistory,    setShowHistory]    = useState(false)
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
@@ -113,6 +117,18 @@ export default function ClientPanel() {
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
+    // Guardar/actualizar perfil del cliente frecuente
+    if (user.uid) {
+      await setDoc(doc(db, 'customers', user.uid), {
+        uid:         user.uid,
+        name:        data.name        || user.displayName || '',
+        email:       user.email       || '',
+        phone:       data.phone       || '',
+        addresses:   arrayUnion(data.fullAddress),
+        lastOrderAt: serverTimestamp(),
+        orderCount:  increment(1),
+      }, { merge: true })
+    }
     setShowForm(false)
   }
 
@@ -149,7 +165,14 @@ export default function ClientPanel() {
           <h1 className="font-display text-4xl text-cream tracking-widest leading-tight">
             {user?.displayName?.split(' ')[0] || 'Cliente'}
           </h1>
-          <p className="font-body text-cream/60 text-sm mt-1 capitalize">{today}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <p className="font-body text-cream/60 text-sm capitalize">{today}</p>
+            {role !== effectiveRole && (
+              <span className="font-body text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">
+                Vista cliente
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -175,15 +198,33 @@ export default function ClientPanel() {
       <div className="mx-4 mt-3">
         <div className="bg-mustard/10 border border-mustard/20 rounded-2xl px-4 py-3 flex items-start gap-2">
           <Info size={16} className="text-mustard flex-shrink-0 mt-0.5" />
-          <p className="font-body text-xs text-coal/70">
-            Haz tu pedido aquí y un cajero te lo confirmará pronto. También puedes escribirnos por WhatsApp.
-          </p>
+          <div className="flex-1">
+            <p className="font-body text-xs text-coal/70">
+              Haz tu pedido aquí y un cajero te lo confirmará pronto.
+            </p>
+            {sede?.whatsapp && (
+              <a
+                href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! 👋 Quiero hacer un pedido.`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 mt-2 bg-[#25D366] text-white rounded-xl px-3 py-1.5 text-xs font-semibold font-body"
+              >
+                <MessageSquare size={13} /> Escribir por WhatsApp
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Active orders */}
       <div className="px-4 mt-4">
-        <p className="section-title mb-3">Mis pedidos activos</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="section-title">Mis pedidos activos</p>
+          <button onClick={() => setShowHistory(true)}
+            className="text-xs font-body font-semibold text-cherry underline underline-offset-2">
+            Ver historial
+          </button>
+        </div>
         {activeOrders.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-8">
             <p className="text-4xl">🍔</p>
@@ -285,6 +326,9 @@ export default function ClientPanel() {
       {/* Order detail modal */}
       {selected && <ClientOrderDetail order={selected} onClose={() => setSelected(null)} />}
 
+      {/* History modal */}
+      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); setSelected(o) }} />}
+
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
     </div>
@@ -303,8 +347,23 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     payment:     '',
     notes:       '',
   })
+  const [savedAddresses, setSavedAddresses] = useState([])
   const [loading, setLoading] = useState(false)
   const [errors,  setErrors]  = useState([])
+
+  useEffect(() => {
+    if (!user?.uid) return
+    getDoc(doc(db, 'customers', user.uid)).then(snap => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      setForm(f => ({
+        ...f,
+        name:  data.name  || f.name,
+        phone: data.phone || f.phone,
+      }))
+      setSavedAddresses(data.addresses || [])
+    })
+  }, [user?.uid])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -362,6 +421,17 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
       <div>
         <label className="label-field">Dirección de entrega *</label>
         <input className="input-field" value={form.fullAddress} onChange={e => set('fullAddress', e.target.value)} placeholder="Calle, número, apartamento…" />
+        {savedAddresses.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1">
+            <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Entregas anteriores</p>
+            {[...savedAddresses].reverse().slice(0, 3).map((addr, i) => (
+              <button key={i} type="button" onClick={() => set('fullAddress', addr)}
+                className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors truncate">
+                📍 {addr}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -452,11 +522,37 @@ function ClientOrderCard({ order, onClick }) {
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelling,    setCancelling]    = useState(false)
+  const [elapsed,       setElapsed]       = useState(null)
+
+  useEffect(() => {
+    if (!['accepted', 'in_transit'].includes(order.status)) { setElapsed(null); return }
+    const ts = order.inTransitAt || order.acceptedAt
+    if (!ts?.toDate) return
+    const calc = () => setElapsed(Math.floor((Date.now() - ts.toDate().getTime()) / 60000))
+    calc()
+    const id = setInterval(calc, 30000)
+    return () => clearInterval(id)
+  }, [order.status, order.inTransitAt?.seconds, order.acceptedAt?.seconds])
+
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
   const isDelivered = DELIVERED_STATUSES.includes(order.status)
   const hasQuote = order.totalPrice > 0
+
+  const handleCancel = async () => {
+    setCancelling(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:      'cancelled',
+        cancelledAt: serverTimestamp(),
+        updatedAt:   serverTimestamp(),
+      })
+      onClose()
+    } finally { setCancelling(false) }
+  }
 
   const openDriverMap = () => {
     if (order.driverLat && order.driverLng) {
@@ -536,18 +632,54 @@ function ClientOrderDetail({ order, onClose }) {
             })}
           </div>
 
-          {/* Driver location */}
-          {['in_transit','arrived'].includes(order.status) && (
-            <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4">
-              <p className="font-display text-base tracking-wide mb-2">🛵 Domiciliario en camino</p>
-              {order.driverLat ? (
-                <button onClick={openDriverMap} className="btn-primary btn-sm w-full">
-                  <Navigation size={14} /> Ver ubicación del domiciliario
-                </button>
-              ) : (
-                <p className="font-body text-xs text-coal/50">Obteniendo ubicación…</p>
+          {/* ETA / driver status — features #8 */}
+          {['accepted', 'in_transit', 'arrived'].includes(order.status) && (
+            <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-base tracking-wide">
+                {order.status === 'accepted'   ? '✅ Domiciliario en camino' :
+                 order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
+                                                 '📍 Domiciliario llegó'}
+              </p>
+              {elapsed !== null && order.status !== 'arrived' && (
+                <p className="font-body text-sm text-coal/60">
+                  Hace {elapsed < 1 ? 'menos de 1 min' : `${elapsed} min${elapsed !== 1 ? 's' : ''}`}
+                </p>
+              )}
+              {order.status === 'in_transit' && (
+                order.driverLat ? (
+                  <button onClick={openDriverMap} className="btn-primary btn-sm w-full">
+                    <Navigation size={14} /> Ver ubicación del domiciliario
+                  </button>
+                ) : (
+                  <p className="font-body text-xs text-coal/50">Obteniendo ubicación…</p>
+                )
               )}
             </div>
+          )}
+
+          {/* Cancel button — only when pending (cashier hasn't touched it yet) */}
+          {order.status === 'pending' && (
+            cancelConfirm ? (
+              <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 flex flex-col gap-3">
+                <p className="font-body text-sm text-coal font-semibold text-center">¿Cancelar este pedido?</p>
+                <p className="font-body text-xs text-coal/60 text-center">Esta acción no se puede deshacer.</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setCancelConfirm(false)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-coal/20 text-coal/60 text-sm font-semibold font-body">
+                    No, volver
+                  </button>
+                  <button onClick={handleCancel} disabled={cancelling}
+                    className="flex-1 px-4 py-2 rounded-xl bg-pepper text-white text-sm font-semibold font-body">
+                    {cancelling ? 'Cancelando…' : 'Sí, cancelar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setCancelConfirm(true)}
+                className="w-full text-sm font-body font-semibold text-pepper/70 hover:text-pepper py-2 transition-colors">
+                Cancelar pedido
+              </button>
+            )
           )}
 
           {/* Order items */}
@@ -592,6 +724,64 @@ function ClientOrderDetail({ order, onClose }) {
                 Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
               </p>
             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Client history modal ─────────────────────────────────────────────────────
+function ClientHistoryModal({ orders, onClose, onSelect }) {
+  const historical = orders
+    .filter(o => [...DELIVERED_STATUSES, ...CLOSED_STATUSES].includes(o.status))
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+
+  const fmtDate = ts => {
+    if (!ts?.toDate) return ''
+    return format(ts.toDate(), "dd 'de' MMM yyyy", { locale: es })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in">
+        <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-5 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
+          <div>
+            <p className="font-display text-xl text-cream tracking-wide">Historial de pedidos</p>
+            <p className="font-body text-xs text-cream/70">{historical.length} pedido{historical.length !== 1 ? 's' : ''} anteriores</p>
+          </div>
+          <button onClick={onClose} className="text-cream/70 hover:text-cream"><X size={22} /></button>
+        </div>
+
+        <div className="overflow-y-auto scroll-custom p-4 flex flex-col gap-2 pb-8">
+          {historical.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <p className="text-4xl">📋</p>
+              <p className="font-body text-coal/40">Aún no tienes pedidos anteriores</p>
+            </div>
+          ) : (
+            historical.map(o => {
+              const isDelivered = DELIVERED_STATUSES.includes(o.status)
+              return (
+                <button key={o.id} onClick={() => onSelect(o)}
+                  className="card w-full text-left flex items-center gap-3 hover:bg-smoked/50 transition-colors">
+                  <span className="text-2xl flex-shrink-0">{isDelivered ? '✅' : '❌'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {o.orderNumber && <span className="font-display text-base text-cherry">#{o.orderNumber}</span>}
+                      <span className="font-body text-xs text-coal/40">{fmtDate(o.createdAt)}</span>
+                    </div>
+                    <p className="font-body text-sm text-coal/70 truncate">{o.items}</p>
+                    {o.totalPrice > 0 && (
+                      <p className="font-body text-xs font-semibold text-tangelo mt-0.5">
+                        ${Number(o.totalPrice).toLocaleString('es-CO')}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              )
+            })
           )}
         </div>
       </div>
