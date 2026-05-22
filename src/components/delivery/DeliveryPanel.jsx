@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  collection, query, where, onSnapshot,
+  collection, query, where, onSnapshot, getDocs,
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
@@ -54,6 +54,15 @@ export default function DeliveryPanel() {
     const email = user.email.toLowerCase().trim()
     setDebugInfo({ email, status: 'conectando…', count: null, error: null })
     const q = query(collection(db, 'orders'), where('driverEmail', '==', email))
+
+    // Test rápido para detectar si las reglas de Firestore bloquean la query
+    getDocs(q)
+      .then(snap => console.log('[Driver] getDocs ok —', snap.size, 'pedidos'))
+      .catch(err => {
+        console.error('[Driver] getDocs bloqueado:', err.code, err.message)
+        setDebugInfo(d => ({ ...d, status: 'error', error: 'REGLA FIRESTORE: ' + err.code + ' — ' + err.message }))
+      })
+
     return onSnapshot(q, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const newPending = all.filter(o => o.status === 'assigned').length
