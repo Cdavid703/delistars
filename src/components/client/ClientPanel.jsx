@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   collection, query, where, onSnapshot, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
@@ -353,6 +353,13 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [savedAddresses, setSavedAddresses] = useState([])
   const [loading, setLoading] = useState(false)
   const [errors,  setErrors]  = useState([])
+  const errorsRef = useRef(null)
+
+  useEffect(() => {
+    if (errors.length > 0) {
+      errorsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [errors])
 
   useEffect(() => {
     if (!user?.uid) return
@@ -379,7 +386,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
-    try { await onSubmit(form) } finally { setLoading(false) }
+    try {
+      await onSubmit(form)
+    } catch (err) {
+      const msg = err?.code === 'permission-denied'
+        ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
+        : 'Error al enviar el pedido. Verifica tu conexión e intenta de nuevo.'
+      setErrors([msg])
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -401,7 +417,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
       </div>
 
       {errors.length > 0 && (
-        <div className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
+        <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
           {errors.map(e => (
             <p key={e} className="flex items-center gap-2 text-sm text-pepper font-body">
               <AlertCircle size={14} /> {e}
