@@ -208,10 +208,19 @@ export default function DeliveryPanel() {
 
       {/* DEBUG — remover después */}
       {debugInfo && (
-        <div className="mx-4 mt-2 bg-coal/90 text-cream rounded-xl px-3 py-2 text-[11px] font-mono">
-          <p>📧 email: <strong>{debugInfo.email}</strong></p>
-          <p>📡 estado: <strong>{debugInfo.status}</strong>{debugInfo.count !== null ? ` · ${debugInfo.count} pedido(s)` : ''}</p>
+        <div className="mx-4 mt-2 bg-coal/90 text-cream rounded-xl px-3 py-2 text-[11px] font-mono flex flex-col gap-0.5">
+          <p>📧 email buscado: <strong className="text-mint">{debugInfo.email}</strong></p>
+          <p>📡 estado: <strong>{debugInfo.status}</strong>
+            {debugInfo.count !== null
+              ? debugInfo.count === 0
+                ? <span className="text-red-400"> · 0 pedidos — email no coincide con los pedidos asignados</span>
+                : <span className="text-mint"> · {debugInfo.count} pedido(s) encontrados ✅</span>
+              : ''}
+          </p>
           {debugInfo.error && <p className="text-red-400">❌ {debugInfo.error}</p>}
+          {debugInfo.count === 0 && (
+            <p className="text-yellow-300 mt-1">⚠️ Comparte este email con el administrador para verificar que los pedidos se asignen con este email exacto.</p>
+          )}
         </div>
       )}
 

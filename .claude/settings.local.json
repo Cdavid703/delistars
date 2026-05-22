@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\Git\\\\mingw64\\\\bin\\\\node.exe\" --version 2>$null)",
+      "PowerShell(& \"C:\\\\Python314\\\\node.exe\" --version 2>$null)",
+      "Bash(curl -s http://localhost:5173/domicilios/)",
+      "Bash(pkill -f \"vite.js\")",
+      "Bash(cat DEPLOY.md)",
+      "Bash(ls *.md)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@177.7.52.161 \"chmod -R 755 /var/www/delistars.com/dist/ && ls -la /var/www/delistars.com/dist/ && echo 'Deploy OK'\")",
+      "Bash(scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -r /e/domicilios/delistars-app/dist/* root@177.7.52.161:/var/www/delistars.com/dist/)",
+      "Bash(ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@177.7.52.161 \"chmod -R 755 /var/www/delistars.com/dist/ && echo 'Deploy OK'\")",
+      "Bash(npm run *)",
+      "PowerShell(npm run build 2>&1)",
+      "Bash(which node *)",
+      "Bash(ls /c/Users/USER/AppData/Local/node-portable/)",
+      "Bash(scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -r dist/* root@177.7.52.161:/var/www/delistars.com/dist/)"
+    ]
+  }
+}
