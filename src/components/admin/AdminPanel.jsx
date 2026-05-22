@@ -355,6 +355,7 @@ function OrdersTab({ sede }) {
   const [filter,      setFilter]      = useState('all')
   const [confirmId,   setConfirmId]   = useState(null)
   const [historyDate, setHistoryDate] = useState('')
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     if (!sede) return
@@ -367,8 +368,14 @@ function OrdersTab({ sede }) {
   }, [sede])
 
   const handleDelete = async (id) => {
-    await deleteDoc(doc(db, 'orders', id))
     setConfirmId(null)
+    setDeleteError('')
+    try {
+      await deleteDoc(doc(db, 'orders', id))
+    } catch (err) {
+      setDeleteError('No se pudo eliminar. Verifica los permisos en Firebase.')
+      console.error('Error al eliminar pedido:', err.code, err.message)
+    }
   }
 
   const COMPLETED_STATUSES = ['completed', 'delivered_paid', 'delivered_cash', 'pending_cuadre']
@@ -419,6 +426,15 @@ function OrdersTab({ sede }) {
       {/* Summary when viewing entregados */}
       {filter === 'entregados' && filtered.length > 0 && (
         <AdminEntregadosSummary orders={filtered} />
+      )}
+
+      {deleteError && (
+        <div className="bg-pepper/10 border border-pepper/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <p className="font-body text-xs text-pepper">{deleteError}</p>
+          <button onClick={() => setDeleteError('')} className="text-pepper/60 hover:text-pepper ml-3">
+            <X size={14} />
+          </button>
+        </div>
       )}
 
       {filtered.length === 0 ? (
