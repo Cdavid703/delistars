@@ -3,7 +3,8 @@ import {
   collection, query, where, onSnapshot, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
-import { db } from '../../services/firebase'
+import { db, storage } from '../../services/firebase'
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import StatusBadge from '../common/StatusBadge'
@@ -524,9 +525,36 @@ function ClientOrderCard({ order, onClick }) {
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
-  const [cancelConfirm, setCancelConfirm] = useState(false)
-  const [cancelling,    setCancelling]    = useState(false)
-  const [elapsed,       setElapsed]       = useState(null)
+  const [cancelConfirm,    setCancelConfirm]   = useState(false)
+  const [cancelling,       setCancelling]      = useState(false)
+  const [elapsed,          setElapsed]         = useState(null)
+  const [uploadProgress,   setUploadProgress]  = useState(null)
+  const [uploadError,      setUploadError]     = useState('')
+
+  const handleUploadReceipt = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const maxMB = 10
+    if (file.size > maxMB * 1024 * 1024) { setUploadError(`El archivo no puede superar ${maxMB} MB`); return }
+    setUploadError('')
+    setUploadProgress(0)
+    const path = `receipts/${order.id}/${Date.now()}_${file.name}`
+    const sRef  = storageRef(storage, path)
+    const task  = uploadBytesResumable(sRef, file)
+    task.on('state_changed',
+      snap => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+      err  => { setUploadError('Error al subir: ' + err.message); setUploadProgress(null) },
+      async () => {
+        const url = await getDownloadURL(task.snapshot.ref)
+        await updateDoc(doc(db, 'orders', order.id), {
+          transferReceiptUrl:  url,
+          transferReceiptName: file.name,
+          updatedAt:           serverTimestamp(),
+        })
+        setUploadProgress(null)
+      }
+    )
+  }
 
   useEffect(() => {
     if (!['accepted', 'in_transit'].includes(order.status)) { setElapsed(null); return }
@@ -612,6 +640,53 @@ function ClientOrderDetail({ order, onClose }) {
                 <p className="font-display text-sm tracking-wide text-coal mb-1">Nota del cajero</p>
                 <p className="font-body text-sm text-coal/80">{order.cashierNotes}</p>
               </div>
+            </div>
+          )}
+
+          {/* Transfer / Nequi receipt upload */}
+          {['Transferencia', 'Nequi'].includes(order.payment) &&
+           !['completed', 'rejected', 'cancelled'].includes(order.status) && (
+            <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
+              <p className="font-display text-sm tracking-wide text-coal">
+                📎 Comprobante de {order.payment}
+              </p>
+              {order.transferValidated ? (
+                <div className="flex items-center gap-2 text-mint">
+                  <span className="text-lg">✅</span>
+                  <p className="font-body text-sm font-semibold">Pago validado por el cajero</p>
+                </div>
+              ) : order.transferReceiptUrl ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-tangelo">
+                    <span>📄</span>
+                    <p className="font-body text-xs font-semibold">Comprobante enviado — esperando validación</p>
+                  </div>
+                  <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
+                    className="font-body text-xs text-cherry underline underline-offset-2 truncate">
+                    {order.transferReceiptName || 'Ver archivo'}
+                  </a>
+                  <label className="cursor-pointer text-xs font-body text-coal/50 underline underline-offset-2 w-fit">
+                    Cambiar archivo
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
+                  </label>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <p className="font-body text-xs text-coal/60">
+                    Sube la foto o PDF de tu comprobante para que el cajero confirme el pago.
+                  </p>
+                  <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors
+                    ${uploadProgress !== null ? 'border-tangelo/40 bg-tangelo/5' : 'border-coal/20 hover:border-tangelo/50 hover:bg-tangelo/5'}`}>
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
+                    {uploadProgress !== null ? (
+                      <span className="font-body text-sm text-tangelo">Subiendo {uploadProgress}%…</span>
+                    ) : (
+                      <span className="font-body text-sm text-coal/60">📤 Subir comprobante (imagen o PDF)</span>
+                    )}
+                  </label>
+                  {uploadError && <p className="font-body text-xs text-pepper">{uploadError}</p>}
+                </div>
+              )}
             </div>
           )}
 

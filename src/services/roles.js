@@ -27,10 +27,12 @@ export const DEFAULT_CASHIER_NAMES = {
 
 export const DEFAULT_DRIVERS = [
   'cdavid.jaramillo@gmail.com',
+  'josemanuellondonorivillas@gmail.com',
 ]
 
 export const DEFAULT_DRIVER_NAMES = {
-  'cdavid.jaramillo@gmail.com': 'Carlos David Jaramillo',
+  'cdavid.jaramillo@gmail.com':          'Carlos David Jaramillo',
+  'josemanuellondonorivillas@gmail.com': 'José Manuel Londoño',
 }
 
 export const ROLES = {

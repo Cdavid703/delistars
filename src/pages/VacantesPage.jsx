@@ -418,6 +418,7 @@ function ApplicationModal({ onClose }) {
 function PostulantesGrid() {
   const [postulantes, setPostulantes] = useState([])
   const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
 
   useEffect(() => {
     const q = query(
@@ -427,6 +428,10 @@ function PostulantesGrid() {
     return onSnapshot(q, snap => {
       setPostulantes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       setLoading(false)
+    }, err => {
+      console.error('Error cargando postulantes:', err)
+      setError(err.message || 'Error al cargar los postulantes')
+      setLoading(false)
     })
   }, [])
 
@@ -434,6 +439,16 @@ function PostulantesGrid() {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="w-8 h-8 border-2 border-cherry/30 border-t-cherry rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <AlertCircle size={32} className="text-pepper/60" />
+        <p className="font-body text-sm text-pepper font-semibold">Error al cargar postulantes</p>
+        <p className="font-body text-xs text-coal/40 max-w-xs">{error}</p>
       </div>
     )
   }

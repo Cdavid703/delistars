@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import { db } from '../../services/firebase'
+import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
@@ -9,7 +10,8 @@ import {
   X, MapPin, Phone, User, ShoppingBag,
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
-  Printer, Hash, DollarSign, MessageSquare, Clock
+  Printer, Hash, DollarSign, MessageSquare, Clock,
+  Send, FileCheck, CheckCircle
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -30,10 +32,14 @@ const fmtTime = (ts) => {
 }
 
 export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign }) {
+  const { user } = useAuth()
   const [loading,          setLoading]          = useState(false)
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
   const [distanceKm,       setDistanceKm]       = useState(null)
+  const [commentText,      setCommentText]      = useState('')
+  const [sendingComment,   setSendingComment]   = useState(false)
+  const [validatingTransfer, setValidatingTransfer] = useState(false)
 
   // Quote form state (for pending orders)
   const [localOrderNumber,   setLocalOrderNumber]   = useState(order.orderNumber   || '')
@@ -184,6 +190,33 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     win.document.close()
   }
 
+  const sendComment = async () => {
+    if (!commentText.trim()) return
+    setSendingComment(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        comments: arrayUnion({
+          role: 'cashier',
+          name: user?.displayName || user?.email || 'Cajero',
+          text: commentText.trim(),
+          ts:   Date.now(),
+        }),
+        updatedAt: serverTimestamp(),
+      })
+      setCommentText('')
+    } finally { setSendingComment(false) }
+  }
+
+  const validateTransfer = async () => {
+    setValidatingTransfer(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        transferValidated: true,
+        updatedAt: serverTimestamp(),
+      })
+    } finally { setValidatingTransfer(false) }
+  }
+
   const distColor = distanceKm === null ? '' : distanceKm > 5 ? 'text-pepper' : distanceKm > 3 ? 'text-mustard' : 'text-mint'
   const distLabel = distanceKm === null ? 'Calculando distancia…' : `~${distanceKm.toFixed(1)} km de la sede`
 
@@ -234,6 +267,16 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           <Section title="Cliente">
             <Row icon={User}  label="Nombre"   value={order.name || order.clientName} />
             <Row icon={Phone} label="Teléfono" value={order.phone} />
+            {order.phone && (() => {
+              const digits  = order.phone.replace(/\D/g, '')
+              const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
+              return (
+                <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors w-fit">
+                  📱 WhatsApp cliente
+                </a>
+              )
+            })()}
           </Section>
 
           {/* Address + distance */}
@@ -279,6 +322,30 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           <Section title="Pago">
             <Row icon={CreditCard} label="Forma de pago" value={order.payment} />
           </Section>
+
+          {/* Transfer receipt */}
+          {order.payment === 'Transferencia' && order.transferReceiptUrl && (
+            <div className={`card border flex flex-col gap-3 ${order.transferValidated ? 'border-mint/30 bg-mint/5' : 'border-mustard/30 bg-mustard/5'}`}>
+              <div className="flex items-center gap-2">
+                <FileCheck size={16} className={order.transferValidated ? 'text-mint' : 'text-mustard'} />
+                <p className="font-display text-sm tracking-wide text-coal">Comprobante de transferencia</p>
+                {order.transferValidated && (
+                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-mint bg-mint/10 px-2 py-0.5 rounded-full">✓ Validado</span>
+                )}
+              </div>
+              <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
+                className="flex items-center gap-2 text-sm font-body font-semibold text-cherry underline underline-offset-2">
+                <ExternalLink size={14} /> Ver comprobante
+              </a>
+              {!order.transferValidated && (
+                <button onClick={validateTransfer} disabled={validatingTransfer}
+                  className="btn-mint btn-sm w-full">
+                  <CheckCircle size={14} />
+                  {validatingTransfer ? 'Validando…' : 'Confirmar pago recibido ✓'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Quoted prices (if already set) */}
           {order.totalPrice > 0 && (
@@ -439,8 +506,27 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-3">
               <p className="font-display text-base tracking-wide text-tangelo">🔄 Reasignar domiciliario</p>
               <p className="font-body text-xs text-coal/60">
-                El domiciliario aún no ha aceptado. Puedes cambiar la asignación o actualizar los datos del envío.
+                El domiciliario aún no ha aceptado. Avísale por WhatsApp o cámbialo.
               </p>
+              {/* WhatsApp notify */}
+              {(() => {
+                const driver  = drivers.find(d => d.id === order.driverEmail)
+                const rawPhone = driver?.phone || ''
+                const digits   = rawPhone.replace(/\D/g, '')
+                const waPhone  = digits.length >= 10 ? `57${digits.slice(-10)}` : ''
+                const msg = encodeURIComponent(
+                  `Hola ${order.driverName || 'domiciliario'} 👋 Tienes un pedido${order.orderNumber ? ` #${order.orderNumber}` : ''} asignado en DeliStars. Por favor abre la app y acéptalo. ¡Gracias! 🛵`
+                )
+                const waUrl = waPhone
+                  ? `https://wa.me/${waPhone}?text=${msg}`
+                  : `https://wa.me/?text=${msg}`
+                return (
+                  <a href={waUrl} target="_blank" rel="noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 border-[#25D366]/50 text-[#25D366] bg-[#25D366]/5 font-semibold text-sm font-body hover:bg-[#25D366]/15 transition-colors">
+                    📱 {waPhone ? 'Avisar por WhatsApp' : 'Enviar WhatsApp (elige contacto)'}
+                  </a>
+                )
+              })()}
               <button
                 onClick={() => { onClose(); onReassign(order) }}
                 className="btn-primary w-full"
@@ -477,6 +563,42 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               <p className="font-body text-sm text-coal/80">Motivo: {order.rejectionReason}</p>
             </div>
           )}
+
+          {/* Comments */}
+          <div className="card border border-coal/10 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={15} className="text-tangelo" />
+              <p className="font-display text-sm tracking-wide text-coal">Comentarios del pedido</p>
+            </div>
+
+            {(order.comments?.length > 0) ? (
+              <div className="flex flex-col gap-2">
+                {[...order.comments].sort((a,b) => a.ts - b.ts).map((c, i) => (
+                  <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20' : 'bg-mint/10 border border-mint/20'}`}>
+                    <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-tangelo' : 'text-mint'}`}>
+                      {c.role === 'cashier' ? '🧾 Cajero' : '🛵 Domiciliario'} · {c.name}
+                    </p>
+                    <p className="font-body text-sm text-coal">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="font-body text-xs text-coal/40">Sin comentarios aún</p>
+            )}
+
+            <div className="flex gap-2">
+              <textarea
+                className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                placeholder="Comentario para el domiciliario (ej: tocar timbre 3B, llamar al llegar…)"
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+              />
+              <button onClick={sendComment} disabled={sendingComment || !commentText.trim()}
+                className="btn-primary px-3 self-end">
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
 
           {/* Timestamps */}
           {timestamps.length > 0 && (

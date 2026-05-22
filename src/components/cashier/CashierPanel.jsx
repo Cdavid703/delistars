@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, ROLES } from '../../services/roles'
 import Logo from '../common/Logo'
 import OrderCard from './OrderCard'
 import OrderForm from './OrderForm'
@@ -68,7 +68,7 @@ function createAlarmPlayer() {
 const alarm = createAlarmPlayer()
 
 export default function CashierPanel() {
-  const { user, sede, logout, selectSede, setViewingAs } = useAuth()
+  const { user, sede, logout, selectSede, setViewingAs, allRoles } = useAuth()
   const [tab,             setTab]            = useState('active')
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])
@@ -78,6 +78,7 @@ export default function CashierPanel() {
   const [addDriver,       setAddDriver]      = useState(false)
   const [newDriverEmail,  setNewDriverEmail] = useState('')
   const [newDriverName,   setNewDriverName]  = useState('')
+  const [newDriverPhone,  setNewDriverPhone] = useState('')
   const [driverMsg,       setDriverMsg]      = useState('')
   const [platformActive,  setPlatformActive] = useState(null)
   const [newOrderAlert,   setNewOrderAlert]  = useState(null)
@@ -186,10 +187,11 @@ export default function CashierPanel() {
     try {
       await setDoc(doc(db, 'roles_drivers', email), {
         email, name: newDriverName.trim() || email,
+        phone: newDriverPhone.trim() || null,
         addedBy: user.email, addedAt: serverTimestamp(),
       })
       setDriverMsg(`✅ ${email} agregado como domiciliario`)
-      setNewDriverEmail(''); setNewDriverName('')
+      setNewDriverEmail(''); setNewDriverName(''); setNewDriverPhone('')
       const snap = await getDocs(collection(db, 'roles_drivers'))
       const fd = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const fids = fd.map(d => d.id)
@@ -227,6 +229,13 @@ export default function CashierPanel() {
             <Calculator size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
+          {allRoles.includes(ROLES.DRIVER) && (
+            <button onClick={() => setViewingAs(ROLES.DRIVER)} title="Cambiar a modo Domiciliario"
+              className="btn-icon text-coal/60 hover:text-mint flex items-center gap-1 px-2">
+              <Bike size={18} />
+              <span className="font-body text-xs font-semibold hidden sm:inline">Moto</span>
+            </button>
+          )}
           <button onClick={() => setViewingAs('client')} title="Ver como cliente"
             className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
             <ShoppingBag size={18} />
@@ -265,17 +274,48 @@ export default function CashierPanel() {
         </div>
       )}
 
-      {/* Add driver panel */}
+      {/* Driver management panel */}
       {addDriver && (
         <div className="mx-4 mt-3 card border border-mint/30 animate-fade-in">
-          <p className="font-display text-base tracking-wide text-coal mb-3">Agregar domiciliario</p>
-          <div className="flex flex-col gap-2">
-            <input className="input-field" placeholder="Correo de Google *"
-              value={newDriverEmail} onChange={e => setNewDriverEmail(e.target.value)} />
-            <input className="input-field" placeholder="Nombre (opcional)"
-              value={newDriverName} onChange={e => setNewDriverName(e.target.value)} />
-            <button onClick={handleAddDriver} className="btn-mint btn-sm">Agregar</button>
-            {driverMsg && <p className="font-body text-sm">{driverMsg}</p>}
+          <p className="font-display text-base tracking-wide text-coal mb-3">🚴 Gestionar domiciliarios</p>
+
+          {/* Existing drivers list */}
+          {drivers.length > 0 && (
+            <div className="mb-4">
+              <p className="font-body text-[10px] uppercase tracking-wider text-coal/40 mb-2">Registrados actualmente</p>
+              <div className="flex flex-col gap-1.5">
+                {drivers.map(d => (
+                  <div key={d.id} className="flex items-center gap-2 bg-smoked/50 rounded-xl px-3 py-2">
+                    <Bike size={14} className="text-mint flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-body text-sm font-semibold text-coal truncate">{d.name || d.id}</p>
+                      <p className="font-body text-[11px] text-coal/40 truncate">{d.id}</p>
+                    </div>
+                    {d.phone ? (
+                      <a href={`tel:${d.phone}`} className="font-body text-xs text-mint whitespace-nowrap">{d.phone}</a>
+                    ) : (
+                      <span className="font-body text-[10px] text-coal/30">sin tel.</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add driver form */}
+          <div className="border-t border-coal/10 pt-3">
+            <p className="font-body text-[10px] uppercase tracking-wider text-coal/40 mb-2">Agregar nuevo</p>
+            <div className="flex flex-col gap-2">
+              <input className="input-field" placeholder="Correo de Google *"
+                value={newDriverEmail} onChange={e => setNewDriverEmail(e.target.value)} />
+              <input className="input-field" placeholder="Nombre"
+                value={newDriverName} onChange={e => setNewDriverName(e.target.value)} />
+              <input className="input-field" placeholder="Teléfono WhatsApp (ej: 3001234567)"
+                value={newDriverPhone} onChange={e => setNewDriverPhone(e.target.value)}
+                type="tel" />
+              <button onClick={handleAddDriver} className="btn-mint btn-sm">Agregar</button>
+              {driverMsg && <p className="font-body text-sm">{driverMsg}</p>}
+            </div>
           </div>
         </div>
       )}
@@ -320,6 +360,17 @@ export default function CashierPanel() {
           )}
         </div>
       )}
+
+      {/* Cash pending banner for cuadre tab */}
+      {tab === 'cuadre' && filteredOrders.length > 0 && (() => {
+        const total = filteredOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+        return (
+          <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
+            <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo pendiente de recibir:</span>
+            <span className="font-display text-lg text-mustard">{fmt(total)}</span>
+          </div>
+        )
+      })()}
 
       {/* Summary for completed tab */}
       {tab === 'completed' && filteredOrders.length > 0 && (
@@ -432,6 +483,7 @@ export default function CashierPanel() {
       {showTracking && (
         <DriverTrackingModal
           orders={orders}
+          sede={sede}
           onClose={() => setShowTracking(false)}
         />
       )}
@@ -506,27 +558,51 @@ function EntregadosSummary({ orders }) {
 }
 
 // ─── Driver tracking modal ────────────────────────────────────────────────────
-function DriverTrackingModal({ orders, onClose }) {
+function DriverTrackingModal({ orders, sede, onClose }) {
+  const [driverLocations, setDriverLocations] = useState([])
+
+  useEffect(() => {
+    if (!sede?.id) return
+    const q = query(
+      collection(db, 'driver_locations'),
+      where('sedeId', '==', sede.id),
+      where('active', '==', true)
+    )
+    return onSnapshot(q, snap => {
+      setDriverLocations(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+  }, [sede])
+
   const activeOrders = orders.filter(o => ['accepted', 'in_transit', 'arrived'].includes(o.status))
 
-  // Agrupar por driver
+  // Construir mapa de drivers: combina los que tienen pedido activo + los que comparten ubicación
   const driverMap = {}
+
   activeOrders.forEach(o => {
     const key = o.driverEmail || o.driverName || 'unknown'
-    if (!driverMap[key]) driverMap[key] = { name: o.driverName || o.driverEmail || 'Domiciliario', orders: [] }
+    if (!driverMap[key]) driverMap[key] = { name: o.driverName || o.driverEmail || 'Domiciliario', orders: [], locData: null }
     driverMap[key].orders.push(o)
   })
-  const driverList = Object.values(driverMap)
 
-  // URL multi-punto para ver todos en Google Maps
-  const withCoords = activeOrders.filter(o => o.driverLat && o.driverLng)
-  const allMapsUrl = withCoords.length > 1
-    ? `https://www.google.com/maps/dir/?api=1&waypoints=${withCoords.map(o => `${o.driverLat},${o.driverLng}`).join('|')}`
-    : null
+  driverLocations.forEach(loc => {
+    const key = loc.driverEmail
+    if (!driverMap[key]) driverMap[key] = { name: loc.driverName || loc.driverEmail || 'Domiciliario', orders: [], locData: null }
+    driverMap[key].locData = loc
+  })
+
+  const driverList = Object.values(driverMap)
 
   const fmtAgo = ts => {
     if (!ts?.toDate) return null
     const mins = Math.floor((Date.now() - ts.toDate().getTime()) / 60000)
+    if (mins < 1) return 'hace menos de 1 min'
+    if (mins < 60) return `hace ${mins} min`
+    return `hace ${Math.floor(mins / 60)}h ${mins % 60}m`
+  }
+
+  const fmtAgoMs = ms => {
+    if (!ms) return null
+    const mins = Math.floor((Date.now() - ms) / 60000)
     if (mins < 1) return 'hace menos de 1 min'
     if (mins < 60) return `hace ${mins} min`
     return `hace ${Math.floor(mins / 60)}h ${mins % 60}m`
@@ -542,9 +618,9 @@ function DriverTrackingModal({ orders, onClose }) {
           <div className="flex items-center gap-3">
             <Navigation size={20} className="text-cream" />
             <div>
-              <p className="font-display text-xl text-cream tracking-wide">Domiciliarios en ruta</p>
+              <p className="font-display text-xl text-cream tracking-wide">Domiciliarios</p>
               <p className="font-body text-xs text-cream/70">
-                {driverList.length === 0 ? 'Ninguno activo ahora' : `${driverList.length} domiciliario${driverList.length !== 1 ? 's' : ''} activo${driverList.length !== 1 ? 's' : ''}`}
+                {driverList.length === 0 ? 'Ninguno visible ahora' : `${driverList.length} domiciliario${driverList.length !== 1 ? 's' : ''} visible${driverList.length !== 1 ? 's' : ''}`}
               </p>
             </div>
           </div>
@@ -555,45 +631,54 @@ function DriverTrackingModal({ orders, onClose }) {
           {driverList.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <p className="text-5xl">🛵</p>
-              <p className="font-display text-lg tracking-wide text-coal/50">Sin domiciliarios en ruta</p>
+              <p className="font-display text-lg tracking-wide text-coal/50">Sin domiciliarios visibles</p>
               <p className="font-body text-xs text-coal/30">
-                Aparecen aquí cuando aceptan un pedido
+                Aparecen cuando tienen un pedido activo o activan GPS en su app
               </p>
             </div>
           ) : (
-            <>
-              {/* Ver todos en mapa si hay múltiples con coords */}
-              {allMapsUrl && (
-                <a href={allMapsUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-mint text-cream font-semibold text-sm font-body hover:bg-mint/90 transition-colors">
-                  <Navigation size={16} /> Ver todos en Google Maps
-                </a>
-              )}
+            driverList.map((driver, idx) => {
+              // Posición: preferir la más reciente entre pedidos y driver_locations
+              const ordersWithPos = driver.orders
+                .filter(o => o.driverLat && o.driverLng)
+                .sort((a, b) => (b.driverUpdatedAt?.seconds || 0) - (a.driverUpdatedAt?.seconds || 0))
+              const latestOrderPos = ordersWithPos[0]
 
-              {driverList.map((driver, idx) => {
-                // Última posición con coords de este driver
-                const ordersWithPos = driver.orders
-                  .filter(o => o.driverLat && o.driverLng)
-                  .sort((a, b) => (b.driverUpdatedAt?.seconds || 0) - (a.driverUpdatedAt?.seconds || 0))
-                const latest = ordersWithPos[0]
+              const locLat = driver.locData?.lat
+              const locLng = driver.locData?.lng
+              const locTs  = driver.locData?.updatedAt
 
-                return (
-                  <div key={idx} className="card flex flex-col gap-3 border border-mint/20">
+              // Comparar cuál es más reciente
+              const orderTsMs  = latestOrderPos?.driverUpdatedAt?.seconds ? latestOrderPos.driverUpdatedAt.seconds * 1000 : 0
+              const locTsMs    = locTs?.toDate ? locTs.toDate().getTime() : (driver.locData?.ts || 0)
+              const useLocData = locLat && (!latestOrderPos || locTsMs > orderTsMs)
 
-                    {/* Driver name */}
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-mint/15 flex items-center justify-center flex-shrink-0">
-                        <Bike size={18} className="text-mint" />
-                      </div>
-                      <div>
-                        <p className="font-display text-base tracking-wide text-coal">{driver.name}</p>
-                        <p className="font-body text-xs text-coal/50">
-                          {driver.orders.length} pedido{driver.orders.length !== 1 ? 's' : ''} en curso
-                        </p>
-                      </div>
+              const lat = useLocData ? locLat : latestOrderPos?.driverLat
+              const lng = useLocData ? locLng : latestOrderPos?.driverLng
+              const hasPos = lat && lng
+
+              const isOnRoute = driver.orders.length > 0
+
+              return (
+                <div key={idx} className={`card flex flex-col gap-3 ${isOnRoute ? 'border border-mint/20' : 'border border-mustard/20'}`}>
+
+                  {/* Driver name */}
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOnRoute ? 'bg-mint/15' : 'bg-mustard/15'}`}>
+                      <Bike size={18} className={isOnRoute ? 'text-mint' : 'text-mustard'} />
                     </div>
+                    <div>
+                      <p className="font-display text-base tracking-wide text-coal">{driver.name}</p>
+                      <p className={`font-body text-xs ${isOnRoute ? 'text-mint' : 'text-mustard'}`}>
+                        {isOnRoute
+                          ? `${driver.orders.length} pedido${driver.orders.length !== 1 ? 's' : ''} en curso`
+                          : '📡 Compartiendo ubicación'}
+                      </p>
+                    </div>
+                  </div>
 
-                    {/* Pedidos activos */}
+                  {/* Pedidos activos */}
+                  {driver.orders.length > 0 && (
                     <div className="flex flex-col gap-2">
                       {driver.orders.map(o => (
                         <div key={o.id} className="bg-smoked/50 rounded-xl px-3 py-2.5">
@@ -606,40 +691,38 @@ function DriverTrackingModal({ orders, onClose }) {
                         </div>
                       ))}
                     </div>
+                  )}
 
-                    {/* Ubicación */}
-                    {latest ? (
-                      <div className="flex flex-col gap-2">
-                        {latest.driverUpdatedAt && (
-                          <p className="font-body text-xs text-coal/40 text-center">
-                            📡 Ubicación actualizada {fmtAgo(latest.driverUpdatedAt)}
-                          </p>
-                        )}
-                        <div className="flex gap-2">
-                          <a href={`https://www.google.com/maps/search/?api=1&query=${latest.driverLat},${latest.driverLng}`}
-                            target="_blank" rel="noreferrer"
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-mint/40 text-mint text-sm font-semibold font-body hover:bg-mint/10 transition-colors">
-                            <Navigation size={15} /> Google Maps
-                          </a>
-                          <a href={`https://waze.com/ul?ll=${latest.driverLat},${latest.driverLng}&navigate=yes`}
-                            target="_blank" rel="noreferrer"
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-coal/20 text-coal/60 text-sm font-semibold font-body hover:bg-smoked transition-colors">
-                            <ExternalLink size={15} /> Waze
-                          </a>
-                        </div>
+                  {/* Ubicación */}
+                  {hasPos ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="font-body text-xs text-coal/40 text-center">
+                        📡 Ubicación actualizada {useLocData ? fmtAgoMs(locTsMs) : fmtAgo(latestOrderPos?.driverUpdatedAt)}
+                      </p>
+                      <div className="flex gap-2">
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                          target="_blank" rel="noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-mint/40 text-mint text-sm font-semibold font-body hover:bg-mint/10 transition-colors">
+                          <Navigation size={15} /> Google Maps
+                        </a>
+                        <a href={`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`}
+                          target="_blank" rel="noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-coal/20 text-coal/60 text-sm font-semibold font-body hover:bg-smoked transition-colors">
+                          <ExternalLink size={15} /> Waze
+                        </a>
                       </div>
-                    ) : (
-                      <div className="bg-coal/5 rounded-xl px-4 py-3 text-center">
-                        <p className="font-body text-xs text-coal/50">📍 Sin ubicación aún</p>
-                        <p className="font-body text-[10px] text-coal/30 mt-0.5">
-                          El GPS se activa cuando el domiciliario toca "Iniciar entrega"
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </>
+                    </div>
+                  ) : (
+                    <div className="bg-coal/5 rounded-xl px-4 py-3 text-center">
+                      <p className="font-body text-xs text-coal/50">📍 Sin ubicación aún</p>
+                      <p className="font-body text-[10px] text-coal/30 mt-0.5">
+                        GPS se activa al iniciar entrega o al activar GPS en la app
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
       </div>
@@ -652,7 +735,7 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
   const [selectedDriver, setSelectedDriver] = useState('')
 
   const completedToday = orders.filter(o =>
-    COMPLETE_STATUSES.includes(o.status) && isToday(o.createdAt)
+    ([...COMPLETE_STATUSES, 'pending_cuadre']).includes(o.status) && isToday(o.createdAt)
   )
 
   const filtered = selectedDriver
@@ -660,6 +743,7 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
     : completedToday
 
   const cashOrders    = filtered.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const cashPending   = cashOrders.filter(o => o.status === 'pending_cuadre')
   const totalCash     = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
 
   const feeOrders     = filtered.filter(o => o.deliveryPrice > 0)
@@ -710,9 +794,15 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
               <>
                 <p className="font-body text-xs text-coal/50 mb-2">{cashOrders.length} pedidos en efectivo</p>
                 <div className="bg-mustard/10 rounded-xl px-4 py-3 flex items-center justify-between">
-                  <span className="font-body font-semibold text-sm">Total a entregar:</span>
+                  <span className="font-body font-semibold text-sm">Total efectivo:</span>
                   <span className="font-display text-2xl text-mustard">{fmt(totalCash)}</span>
                 </div>
+                {cashPending.length > 0 && (
+                  <div className="bg-cherry/10 rounded-xl px-4 py-2 flex items-center justify-between mt-1">
+                    <span className="font-body text-xs text-coal/60">Pendiente de recibir ({cashPending.length}):</span>
+                    <span className="font-display text-base text-cherry">{fmt(cashPending.reduce((s, o) => s + (o.totalPrice || 0), 0))}</span>
+                  </div>
+                )}
               </>
             )}
           </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   collection, query, where, onSnapshot,
-  doc, updateDoc, serverTimestamp
+  doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -13,8 +13,10 @@ import {
   MapPin, Phone, User, ShoppingBag, Navigation,
   ExternalLink, CheckCircle, Banknote, LogOut, Bell,
   DollarSign, Calculator, X, MessageSquare, BookOpen,
-  Search, ChevronDown, ChevronUp, HelpCircle
+  Search, ChevronDown, ChevronUp, HelpCircle, Receipt,
+  Send, Radio
 } from 'lucide-react'
+import { ROLES } from '../../services/roles'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -30,22 +32,26 @@ const isToday = ts => {
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 
 export default function DeliveryPanel() {
-  const { user, sede, logout, selectSede } = useAuth()
-  const [orders,       setOrders]      = useState([])
-  const [tab,          setTab]         = useState('pending')
-  const [selected,     setSelected]    = useState(null)
-  const [notifCount,   setNotifCount]  = useState(0)
-  const [showCuadre,   setShowCuadre]  = useState(false)
-  const [showManual,   setShowManual]  = useState(false)
-  const [historyDate,  setHistoryDate] = useState('')
-  const prevCount   = useRef(0)
-  const geoWatchId  = useRef(null)
+  const { user, sede, logout, selectSede, allRoles, setViewingAs } = useAuth()
+  const [orders,          setOrders]         = useState([])
+  const [tab,             setTab]            = useState('pending')
+  const [selected,        setSelected]       = useState(null)
+  const [notifCount,      setNotifCount]     = useState(0)
+  const [showCuadre,      setShowCuadre]     = useState(false)
+  const [showManual,      setShowManual]     = useState(false)
+  const [historyDate,     setHistoryDate]    = useState('')
+  const [debugInfo,       setDebugInfo]      = useState(null)
+  const [locationSharing, setLocationSharing] = useState(false)
+  const prevCount        = useRef(0)
+  const geoWatchId       = useRef(null)
+  const locShareWatchId  = useRef(null)
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
     if (!user?.email) return
     const email = user.email.toLowerCase().trim()
+    setDebugInfo({ email, status: 'conectando…', count: null, error: null })
     const q = query(collection(db, 'orders'), where('driverEmail', '==', email))
     return onSnapshot(q, snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -61,8 +67,10 @@ export default function DeliveryPanel() {
       prevCount.current = newPending
       setNotifCount(newPending)
       setOrders(all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))
+      setDebugInfo({ email, status: 'ok', count: all.length, error: null })
     }, err => {
       console.error('[DeliveryPanel] Error al leer pedidos:', err.code, err.message)
+      setDebugInfo({ email, status: 'error', count: null, error: err.code + ': ' + err.message })
     })
   }, [user, sede])
 
@@ -99,6 +107,49 @@ export default function DeliveryPanel() {
     }
   }, [orders])
 
+  // GPS compartido (para que el cajero vea la ubicación aunque no haya pedido activo)
+  useEffect(() => {
+    if (!locationSharing || !navigator.geolocation || !user?.email) {
+      if (locShareWatchId.current) {
+        navigator.geolocation.clearWatch(locShareWatchId.current)
+        locShareWatchId.current = null
+      }
+      return
+    }
+    const email = user.email.toLowerCase().trim()
+    locShareWatchId.current = navigator.geolocation.watchPosition(
+      async pos => {
+        await setDoc(doc(db, 'driver_locations', email), {
+          driverEmail: email,
+          driverName:  user.displayName || email,
+          lat:         pos.coords.latitude,
+          lng:         pos.coords.longitude,
+          updatedAt:   serverTimestamp(),
+          sedeId:      sede?.id || '',
+          active:      true,
+          ts:          Date.now(),
+        }).catch(() => {})
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    )
+    return () => {
+      if (locShareWatchId.current) {
+        navigator.geolocation.clearWatch(locShareWatchId.current)
+        locShareWatchId.current = null
+      }
+    }
+  }, [locationSharing, user, sede])
+
+  const toggleLocationSharing = async () => {
+    const next = !locationSharing
+    setLocationSharing(next)
+    if (!next && user?.email) {
+      const email = user.email.toLowerCase().trim()
+      await setDoc(doc(db, 'driver_locations', email), { active: false }, { merge: true }).catch(() => {})
+    }
+  }
+
   const pendingOrders   = orders.filter(o => o.status === 'assigned')
   const activeOrders    = orders.filter(o => ['accepted','in_transit','arrived'].includes(o.status))
   const completedOrders = orders.filter(o => {
@@ -126,6 +177,12 @@ export default function DeliveryPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
+            className={`btn-icon flex items-center gap-1 px-2 relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>
+            <Radio size={18} className={locationSharing ? 'animate-pulse' : ''} />
+            <span className="font-body text-xs font-semibold hidden sm:inline">{locationSharing ? 'GPS' : 'GPS'}</span>
+            {locationSharing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-mint animate-pulse" />}
+          </button>
           <button onClick={() => setShowManual(true)} title="Manual"
             className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
             <BookOpen size={18} />
@@ -142,10 +199,26 @@ export default function DeliveryPanel() {
               {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
             </button>
           </div>
+          {allRoles.includes(ROLES.CASHIER) && (
+            <button onClick={() => setViewingAs(null)} title="Cambiar a modo Cajero"
+              className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
+              <Receipt size={18} />
+              <span className="font-body text-xs font-semibold hidden sm:inline">Cajero</span>
+            </button>
+          )}
           <button onClick={() => selectSede(null)} className="btn-icon"><MapPin size={20} /></button>
           <button onClick={logout} className="btn-icon"><LogOut size={20} /></button>
         </div>
       </header>
+
+      {/* DEBUG — remover después */}
+      {debugInfo && (
+        <div className="mx-4 mt-2 bg-coal/90 text-cream rounded-xl px-3 py-2 text-[11px] font-mono">
+          <p>📧 email: <strong>{debugInfo.email}</strong></p>
+          <p>📡 estado: <strong>{debugInfo.status}</strong>{debugInfo.count !== null ? ` · ${debugInfo.count} pedido(s)` : ''}</p>
+          {debugInfo.error && <p className="text-red-400">❌ {debugInfo.error}</p>}
+        </div>
+      )}
 
       {notifCount > 0 && (
         <div className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 animate-bounce-soft">
@@ -194,6 +267,17 @@ export default function DeliveryPanel() {
           )}
         </div>
       )}
+
+      {/* Cash to collect banner in active tab */}
+      {tab === 'active' && activeOrders.some(o => o.cashOnDelivery || o.payment === 'Efectivo') && (() => {
+        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo').reduce((s, o) => s + (o.totalPrice || 0), 0)
+        return (
+          <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
+            <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo a cobrar en ruta:</span>
+            <span className="font-display text-lg text-mustard">{fmt(total)}</span>
+          </div>
+        )
+      })()}
 
       {/* Summary for completed tab */}
       {tab === 'completed' && tabOrders.length > 0 && (
@@ -265,7 +349,10 @@ function DriverOrderCard({ order, onClick }) {
 
 // ─── Full detail + actions ────────────────────────────────────────────────────
 function DriverOrderDetail({ order, onClose }) {
-  const [loading, setLoading] = useState(false)
+  const { user } = useAuth()
+  const [loading,      setLoading]     = useState(false)
+  const [commentText,  setCommentText] = useState('')
+  const [sendingComment, setSendingComment] = useState(false)
 
   const update = async (data) => {
     setLoading(true)
@@ -273,6 +360,23 @@ function DriverOrderDetail({ order, onClose }) {
       await updateDoc(doc(db, 'orders', order.id), { ...data, updatedAt: serverTimestamp() })
       onClose()
     } finally { setLoading(false) }
+  }
+
+  const sendComment = async () => {
+    if (!commentText.trim()) return
+    setSendingComment(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        comments: arrayUnion({
+          role: 'driver',
+          name: user?.displayName || user?.email || 'Domiciliario',
+          text: commentText.trim(),
+          ts:   Date.now(),
+        }),
+        updatedAt: serverTimestamp(),
+      })
+      setCommentText('')
+    } finally { setSendingComment(false) }
   }
 
   const accept    = () => update({ status: 'accepted',    acceptedAt:   serverTimestamp() })
@@ -308,9 +412,21 @@ function DriverOrderDetail({ order, onClose }) {
               <User size={16} className="text-cherry" />
               <p className="font-display text-base tracking-wide">{order.name}</p>
             </div>
-            <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-cherry font-body text-sm font-semibold">
-              <Phone size={14} /> {order.phone}
-            </a>
+            <div className="flex items-center gap-3">
+              <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-cherry font-body text-sm font-semibold">
+                <Phone size={14} /> {order.phone}
+              </a>
+              {order.phone && (() => {
+                const digits  = order.phone.replace(/\D/g, '')
+                const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
+                return (
+                  <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors">
+                    📱 WhatsApp
+                  </a>
+                )
+              })()}
+            </div>
           </div>
 
           {/* Address + navigation */}
@@ -391,6 +507,44 @@ function DriverOrderDetail({ order, onClose }) {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Comments */}
+          <div className="card border border-coal/10 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={15} className="text-tangelo" />
+              <p className="font-display text-sm tracking-wide text-coal">Comentarios del pedido</p>
+            </div>
+
+            {/* Existing comments */}
+            {(order.comments?.length > 0) ? (
+              <div className="flex flex-col gap-2">
+                {[...order.comments].sort((a,b) => a.ts - b.ts).map((c, i) => (
+                  <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20' : 'bg-mint/10 border border-mint/20'}`}>
+                    <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-tangelo' : 'text-mint'}`}>
+                      {c.role === 'cashier' ? '🧾 Cajero' : '🛵 Tú'} · {c.name}
+                    </p>
+                    <p className="font-body text-sm text-coal">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="font-body text-xs text-coal/40">Sin comentarios aún</p>
+            )}
+
+            {/* Add comment */}
+            <div className="flex gap-2">
+              <textarea
+                className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                placeholder="Dejar comentario (ej: cliente no estaba, timbre roto…)"
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+              />
+              <button onClick={sendComment} disabled={sendingComment || !commentText.trim()}
+                className="btn-mint px-3 self-end">
+                <Send size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Actions by status */}
