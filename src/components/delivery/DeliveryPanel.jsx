@@ -73,7 +73,10 @@ export default function DeliveryPanel() {
       console.error('[DeliveryPanel] Error al leer pedidos:', err.code, err.message)
       setDebugInfo({ email, status: 'error', count: null, error: err.code + ': ' + err.message })
     })
-  }, [user, sede])
+  // sede NO se usa en la query — no debe ser dependencia para evitar
+  // que el listener se cancele y reinicie cada vez que cambia la sede
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email])
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
