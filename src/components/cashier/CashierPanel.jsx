@@ -146,9 +146,9 @@ export default function CashierPanel() {
   }, [])
 
   const filteredOrders = orders.filter(o => {
-    if (tab === 'active')    return ACTIVE_STATUSES.includes(o.status)
-    if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status)
-    if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status)
+    if (tab === 'active')    return ACTIVE_STATUSES.includes(o.status) && isToday(o.createdAt)
+    if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && isToday(o.createdAt)
+    if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status) && isToday(o.createdAt)
     if (tab === 'completed') {
       if (!COMPLETE_STATUSES.includes(o.status)) return false
       const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
@@ -158,9 +158,9 @@ export default function CashierPanel() {
     return false
   })
 
-  const pendingCount  = orders.filter(o => o.status === 'pending').length
-  const assignCount   = orders.filter(o => ASSIGN_STATUSES.includes(o.status)).length
-  const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)).length
+  const pendingCount  = orders.filter(o => o.status === 'pending'                    && isToday(o.createdAt)).length
+  const assignCount   = orders.filter(o => ASSIGN_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
+  const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
     const driver = drivers.find(d => d.id === data.driverId)
