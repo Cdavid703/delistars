@@ -7,6 +7,7 @@ import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS, DEFAULT_CASHIER_NAMES } from '../../services/roles'
 import Logo from '../common/Logo'
+import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import { format, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -71,6 +72,7 @@ export default function AdminPanel() {
             <Power size={20} />
             <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
           </button>
+          <RoleSwitcher />
           <button onClick={() => selectSede(null)} className="btn-icon" title="Cambiar sede">
             <MapPin size={20} />
           </button>

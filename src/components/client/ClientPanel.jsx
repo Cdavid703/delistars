@@ -7,6 +7,7 @@ import { db, storage } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
+import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -147,11 +148,7 @@ export default function ClientPanel() {
         <div className="relative z-10 flex items-center justify-between mb-4">
           <Logo variant="dark" size="sm" />
           <div className="flex items-center gap-1">
-            {role !== effectiveRole && (
-              <button onClick={() => setViewingAs(null)} className="text-cream/70 hover:text-cream text-xs font-body underline mr-2">
-                Volver a mi panel
-              </button>
-            )}
+            <RoleSwitcher variant="dark" />
             <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
               <HelpCircle size={20} />
             </button>

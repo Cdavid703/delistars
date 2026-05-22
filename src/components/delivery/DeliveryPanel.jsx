@@ -6,6 +6,7 @@ import {
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
+import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -199,13 +200,7 @@ export default function DeliveryPanel() {
               {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
             </button>
           </div>
-          {allRoles.includes(ROLES.CASHIER) && (
-            <button onClick={() => setViewingAs(null)} title="Cambiar a modo Cajero"
-              className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
-              <Receipt size={18} />
-              <span className="font-body text-xs font-semibold hidden sm:inline">Cajero</span>
-            </button>
-          )}
+          <RoleSwitcher />
           <button onClick={() => selectSede(null)} className="btn-icon"><MapPin size={20} /></button>
           <button onClick={logout} className="btn-icon"><LogOut size={20} /></button>
         </div>

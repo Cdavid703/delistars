@@ -7,6 +7,7 @@ import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, ROLES } from '../../services/roles'
 import Logo from '../common/Logo'
+import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
 import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
@@ -229,18 +230,7 @@ export default function CashierPanel() {
             <Calculator size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
-          {allRoles.includes(ROLES.DRIVER) && (
-            <button onClick={() => setViewingAs(ROLES.DRIVER)} title="Cambiar a modo Domiciliario"
-              className="btn-icon text-coal/60 hover:text-mint flex items-center gap-1 px-2">
-              <Bike size={18} />
-              <span className="font-body text-xs font-semibold hidden sm:inline">Moto</span>
-            </button>
-          )}
-          <button onClick={() => setViewingAs('client')} title="Ver como cliente"
-            className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
-            <ShoppingBag size={18} />
-            <span className="font-body text-xs font-semibold hidden sm:inline">Cliente</span>
-          </button>
+          <RoleSwitcher />
           <button onClick={() => setShowManual(true)} className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
             <BookOpen size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
