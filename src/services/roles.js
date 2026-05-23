@@ -35,6 +35,10 @@ export const DEFAULT_DRIVER_NAMES = {
   'josemanuellondonorivillas@gmail.com': 'José Manuel Londoño',
 }
 
+export const DEFAULT_DRIVER_PHONES = {
+  'cdavid.jaramillo@gmail.com': '3508341643',
+}
+
 export const ROLES = {
   ADMIN:    'admin',
   CASHIER:  'cashier',
@@ -48,6 +52,8 @@ export const SEDES = {
     id:        'santa_lucia',
     name:      'Santa Lucía',
     address:   'Cra. 87 #48e-3, Santa Rosa De Lima, Medellín',
+    // Cadena completa estilo Google Maps — usada como ORIGEN al calcular ruta
+    mapsAddress: 'DELISTAR | Santa Lucía | Perros y hamburguesas | Medellín, Cra. 87 #48e-3, Santa Rosa De Lima, Medellín, San Javier, Medellín, Antioquia',
     coords:    { lat: 6.2397, lng: -75.6111 },
     whatsapp:  '573135065720',
   },
@@ -55,6 +61,7 @@ export const SEDES = {
     id:        'santa_teresita',
     name:      'Santa Teresita',
     address:   'Cl 35B #87A-165, La América, Medellín',
+    mapsAddress: 'Cl 35B #87A-165, La América, Medellín, Antioquia',
     coords:    { lat: 6.2477, lng: -75.6020 },
     whatsapp:  '573150634084',
   },
