@@ -12,28 +12,38 @@ import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  MapPin, ShoppingBag, Navigation,
-  LogOut, Info, Star, Plus, X, AlertCircle, Clock, DollarSign, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp, BookOpen
+  MapPin, ShoppingBag, Navigation, Search,
+  LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
+  HelpCircle, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 
 const STATUS_STEPS = [
-  { key: 'pending',    label: 'Pedido enviado',        emoji: '📋' },
-  { key: 'quoted',     label: 'Cotización recibida',   emoji: '💰' },
-  { key: 'assigned',   label: 'Domiciliario asignado', emoji: '🛵' },
-  { key: 'accepted',   label: 'Domiciliario aceptó',   emoji: '✅' },
-  { key: 'preparing',  label: 'En preparación',         emoji: '🍳' },
-  { key: 'in_transit', label: 'En camino',              emoji: '🏃' },
-  { key: 'arrived',    label: 'Llegó al destino',       emoji: '📍' },
-  { key: 'delivered_paid',  label: '¡Entregado!',       emoji: '🎉' },
-  { key: 'pending_cuadre',  label: '¡Entregado!',       emoji: '🎉' },
-  { key: 'completed',       label: '¡Entregado!',       emoji: '🎉' },
-  { key: 'rejected',        label: 'Pedido rechazado',  emoji: '❌' },
+  { key: 'pending',       label: 'Pedido enviado',        emoji: '📋' },
+  { key: 'quoted',        label: 'Cotización recibida',   emoji: '💰' },
+  { key: 'assigned',      label: 'Domiciliario asignado', emoji: '🛵' },
+  { key: 'accepted',      label: 'Domiciliario aceptó',   emoji: '✅' },
+  { key: 'preparing',     label: 'En preparación',        emoji: '🍳' },
+  { key: 'in_transit',    label: 'En camino',             emoji: '🏃' },
+  { key: 'arrived',       label: 'Llegó al destino',      emoji: '📍' },
+  { key: 'delivered_paid',label: '¡Entregado!',           emoji: '🎉' },
+  { key: 'pending_cuadre',label: '¡Entregado!',           emoji: '🎉' },
+  { key: 'completed',     label: '¡Entregado!',           emoji: '🎉' },
+  { key: 'rejected',      label: 'Pedido rechazado',      emoji: '❌' },
+  { key: 'cancelled',     label: 'Pedido cancelado',      emoji: '🚫' },
 ]
 
 const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
 const CLOSED_STATUSES    = ['rejected', 'cancelled']
+
+// Pasos positivos para calcular el progreso (excluye estados de cierre)
+const PROGRESS_KEYS = ['pending','quoted','assigned','accepted','preparing','in_transit','arrived','delivered_paid']
+const getProgress = status => {
+  if (CLOSED_STATUSES.includes(status)) return 0
+  if (DELIVERED_STATUSES.includes(status)) return 100
+  const idx = PROGRESS_KEYS.indexOf(status)
+  return idx === -1 ? 0 : Math.round(((idx + 1) / PROGRESS_KEYS.length) * 100)
+}
 
 const isToday = ts => {
   if (!ts?.toDate) return false
@@ -48,7 +58,7 @@ export default function ClientPanel() {
   const [orders,         setOrders]         = useState([])
   const [selectedId,     setSelectedId]     = useState(null)
   const [showForm,       setShowForm]       = useState(false)
-  const [platformActive, setPlatformActive] = useState(true)
+  const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
   const [ratingOrder,    setRatingOrder]    = useState(null)
@@ -523,7 +533,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
               Escanea para pagar con {form.payment}
             </p>
             <img
-              src="/qr-bancolombia.jpeg"
+              src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
               alt="QR Bancolombia DELISTARS"
               className="w-52 h-52 object-contain"
             />
@@ -548,7 +558,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 function ClientOrderCard({ order, onClick }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
-  const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
+  const progress = getProgress(order.status)
   const hasQuote = order.totalPrice > 0
 
   return (
@@ -628,8 +638,8 @@ function ClientOrderDetail({ order, onClose }) {
   }, [order.status, order.inTransitAt, order.acceptedAt])
 
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
-  const step     = STATUS_STEPS[Math.max(0, stepIdx)]
-  const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
+  const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
+  const progress = getProgress(order.status)
   const isDelivered = DELIVERED_STATUSES.includes(order.status)
   const hasQuote = order.totalPrice > 0
 
@@ -707,7 +717,7 @@ function ClientOrderDetail({ order, onClose }) {
                     Escanea para pagar
                   </p>
                   <img
-                    src="/qr-bancolombia.jpeg"
+                    src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
                     alt="QR Bancolombia DELISTARS"
                     className="w-52 h-52 object-contain"
                   />
@@ -760,11 +770,14 @@ function ClientOrderDetail({ order, onClose }) {
           {/* Timeline */}
           <div className="flex flex-col gap-2">
             {STATUS_STEPS.filter((s, i, arr) => {
-              const keys = ['delivered_paid','pending_cuadre','completed']
-              if (keys.includes(s.key)) return i === arr.findIndex(x => keys.includes(x.key))
+              const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
+              if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
               return true
             }).map((s, i) => {
-              const done = STATUS_STEPS.findIndex(x => x.key === order.status) >= STATUS_STEPS.findIndex(x => x.key === s.key)
+              const currentIdx = STATUS_STEPS.findIndex(x => x.key === order.status)
+              const done = CLOSED_STATUSES.includes(order.status)
+                ? s.key === order.status
+                : currentIdx >= 0 && currentIdx >= STATUS_STEPS.findIndex(x => x.key === s.key)
               return (
                 <div key={s.key} className="flex items-center gap-3">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${
@@ -776,11 +789,12 @@ function ClientOrderDetail({ order, onClose }) {
             })}
           </div>
 
-          {/* ETA / driver status — features #8 */}
-          {['accepted', 'in_transit', 'arrived'].includes(order.status) && (
+          {/* ETA / driver status */}
+          {['accepted', 'preparing', 'in_transit', 'arrived'].includes(order.status) && (
             <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
               <p className="font-display text-base tracking-wide">
-                {order.status === 'accepted'   ? '✅ Domiciliario en camino' :
+                {order.status === 'accepted'   ? '✅ Domiciliario aceptó el pedido' :
+                 order.status === 'preparing'  ? '🍳 Tu pedido está siendo preparado' :
                  order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
                                                  '📍 Domiciliario llegó'}
               </p>
@@ -840,6 +854,16 @@ function ClientOrderDetail({ order, onClose }) {
               {order.rejectionReason && (
                 <p className="font-body text-sm text-coal/70 mt-2">Motivo: {order.rejectionReason}</p>
               )}
+              <p className="font-body text-xs text-coal/50 mt-3">
+                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
+              </p>
+            </div>
+          )}
+
+          {order.status === 'cancelled' && (
+            <div className="bg-coal/5 border border-coal/20 rounded-2xl p-4 text-center">
+              <p className="text-3xl mb-2">🚫</p>
+              <p className="font-display text-lg tracking-wide text-coal/70">Pedido cancelado</p>
               <p className="font-body text-xs text-coal/50 mt-3">
                 Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
               </p>
