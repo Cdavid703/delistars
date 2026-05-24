@@ -18,7 +18,7 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X, ShoppingBag,
-  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight
+  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
 } from 'lucide-react'
 
 const TABS = [
@@ -81,6 +81,8 @@ export default function CashierPanel() {
   const [newDriverName,   setNewDriverName]  = useState('')
   const [newDriverPhone,  setNewDriverPhone] = useState('')
   const [driverMsg,       setDriverMsg]      = useState('')
+  const [editingDriver,   setEditingDriver]  = useState(null)
+  const [editPhone,       setEditPhone]      = useState('')
   const [platformActive,  setPlatformActive] = useState(null)
   const [newOrderAlert,   setNewOrderAlert]  = useState(null)
   const [alarmActive,     setAlarmActive]    = useState(false)
@@ -206,6 +208,25 @@ export default function CashierPanel() {
     } catch { setDriverMsg('❌ Error al agregar domiciliario') }
   }
 
+  const handleUpdatePhone = async (driver) => {
+    try {
+      await setDoc(doc(db, 'roles_drivers', driver.id), {
+        email: driver.id,
+        name:  driver.name,
+        phone: editPhone.trim() || null,
+      }, { merge: true })
+      const snap = await getDocs(collection(db, 'roles_drivers'))
+      const fd   = snap.docs.map(d => ({ id: d.id, ...d.data(), phone: d.data().phone || DEFAULT_DRIVER_PHONES[d.id] || null }))
+      const fids = fd.map(d => d.id)
+      setDrivers([
+        ...DEFAULT_DRIVERS.filter(e => !fids.includes(e)).map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e, phone: DEFAULT_DRIVER_PHONES[e] || null })),
+        ...fd,
+      ])
+      setEditingDriver(null)
+      setEditPhone('')
+    } catch { setDriverMsg('❌ Error al actualizar teléfono') }
+  }
+
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
       {/* Header */}
@@ -278,16 +299,46 @@ export default function CashierPanel() {
               <p className="font-body text-[10px] uppercase tracking-wider text-coal/40 mb-2">Registrados actualmente</p>
               <div className="flex flex-col gap-1.5">
                 {drivers.map(d => (
-                  <div key={d.id} className="flex items-center gap-2 bg-smoked/50 rounded-xl px-3 py-2">
-                    <Bike size={14} className="text-mint flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-body text-sm font-semibold text-coal truncate">{d.name || d.id}</p>
-                      <p className="font-body text-[11px] text-coal/40 truncate">{d.id}</p>
+                  <div key={d.id} className="flex flex-col gap-1.5 bg-smoked/50 rounded-xl px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Bike size={14} className="text-mint flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-body text-sm font-semibold text-coal truncate">{d.name || d.id}</p>
+                        <p className="font-body text-[11px] text-coal/40 truncate">{d.id}</p>
+                      </div>
+                      {editingDriver !== d.id && (
+                        <>
+                          {d.phone ? (
+                            <a href={`tel:${d.phone}`} className="font-body text-xs text-mint whitespace-nowrap">{d.phone}</a>
+                          ) : (
+                            <span className="font-body text-[10px] text-coal/30">sin tel.</span>
+                          )}
+                          <button onClick={() => { setEditingDriver(d.id); setEditPhone(d.phone || '') }}
+                            className="text-coal/30 hover:text-mint transition-colors flex-shrink-0" title="Editar teléfono">
+                            <Pencil size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
-                    {d.phone ? (
-                      <a href={`tel:${d.phone}`} className="font-body text-xs text-mint whitespace-nowrap">{d.phone}</a>
-                    ) : (
-                      <span className="font-body text-[10px] text-coal/30">sin tel.</span>
+                    {editingDriver === d.id && (
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <input
+                          className="input-field py-1.5 text-sm flex-1"
+                          placeholder="Teléfono WhatsApp"
+                          type="tel"
+                          value={editPhone}
+                          onChange={e => setEditPhone(e.target.value)}
+                          autoFocus
+                        />
+                        <button onClick={() => handleUpdatePhone(d)}
+                          className="w-8 h-8 rounded-xl bg-mint flex items-center justify-center flex-shrink-0">
+                          <Check size={14} className="text-cream" />
+                        </button>
+                        <button onClick={() => { setEditingDriver(null); setEditPhone('') }}
+                          className="w-8 h-8 rounded-xl bg-smoked flex items-center justify-center flex-shrink-0">
+                          <X size={14} className="text-coal/50" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
