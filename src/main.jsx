@@ -6,8 +6,11 @@ import './index.css'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // BASE_URL = '/domicilios/' in production, '/' in dev
     navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {})
+    // Cuando el SW se actualiza y toma control, recargar para usar el código nuevo
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload()
+    })
   })
 }
 
