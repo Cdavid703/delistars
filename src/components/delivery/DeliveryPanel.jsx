@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  collection, query, where, onSnapshot, getDocs,
+  collection, query, where, getDocs,
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
@@ -15,15 +15,58 @@ import {
   ExternalLink, CheckCircle, Banknote, LogOut, Bell,
   DollarSign, Calculator, X, MessageSquare, BookOpen,
   Search, ChevronDown, ChevronUp, HelpCircle, Receipt,
-  Send, Radio
+  Send, Radio, Route, Target
 } from 'lucide-react'
-import { ROLES } from '../../services/roles'
+import { ROLES, SEDES } from '../../services/roles'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
   { id: 'active',    label: 'En curso' },
   { id: 'completed', label: 'Entregados' },
 ]
+
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') ctx.resume()
+    ;[880, 1100, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'; osc.frequency.value = freq
+      const t = ctx.currentTime + i * 0.18
+      gain.gain.setValueAtTime(0.4, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
+      osc.start(t); osc.stop(t + 0.16)
+    })
+  } catch (_) {}
+}
+
+// Distancia geodésica en kilómetros (fórmula haversine)
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
+// Umbral para considerar 2 pedidos "cercanos" (en km)
+const NEARBY_THRESHOLD_KM = 0.4
+
+// Geocoder via Nominatim (OpenStreetMap). Rate-limited a ~1 req/s.
+async function geocodeAddress(fullAddress) {
+  try {
+    const q = encodeURIComponent(fullAddress + ', Medellín, Colombia')
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+      headers: { 'Accept-Language': 'es' },
+    })
+    const json = await res.json()
+    if (json[0]) return { lat: parseFloat(json[0].lat), lng: parseFloat(json[0].lon) }
+  } catch (_) {}
+  return null
+}
 
 const isToday = ts => {
   if (!ts?.toDate) return false
@@ -41,8 +84,12 @@ export default function DeliveryPanel() {
   const [showCuadre,      setShowCuadre]     = useState(false)
   const [showManual,      setShowManual]     = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
-  const [debugInfo,       setDebugInfo]      = useState(null)
   const [locationSharing, setLocationSharing] = useState(false)
+  const [showRoute,       setShowRoute]      = useState(false)
+  // Cache persistente { fullAddress: { lat, lng } | null }
+  const [geoCache, setGeoCache] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ds_geo_cache_v1') || '{}') } catch { return {} }
+  })
   const prevCount        = useRef(0)
   const geoWatchId       = useRef(null)
   const locShareWatchId  = useRef(null)
@@ -52,39 +99,35 @@ export default function DeliveryPanel() {
   useEffect(() => {
     if (!user?.email) return
     const email = user.email.toLowerCase().trim()
-    setDebugInfo({ email, status: 'conectando…', count: null, error: null })
     const q = query(collection(db, 'orders'), where('driverEmail', '==', email))
 
-    // Test rápido para detectar si las reglas de Firestore bloquean la query
-    getDocs(q)
-      .then(snap => console.log('[Driver] getDocs ok —', snap.size, 'pedidos'))
-      .catch(err => {
-        console.error('[Driver] getDocs bloqueado:', err.code, err.message)
-        setDebugInfo(d => ({ ...d, status: 'error', error: 'REGLA FIRESTORE: ' + err.code + ' — ' + err.message }))
-      })
-
-    return onSnapshot(q, snap => {
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      const newPending = all.filter(o => o.status === 'assigned').length
-      if (newPending > prevCount.current) {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('🔔 DeliStars — Nuevo pedido', {
-            body: `Tienes ${newPending} pedido(s) por aceptar`,
-            icon: '/logo_sello.png',
-          })
+    const fetchOrders = async () => {
+      try {
+        const snap = await getDocs(q)
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        const newPending = all.filter(o => o.status === 'assigned').length
+        if (newPending > prevCount.current) {
+          playNotifSound()
+          try {
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              new Notification('🔔 DeliStars — Nuevo pedido', {
+                body: `Tienes ${newPending} pedido(s) por aceptar`,
+                icon: '/logo_sello.png',
+              })
+            }
+          } catch (_) {}
         }
+        prevCount.current = newPending
+        setNotifCount(newPending)
+        setOrders(all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))
+      } catch (err) {
+        console.error('[DeliveryPanel] Error al leer pedidos:', err.code, err.message)
       }
-      prevCount.current = newPending
-      setNotifCount(newPending)
-      setOrders(all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)))
-      setDebugInfo({ email, status: 'ok', count: all.length, error: null })
-    }, err => {
-      console.error('[DeliveryPanel] Error al leer pedidos:', err.code, err.message)
-      setDebugInfo({ email, status: 'error', count: null, error: err.code + ': ' + err.message })
-    })
-  // sede NO se usa en la query — no debe ser dependencia para evitar
-  // que el listener se cancele y reinicie cada vez que cambia la sede
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    }
+
+    fetchOrders()
+    const interval = setInterval(fetchOrders, 5000)
+    return () => clearInterval(interval)
   }, [user?.email])
 
   useEffect(() => {
@@ -172,6 +215,65 @@ export default function DeliveryPanel() {
     return o.createdAt.toDate().toDateString() === target.toDateString()
   })
 
+  // Pedidos "ruteables" = todos los que el domiciliario debe atender (asignados + en curso)
+  const routableOrders = [...pendingOrders, ...activeOrders].filter(o => o.fullAddress)
+
+  // Persistir cache de geocoding
+  useEffect(() => {
+    try { localStorage.setItem('ds_geo_cache_v1', JSON.stringify(geoCache)) } catch {}
+  }, [geoCache])
+
+  // Geocodificar direcciones nuevas (rate-limited a 1.2s entre requests para respetar Nominatim)
+  const routableAddrKey = routableOrders.map(o => o.fullAddress).join('|')
+  useEffect(() => {
+    const toGeocode = routableOrders
+      .map(o => o.fullAddress)
+      .filter(addr => addr && !(addr in geoCache))
+    if (toGeocode.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      for (const addr of toGeocode) {
+        if (cancelled) return
+        const geo = await geocodeAddress(addr)
+        if (cancelled) return
+        setGeoCache(prev => ({ ...prev, [addr]: geo }))
+        await new Promise(r => setTimeout(r, 1200))
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routableAddrKey])
+
+  // Clusters de pedidos cercanos entre sí (≤ NEARBY_THRESHOLD_KM)
+  const nearbyClusters = useMemo(() => {
+    const geocoded = routableOrders
+      .map(o => ({ ...o, geo: geoCache[o.fullAddress] }))
+      .filter(o => o.geo)
+    if (geocoded.length < 2) return []
+    const clusters = []
+    const visited = new Set()
+    for (let i = 0; i < geocoded.length; i++) {
+      if (visited.has(i)) continue
+      const cluster = [geocoded[i]]
+      visited.add(i)
+      let added = true
+      while (added) {
+        added = false
+        for (let j = 0; j < geocoded.length; j++) {
+          if (visited.has(j)) continue
+          const near = cluster.some(c =>
+            haversineKm(c.geo.lat, c.geo.lng, geocoded[j].geo.lat, geocoded[j].geo.lng) <= NEARBY_THRESHOLD_KM
+          )
+          if (near) { cluster.push(geocoded[j]); visited.add(j); added = true }
+        }
+      }
+      if (cluster.length >= 2) clusters.push(cluster)
+    }
+    return clusters
+  }, [geoCache, routableAddrKey])
+
+  const totalNearby = nearbyClusters.reduce((s, c) => s + c.length, 0)
+
   const tabOrders = tab === 'pending' ? pendingOrders : tab === 'active' ? activeOrders : completedOrders
 
   return (
@@ -185,7 +287,7 @@ export default function DeliveryPanel() {
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-mint/15 text-mint">Domiciliario</span>
-              <p className="font-body text-xs text-coal/50">{sede?.name}</p>
+              <p className="font-body text-xs text-coal/50">{sede?.id === 'all' ? 'Ambas sedes' : sede?.name}</p>
             </div>
           </div>
         </div>
@@ -218,23 +320,6 @@ export default function DeliveryPanel() {
         </div>
       </header>
 
-      {/* DEBUG — remover después */}
-      {debugInfo && (
-        <div className="mx-4 mt-2 bg-coal/90 text-cream rounded-xl px-3 py-2 text-[11px] font-mono flex flex-col gap-0.5">
-          <p>📧 email buscado: <strong className="text-mint">{debugInfo.email}</strong></p>
-          <p>📡 estado: <strong>{debugInfo.status}</strong>
-            {debugInfo.count !== null
-              ? debugInfo.count === 0
-                ? <span className="text-red-400"> · 0 pedidos — email no coincide con los pedidos asignados</span>
-                : <span className="text-mint"> · {debugInfo.count} pedido(s) encontrados ✅</span>
-              : ''}
-          </p>
-          {debugInfo.error && <p className="text-red-400">❌ {debugInfo.error}</p>}
-          {debugInfo.count === 0 && (
-            <p className="text-yellow-300 mt-1">⚠️ Comparte este email con el administrador para verificar que los pedidos se asignen con este email exacto.</p>
-          )}
-        </div>
-      )}
 
       {notifCount > 0 && (
         <div className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 animate-bounce-soft">
@@ -295,6 +380,48 @@ export default function DeliveryPanel() {
         )
       })()}
 
+      {/* Nearby orders alert + route suggestion (sólo en Pedidos / En curso, con ≥2 pedidos) */}
+      {tab !== 'completed' && routableOrders.length >= 2 && (
+        <div className="mx-4 mt-2 flex flex-col gap-2">
+          {nearbyClusters.length > 0 && (
+            <button
+              onClick={() => setShowRoute(true)}
+              className="w-full bg-mint/15 border border-mint/40 rounded-xl px-4 py-2.5 flex items-center gap-3 hover:bg-mint/25 transition-colors text-left"
+            >
+              <Target size={18} className="text-mint flex-shrink-0 animate-pulse" />
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-bold text-coal leading-tight">
+                  {totalNearby === 2
+                    ? '¡2 pedidos a menos de 400 m!'
+                    : `¡${totalNearby} pedidos en ${nearbyClusters.length === 1 ? 'la misma zona' : `${nearbyClusters.length} zonas`} (≤ 400 m)!`}
+                </p>
+                <p className="font-body text-xs text-coal/60">Toca para ver ruta sugerida</p>
+              </div>
+              <Route size={18} className="text-mint flex-shrink-0" />
+            </button>
+          )}
+          {nearbyClusters.length === 0 && (
+            <button
+              onClick={() => setShowRoute(true)}
+              className="w-full bg-cherry/10 border border-cherry/30 rounded-xl px-4 py-2.5 flex items-center gap-3 hover:bg-cherry/20 transition-colors text-left"
+            >
+              <Route size={18} className="text-cherry flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-bold text-coal leading-tight">
+                  Sugerir orden de entrega ({routableOrders.length} pedidos)
+                </p>
+                <p className="font-body text-xs text-coal/60">
+                  {Object.keys(geoCache).length < routableOrders.length
+                    ? 'Calculando ubicaciones…'
+                    : 'Ruta optimizada desde la sede'}
+                </p>
+              </div>
+              <Navigation size={16} className="text-cherry flex-shrink-0" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Summary for completed tab */}
       {tab === 'completed' && tabOrders.length > 0 && (
         <DriverEntregadosSummary orders={tabOrders} />
@@ -323,6 +450,17 @@ export default function DeliveryPanel() {
 
       {showManual && (
         <DriverManualModal onClose={() => setShowManual(false)} />
+      )}
+
+      {showRoute && (
+        <RouteSuggestionModal
+          orders={routableOrders}
+          geoCache={geoCache}
+          clusters={nearbyClusters}
+          sede={sede}
+          onClose={() => setShowRoute(false)}
+          onOrderClick={o => { setShowRoute(false); setSelected(o) }}
+        />
       )}
     </div>
   )
@@ -727,55 +865,108 @@ const DRIVER_MANUAL_SECTIONS = [
     id: 'flujo', emoji: '📋', title: 'Flujo de trabajo', color: 'text-cherry',
     content: [
       { type: 'steps', items: [
-        'Recibes el pedido en "Pedidos" con una notificación. Ábrelo y toca "Aceptar pedido".',
-        'Toca "Iniciar entrega" cuando salgas a recoger y llevar el pedido.',
-        'Toca "Llegué al destino" cuando llegues donde el cliente.',
-        'Toca "Marcar como entregado" al entregar. Si fue efectivo → queda en Cuadre.',
-        'Ve al cajero para hacer el cuadre de caja con el efectivo recibido.',
+        'Abre la app y selecciona tu sede (o "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita al mismo tiempo).',
+        'Cuando el cajero te asigne un pedido, aparecerá en "Pedidos" con la campana en rojo. Ábrelo y toca "Aceptar pedido".',
+        'Toca "Iniciar entrega" cuando salgas con el pedido hacia el cliente.',
+        'Toca "Llegué al destino" cuando estés frente al cliente.',
+        'Toca "Marcar como entregado" al entregar. Si fue en efectivo, el pedido queda en "Cuadre".',
+        'Al terminar el turno, usa el botón "Cuadre" y muéstrale el resumen al cajero para entregar el efectivo.',
       ]},
+    ],
+  },
+  {
+    id: 'sedes', emoji: '📍', title: 'Trabajar en ambas sedes', color: 'text-mint',
+    content: [
+      { type: 'p', text: 'Al entrar a la app puedes elegir "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita simultáneamente. No necesitas salir y cambiar de sede.' },
+      { type: 'table', rows: [
+        ['Ambas sedes',    'Ves pedidos de Santa Lucía y Santa Teresita a la vez'],
+        ['Santa Lucía',    'Solo ves pedidos de la sede de Santa Lucía'],
+        ['Santa Teresita', 'Solo ves pedidos de la sede de Santa Teresita'],
+      ]},
+      { type: 'tip', text: 'Para cambiar de sede sin cerrar sesión, toca el ícono de ubicación 📍 en la esquina superior derecha.' },
     ],
   },
   {
     id: 'estados', emoji: '🏷️', title: 'Estados del pedido', color: 'text-coal',
     content: [
       { type: 'table', rows: [
-        ['🛵 ASIGNADO',   'Te asignaron el pedido — acéptalo'],
-        ['✅ ACEPTADO',   'Confirmaste que vas'],
-        ['🏃 EN CAMINO',  'Estás en ruta al cliente'],
-        ['📍 LLEGÓ',      'Llegaste al destino'],
-        ['💰 CUADRE',     'Entregado en efectivo — pendiente cuadre de caja'],
-        ['☑️ COMPLETADO', 'Todo listo, pedido cerrado'],
+        ['🛵 ASIGNADO',   'El cajero te asignó el pedido — acéptalo pronto'],
+        ['✅ ACEPTADO',   'Confirmaste que vas a recoger y entregar'],
+        ['🏃 EN CAMINO',  'Iniciaste la entrega — el cliente puede ver tu ruta'],
+        ['📍 LLEGÓ',      'Llegaste donde el cliente'],
+        ['💰 CUADRE',     'Entregado en efectivo — pendiente cuadre con cajero'],
+        ['☑️ COMPLETADO', 'Pedido cerrado y cuadrado'],
       ]},
     ],
   },
   {
-    id: 'navegacion', emoji: '🗺️', title: 'Navegación', color: 'text-mint',
+    id: 'roles', emoji: '🔄', title: 'Cambiar de rol', color: 'text-tangelo',
     content: [
-      { type: 'p', text: 'Dentro del detalle del pedido encontrarás dos botones: Google Maps y Waze. Úsalos para llegar al destino del cliente.' },
-      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está en curso.' },
+      { type: 'p', text: 'Si tienes más de un rol (por ejemplo, domiciliario y cajero), puedes cambiar entre ellos sin cerrar sesión usando el selector de rol en la barra superior.' },
+      { type: 'steps', items: [
+        'Toca el ícono 🚴 con la flecha en la esquina superior derecha.',
+        'Selecciona el rol al que quieres cambiar: Cajero, Cliente, etc.',
+        'La app cambia de vista inmediatamente sin necesidad de cerrar sesión.',
+      ]},
+      { type: 'tip', text: 'Para volver a tu vista de domiciliario, toca el mismo selector y elige "Domiciliario".' },
+    ],
+  },
+  {
+    id: 'navegacion', emoji: '🗺️', title: 'Navegación al cliente', color: 'text-mint',
+    content: [
+      { type: 'p', text: 'Dentro del detalle de cada pedido encontrarás dos botones de navegación:' },
+      { type: 'table', rows: [
+        ['Google Maps', 'Abre Google Maps con la dirección del cliente lista para navegar'],
+        ['Waze',        'Abre Waze con la dirección del cliente lista para navegar'],
+      ]},
+      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Activa el GPS compartido 📡 en la barra superior para que el cajero también te ubique aunque no tengas pedido activo.' },
     ],
   },
   {
     id: 'efectivo', emoji: '💵', title: 'Pedidos en efectivo', color: 'text-mustard',
     content: [
+      { type: 'p', text: 'Antes de llegar donde el cliente, abre el detalle del pedido y revisa la sección "Pago":' },
       { type: 'table', rows: [
-        ['Paga exacto',    'El cajero marcó que el cliente paga exacto — no necesitas devolver cambio'],
-        ['Necesita cambio','El cajero indica cuánto paga el cliente y cuánto debes devolver de cambio'],
+        ['Paga exacto',    'El cliente tiene el dinero exacto — no necesitas traer cambio'],
+        ['Necesita cambio','El cajero indica cuánto paga el cliente y cuánto debes devolver'],
       ]},
-      { type: 'tip', text: 'Revisa siempre la sección de "Pago" en el detalle antes de llegar donde el cliente.' },
+      { type: 'tip', text: 'Al marcar como entregado un pedido en efectivo, queda en estado "Cuadre" hasta que lo cuadres con el cajero.' },
     ],
   },
   {
     id: 'cuadre', emoji: '💰', title: 'Cuadre de turno', color: 'text-mustard',
     content: [
-      { type: 'p', text: 'Al final del turno usa el botón "Cuadre" para ver cuánto efectivo debes entregar en caja y cuánto te deben por los domicilios.' },
-      { type: 'tip', text: 'Muéstrale al cajero la pantalla de cuadre para hacer el recuento juntos.' },
+      { type: 'p', text: 'Al terminar el turno, toca el botón "Cuadre" en la barra superior para ver el resumen del día:' },
+      { type: 'table', rows: [
+        ['Efectivo a entregar', 'Total en efectivo que recibiste de los clientes y debes entregar al cajero'],
+        ['Lo que te deben',     'Total de domicilios ganados que el cajero te debe pagar a ti'],
+      ]},
+      { type: 'tip', text: 'Muéstrale la pantalla de cuadre al cajero para hacer el recuento juntos y cerrar el turno.' },
+    ],
+  },
+  {
+    id: 'gps', emoji: '📡', title: 'GPS compartido', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'La app tiene dos modos de compartir tu ubicación:' },
+      { type: 'table', rows: [
+        ['Automático',    'Cuando tienes un pedido "En camino", tu GPS se comparte automáticamente con el cliente'],
+        ['GPS manual 📡', 'Activa el botón GPS en la barra superior para que el cajero te ubique en todo momento, aunque no tengas pedido activo'],
+      ]},
+      { type: 'tip', text: 'Desactiva el GPS manual cuando termines el turno para ahorrar batería.' },
+    ],
+  },
+  {
+    id: 'comentarios', emoji: '💬', title: 'Comentarios en pedidos', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'Dentro del detalle de cada pedido puedes dejar comentarios visibles para el cajero: timbre roto, cliente no estaba, dirección incorrecta, etc.' },
+      { type: 'tip', text: 'El cajero también puede dejarte notas en el pedido. Revisa la sección "Nota del cajero" antes de salir a entregar.' },
     ],
   },
   {
     id: 'historial', emoji: '📅', title: 'Historial de entregas', color: 'text-coal',
     content: [
-      { type: 'p', text: 'En la pestaña "Entregados" puedes filtrar por fecha usando el selector de fecha. Por defecto muestra el día de hoy.' },
+      { type: 'p', text: 'En la pestaña "Entregados" puedes ver todos tus pedidos del día. Usa el selector de fecha para consultar días anteriores.' },
+      { type: 'tip', text: 'El historial muestra solo tus pedidos entregados, no los de otros domiciliarios.' },
     ],
   },
 ]
@@ -861,6 +1052,202 @@ function DriverManualModal({ onClose }) {
           <div className="mt-2 text-center">
             <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · v2.0</p>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sugerencia de ruta (nearest-neighbor) ─────────────────────────────────────
+function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrderClick }) {
+  // Punto de inicio: si el domiciliario eligió una sede concreta, partimos de ella.
+  // Si eligió "Ambas sedes", agrupamos por sede y empezamos por la sede con más pedidos.
+  const ordersWithGeo = orders
+    .map(o => ({ ...o, geo: geoCache[o.fullAddress] }))
+    .filter(o => o.geo)
+
+  const ordersSinGeo = orders.filter(o => !geoCache[o.fullAddress])
+
+  // Determinar coords de inicio
+  let startCoords = null
+  let startLabel  = ''
+  if (sede?.id && sede.id !== 'all' && SEDES[sede.id]) {
+    startCoords = SEDES[sede.id].coords
+    startLabel  = SEDES[sede.id].name
+  } else if (ordersWithGeo.length > 0) {
+    // Ambas sedes → usar la sede del primer pedido (por orden de llegada)
+    const firstSedeId = ordersWithGeo[0].sedeId
+    if (firstSedeId && SEDES[firstSedeId]) {
+      startCoords = SEDES[firstSedeId].coords
+      startLabel  = SEDES[firstSedeId].name
+    }
+  }
+
+  // Nearest-neighbor desde startCoords (o desde el primer pedido si no hay sede)
+  const route = []
+  const remaining = [...ordersWithGeo]
+  let current = startCoords
+  while (remaining.length > 0) {
+    if (!current) {
+      route.push(remaining.shift())
+      current = route[route.length - 1].geo
+      continue
+    }
+    let bestIdx = 0
+    let bestDist = haversineKm(current.lat, current.lng, remaining[0].geo.lat, remaining[0].geo.lng)
+    for (let k = 1; k < remaining.length; k++) {
+      const d = haversineKm(current.lat, current.lng, remaining[k].geo.lat, remaining[k].geo.lng)
+      if (d < bestDist) { bestDist = d; bestIdx = k }
+    }
+    route.push({ ...remaining[bestIdx], distFromPrev: bestDist })
+    current = remaining[bestIdx].geo
+    remaining.splice(bestIdx, 1)
+  }
+
+  // Mapa: orderId → cluster index (para mostrar etiqueta de zona)
+  const orderClusterTag = {}
+  clusters.forEach((c, i) => {
+    c.forEach(o => { orderClusterTag[o.id] = i + 1 })
+  })
+
+  const openMultiRoute = () => {
+    if (route.length === 0) return
+    const origin = startCoords
+      ? encodeURIComponent((sede?.id && sede.id !== 'all' && SEDES[sede.id]?.mapsAddress) || `${startCoords.lat},${startCoords.lng}`)
+      : encodeURIComponent(route[0].fullAddress + ', Medellín, Colombia')
+    const destOrders = startCoords ? route : route.slice(1)
+    if (destOrders.length === 0) return
+    const last = destOrders[destOrders.length - 1]
+    const destination = encodeURIComponent(last.fullAddress + ', Medellín, Colombia')
+    const waypoints = destOrders.slice(0, -1)
+      .map(o => encodeURIComponent(o.fullAddress + ', Medellín, Colombia'))
+      .join('|')
+    const wpParam = waypoints ? `&waypoints=${waypoints}` : ''
+    window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${wpParam}&travelmode=driving`, '_blank')
+  }
+
+  const totalKm = route.reduce((s, r, i) => {
+    if (i === 0 && startCoords) return s + haversineKm(startCoords.lat, startCoords.lng, r.geo.lat, r.geo.lng)
+    if (i === 0) return 0
+    return s + r.distFromPrev
+  }, 0)
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-scale-in">
+        <div className="sticky top-0 bg-gradient-to-r from-mint to-tangelo px-6 py-5 rounded-t-3xl flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="font-display text-2xl text-cream tracking-wide flex items-center gap-2">
+              <Route size={22} /> Ruta sugerida
+            </p>
+            <p className="font-body text-xs text-cream/80">
+              {route.length} pedido{route.length !== 1 ? 's' : ''} · ~{totalKm.toFixed(1)} km en total
+            </p>
+          </div>
+          <button onClick={onClose} className="text-cream/80 hover:text-cream"><X size={22} /></button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4">
+          {/* Banner de pedidos sin geocodificar */}
+          {ordersSinGeo.length > 0 && (
+            <div className="bg-mustard/10 border border-mustard/30 rounded-xl px-3 py-2.5 flex items-start gap-2">
+              <Search size={14} className="text-mustard flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-body text-xs font-semibold text-coal">
+                  Calculando {ordersSinGeo.length} ubicación{ordersSinGeo.length !== 1 ? 'es' : ''}…
+                </p>
+                <p className="font-body text-[11px] text-coal/60">
+                  Espera unos segundos y vuelve a abrir esta vista para incluir esos pedidos.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Banner de clusters detectados */}
+          {clusters.length > 0 && (
+            <div className="bg-mint/10 border border-mint/30 rounded-xl px-3 py-2.5">
+              <p className="font-body text-xs font-bold text-mint uppercase tracking-wider mb-1.5">
+                🎯 Pedidos cercanos detectados
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {clusters.map((c, i) => (
+                  <p key={i} className="font-body text-xs text-coal">
+                    <span className="font-bold">Zona {i + 1}:</span> {c.length} pedido{c.length !== 1 ? 's' : ''} a ≤ 400 m entre sí
+                    {' '}({c.map(o => o.orderNumber ? `#${o.orderNumber}` : o.name?.split(' ')[0]).join(', ')})
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Lista ordenada */}
+          {startLabel && (
+            <div className="flex items-center gap-2 text-coal/60 font-body text-xs">
+              <MapPin size={14} className="text-cherry" />
+              <span>Saliendo desde <strong>{startLabel}</strong></span>
+            </div>
+          )}
+
+          {route.length === 0 ? (
+            <p className="font-body text-sm text-coal/60 text-center py-6">
+              Aún no hay ubicaciones calculadas para tus pedidos.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {route.map((o, i) => {
+                const tag = orderClusterTag[o.id]
+                return (
+                  <div key={o.id}>
+                    <button
+                      onClick={() => onOrderClick && onOrderClick(o)}
+                      className="w-full text-left bg-smoked/40 hover:bg-smoked/70 rounded-xl px-3 py-2.5 flex items-center gap-3 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-cherry text-cream flex items-center justify-center font-display text-sm flex-shrink-0">
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          {o.orderNumber && (
+                            <span className="font-display text-sm text-cherry">#{o.orderNumber}</span>
+                          )}
+                          <span className="font-body font-semibold text-sm text-coal truncate">{o.name}</span>
+                          {tag && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider bg-mint/20 text-mint px-1.5 py-0.5 rounded-full">
+                              Zona {tag}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-body text-xs text-coal/60 truncate">{o.fullAddress}</p>
+                      </div>
+                      <span className="font-body text-[11px] text-coal/40 font-semibold whitespace-nowrap">
+                        {i === 0 && startCoords
+                          ? `${haversineKm(startCoords.lat, startCoords.lng, o.geo.lat, o.geo.lng).toFixed(2)} km`
+                          : i === 0
+                            ? '—'
+                            : `${o.distFromPrev.toFixed(2)} km`}
+                      </span>
+                    </button>
+                    {i < route.length - 1 && (
+                      <div className="flex items-center gap-1 pl-10 py-0.5 text-coal/30">
+                        <ChevronDown size={12} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Acciones */}
+          {route.length > 0 && (
+            <button onClick={openMultiRoute} className="btn-primary w-full">
+              <Navigation size={16} /> Abrir ruta completa en Google Maps
+            </button>
+          )}
+          <p className="font-body text-[11px] text-coal/40 text-center">
+            Sugerencia automática. Ajusta tu ruta según tráfico real y prioridades.
+          </p>
         </div>
       </div>
     </div>

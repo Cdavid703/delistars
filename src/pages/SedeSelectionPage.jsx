@@ -9,10 +9,12 @@ export default function SedeSelectionPage() {
   const [selected, setSelected] = useState(null)
   const [loading,  setLoading]  = useState(false)
 
+  const ALL_SEDES = { id: 'all', name: 'Ambas sedes', address: 'Santa Lucía + Santa Teresita' }
+
   const handleConfirm = () => {
     if (!selected) return
     setLoading(true)
-    selectSede(SEDES[selected])
+    selectSede(selected === 'all' ? ALL_SEDES : SEDES[selected])
   }
 
   const roleLabel = {
@@ -48,6 +50,34 @@ export default function SedeSelectionPage() {
 
         {/* Sede options */}
         <div className="flex flex-col gap-3 mb-6">
+          {/* Opción "Ambas sedes" solo para domiciliarios */}
+          {role === 'driver' && (
+            <button
+              onClick={() => setSelected('all')}
+              className={`w-full text-left card hover-lift transition-all duration-200 border-2 ${
+                selected === 'all'
+                  ? 'border-mint shadow-soft'
+                  : 'border-transparent hover:border-mint/30'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                  selected === 'all' ? 'bg-mint text-cream' : 'bg-smoked text-coal/50'
+                }`}>
+                  <MapPin size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display text-lg text-coal tracking-wide">Ambas sedes</p>
+                  <p className="font-body text-xs text-coal/50">Santa Lucía + Santa Teresita</p>
+                </div>
+                {selected === 'all' && (
+                  <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-cream" />
+                  </div>
+                )}
+              </div>
+            </button>
+          )}
           {Object.values(SEDES).map((sede) => (
             <button
               key={sede.id}

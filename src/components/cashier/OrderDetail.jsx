@@ -124,7 +124,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const openDirections = () => {
     const dest = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
     if (orderSede) {
-      const origin = `${orderSede.coords.lat},${orderSede.coords.lng}`
+      // Preferimos la dirección textual completa de la sede (cadena Google Maps).
+      // Si por alguna razón no existe, caemos a lat/lng como fallback.
+      const originStr = orderSede.mapsAddress || orderSede.address
+      const origin = originStr
+        ? encodeURIComponent(originStr)
+        : `${orderSede.coords.lat},${orderSede.coords.lng}`
       window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}`, '_blank')
     } else {
       window.open(`https://www.google.com/maps/search/?api=1&query=${dest}`, '_blank')

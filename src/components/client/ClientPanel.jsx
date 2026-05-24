@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  collection, query, where, onSnapshot, addDoc, serverTimestamp,
+  collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import { db, storage } from '../../services/firebase'
@@ -47,29 +47,50 @@ export default function ClientPanel() {
   const [orders,         setOrders]         = useState([])
   const [selected,       setSelected]       = useState(null)
   const [showForm,       setShowForm]       = useState(false)
-  const [platformActive, setPlatformActive] = useState(null)
+  const [platformActive, setPlatformActive] = useState(true)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
+  const [ratingOrder,    setRatingOrder]    = useState(null)
 
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
-      setPlatformActive(snap.exists() ? snap.data().active : false)
-    })
+    return onSnapshot(
+      doc(db, 'config', 'client_platform'),
+      snap => setPlatformActive(snap.exists() ? snap.data().active : false),
+      _err => setPlatformActive(true),
+    )
   }, [])
 
   useEffect(() => {
     if (!user?.uid) return
     const q = query(collection(db, 'orders'), where('clientUid', '==', user.uid))
-    return onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      setOrders(docs)
-    }, err => {
-      console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message)
-    })
-  }, [user])
+    const fetchOrders = async () => {
+      try {
+        const snap = await getDocs(q)
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        setOrders(docs)
+      } catch (err) {
+        console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message)
+      }
+    }
+    fetchOrders()
+    const interval = setInterval(fetchOrders, 5000)
+    return () => clearInterval(interval)
+  }, [user?.uid])
+
+  // Disparar modal de calificación cuando un pedido de hoy se entrega sin calificar
+  useEffect(() => {
+    const prompted = JSON.parse(localStorage.getItem('ds_rated') || '[]')
+    const toRate = orders.find(o =>
+      DELIVERED_STATUSES.includes(o.status) &&
+      !o.rating &&
+      isToday(o.createdAt) &&
+      !prompted.includes(o.id)
+    )
+    setRatingOrder(toRate || null)
+  }, [orders])
 
   // Active orders: show regardless of date (could be from yesterday and still in transit)
   const activeOrders    = orders.filter(o => !DELIVERED_STATUSES.includes(o.status) && !CLOSED_STATUSES.includes(o.status))
@@ -121,9 +142,10 @@ export default function ClientPanel() {
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
-    // Guardar/actualizar perfil del cliente frecuente
+    setShowForm(false)
+    // Guardar/actualizar perfil del cliente frecuente (best-effort, no bloquea)
     if (user.uid) {
-      await setDoc(doc(db, 'customers', user.uid), {
+      setDoc(doc(db, 'customers', user.uid), {
         uid:         user.uid,
         name:        data.name        || user.displayName || '',
         email:       user.email       || '',
@@ -131,9 +153,8 @@ export default function ClientPanel() {
         addresses:   arrayUnion(data.fullAddress),
         lastOrderAt: serverTimestamp(),
         orderCount:  increment(1),
-      }, { merge: true })
+      }, { merge: true }).catch(() => {})
     }
-    setShowForm(false)
   }
 
   return (
@@ -331,6 +352,20 @@ export default function ClientPanel() {
 
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
+
+      {/* Rating modal */}
+      {ratingOrder && (
+        <RatingModal
+          order={ratingOrder}
+          onClose={() => {
+            const prompted = JSON.parse(localStorage.getItem('ds_rated') || '[]')
+            if (!prompted.includes(ratingOrder.id)) {
+              localStorage.setItem('ds_rated', JSON.stringify([...prompted, ratingOrder.id]))
+            }
+            setRatingOrder(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -369,7 +404,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
         phone: data.phone || f.phone,
       }))
       setSavedAddresses(data.addresses || [])
-    })
+    }).catch(() => {})
   }, [user?.uid])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -415,8 +450,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 
       {errors.length > 0 && (
         <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
-          {errors.map(e => (
-            <p key={e} className="flex items-center gap-2 text-sm text-pepper font-body">
+          {errors.map((e, i) => (
+            <p key={i} className="flex items-center gap-2 text-sm text-pepper font-body">
               <AlertCircle size={14} /> {e}
             </p>
           ))}
@@ -487,6 +522,21 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           <option>Transferencia</option>
           <option>Nequi</option>
         </select>
+        {['Transferencia', 'Nequi'].includes(form.payment) && (
+          <div className="mt-3 flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
+            <p className="font-body text-xs text-coal/60 text-center font-semibold">
+              Escanea para pagar con {form.payment}
+            </p>
+            <img
+              src="/qr-bancolombia.jpeg"
+              alt="QR Bancolombia DELISTARS"
+              className="w-52 h-52 object-contain"
+            />
+            <p className="font-body text-[11px] text-coal/50 text-center">
+              DELISTARS · Bancolombia Ahorros *3891
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -558,13 +608,18 @@ function ClientOrderDetail({ order, onClose }) {
       snap => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
       err  => { setUploadError('Error al subir: ' + err.message); setUploadProgress(null) },
       async () => {
-        const url = await getDownloadURL(task.snapshot.ref)
-        await updateDoc(doc(db, 'orders', order.id), {
-          transferReceiptUrl:  url,
-          transferReceiptName: file.name,
-          updatedAt:           serverTimestamp(),
-        })
-        setUploadProgress(null)
+        try {
+          const url = await getDownloadURL(task.snapshot.ref)
+          await updateDoc(doc(db, 'orders', order.id), {
+            transferReceiptUrl:  url,
+            transferReceiptName: file.name,
+            updatedAt:           serverTimestamp(),
+          })
+          setUploadProgress(null)
+        } catch (err) {
+          setUploadError('Error al guardar comprobante: ' + err.message)
+          setUploadProgress(null)
+        }
       }
     )
   }
@@ -577,7 +632,7 @@ function ClientOrderDetail({ order, onClose }) {
     calc()
     const id = setInterval(calc, 30000)
     return () => clearInterval(id)
-  }, [order.status, order.inTransitAt?.seconds, order.acceptedAt?.seconds])
+  }, [order.status, order.inTransitAt, order.acceptedAt])
 
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
@@ -663,6 +718,24 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="font-display text-sm tracking-wide text-coal">
                 📎 Comprobante de {order.payment}
               </p>
+
+              {/* QR de pago */}
+              {!order.transferValidated && (
+                <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
+                  <p className="font-body text-xs text-coal/60 text-center font-semibold">
+                    Escanea para pagar
+                  </p>
+                  <img
+                    src="/qr-bancolombia.jpeg"
+                    alt="QR Bancolombia DELISTARS"
+                    className="w-52 h-52 object-contain"
+                  />
+                  <p className="font-body text-[11px] text-coal/50 text-center">
+                    DELISTARS · Bancolombia Ahorros *3891
+                  </p>
+                </div>
+              )}
+
               {order.transferValidated ? (
                 <div className="flex items-center gap-2 text-mint">
                   <span className="text-lg">✅</span>
@@ -823,9 +896,23 @@ function ClientOrderDetail({ order, onClose }) {
 
 // ─── Client history modal ─────────────────────────────────────────────────────
 function ClientHistoryModal({ orders, onClose, onSelect }) {
+  const [search,     setSearch]     = useState('')
+  const [filterDate, setFilterDate] = useState('')
+
   const historical = orders
     .filter(o => [...DELIVERED_STATUSES, ...CLOSED_STATUSES].includes(o.status))
     .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+
+  const filtered = historical.filter(o => {
+    const dateOk = !filterDate ||
+      (o.createdAt?.toDate && format(o.createdAt.toDate(), 'yyyy-MM-dd') === filterDate)
+    const q = search.trim().toLowerCase()
+    const textOk = !q ||
+      o.items?.toLowerCase().includes(q) ||
+      o.fullAddress?.toLowerCase().includes(q) ||
+      String(o.orderNumber || '').includes(q)
+    return dateOk && textOk
+  })
 
   const fmtDate = ts => {
     if (!ts?.toDate) return ''
@@ -839,19 +926,61 @@ function ClientHistoryModal({ orders, onClose, onSelect }) {
         <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-5 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
           <div>
             <p className="font-display text-xl text-cream tracking-wide">Historial de pedidos</p>
-            <p className="font-body text-xs text-cream/70">{historical.length} pedido{historical.length !== 1 ? 's' : ''} anteriores</p>
+            <p className="font-body text-xs text-cream/70">{filtered.length} de {historical.length} pedido{historical.length !== 1 ? 's' : ''}</p>
           </div>
           <button onClick={onClose} className="text-cream/70 hover:text-cream"><X size={22} /></button>
         </div>
 
+        {/* Búsqueda y filtro */}
+        <div className="px-4 pt-3 pb-2 flex flex-col gap-2 border-b border-coal/10 flex-shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-coal/40" />
+            <input
+              type="text"
+              className="input-field pl-8 py-2 text-sm"
+              placeholder="Buscar por producto, dirección o #pedido…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-coal/30 hover:text-coal/60">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="input-field py-1.5 text-sm flex-1"
+              value={filterDate}
+              onChange={e => setFilterDate(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')}
+            />
+            {filterDate && (
+              <button onClick={() => setFilterDate('')}
+                className="text-xs font-body text-cherry underline whitespace-nowrap">
+                Limpiar
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="overflow-y-auto scroll-custom p-4 flex flex-col gap-2 pb-8">
-          {historical.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <p className="text-4xl">📋</p>
-              <p className="font-body text-coal/40">Aún no tienes pedidos anteriores</p>
+              <p className="text-4xl">🔍</p>
+              <p className="font-body text-coal/40">
+                {historical.length === 0 ? 'Aún no tienes pedidos anteriores' : 'Sin resultados para esa búsqueda'}
+              </p>
+              {(search || filterDate) && (
+                <button onClick={() => { setSearch(''); setFilterDate('') }}
+                  className="text-xs font-body text-cherry underline">
+                  Limpiar filtros
+                </button>
+              )}
             </div>
           ) : (
-            historical.map(o => {
+            filtered.map(o => {
               const isDelivered = DELIVERED_STATUSES.includes(o.status)
               return (
                 <button key={o.id} onClick={() => onSelect(o)}
@@ -861,6 +990,7 @@ function ClientHistoryModal({ orders, onClose, onSelect }) {
                     <div className="flex items-center gap-2">
                       {o.orderNumber && <span className="font-display text-base text-cherry">#{o.orderNumber}</span>}
                       <span className="font-body text-xs text-coal/40">{fmtDate(o.createdAt)}</span>
+                      {o.rating > 0 && <span className="text-xs">{'⭐'.repeat(o.rating)}</span>}
                     </div>
                     <p className="font-body text-sm text-coal/70 truncate">{o.items}</p>
                     {o.totalPrice > 0 && (
@@ -880,16 +1010,99 @@ function ClientHistoryModal({ orders, onClose, onSelect }) {
 }
 
 // ─── Client help modal ────────────────────────────────────────────────────────
+// ─── Rating modal ────────────────────────────────────────────────────────────
+function RatingModal({ order, onClose }) {
+  const [stars,   setStars]   = useState(0)
+  const [hover,   setHover]   = useState(0)
+  const [comment, setComment] = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  const submit = async () => {
+    if (!stars) return
+    setSaving(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        rating:        stars,
+        ratingComment: comment.trim() || null,
+        ratedAt:       serverTimestamp(),
+      })
+    } catch (_) {}
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-coal/60 backdrop-blur-sm animate-fade-in px-4">
+      <div className="bg-cream w-full max-w-sm rounded-3xl shadow-2xl p-6 flex flex-col gap-4 animate-scale-in">
+        <div className="text-center">
+          <p className="text-4xl mb-2">🎉</p>
+          <p className="font-display text-2xl text-coal tracking-wide">¡Pedido entregado!</p>
+          {order.orderNumber && (
+            <p className="font-body text-sm text-coal/50 mt-1">Pedido #{order.orderNumber}</p>
+          )}
+        </div>
+
+        <div>
+          <p className="font-body text-sm text-coal/70 text-center mb-3">
+            ¿Cómo fue tu experiencia?
+          </p>
+          <div className="flex justify-center gap-2">
+            {[1, 2, 3, 4, 5].map(n => (
+              <button
+                key={n}
+                onClick={() => setStars(n)}
+                onMouseEnter={() => setHover(n)}
+                onMouseLeave={() => setHover(0)}
+                className="text-4xl transition-transform hover:scale-110 active:scale-95"
+              >
+                {n <= (hover || stars) ? '⭐' : '☆'}
+              </button>
+            ))}
+          </div>
+          {stars > 0 && (
+            <p className="text-center font-body text-xs text-coal/50 mt-1">
+              {['', 'Muy malo', 'Malo', 'Regular', 'Bueno', '¡Excelente!'][stars]}
+            </p>
+          )}
+        </div>
+
+        <textarea
+          className="textarea-field h-20 scroll-custom text-sm"
+          placeholder="Comentario opcional (entrega rápida, buen trato…)"
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+        />
+
+        <div className="flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-coal/20 font-body text-sm text-coal/50 hover:bg-smoked transition-colors">
+            Omitir
+          </button>
+          <button
+            onClick={submit}
+            disabled={!stars || saving}
+            className="flex-1 btn-primary py-2.5"
+          >
+            {saving ? 'Guardando…' : 'Enviar calificación'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Client help sections ─────────────────────────────────────────────────────
 const CLIENT_HELP_SECTIONS = [
   {
     id: 'pedido', emoji: '🍔', title: '¿Cómo hago un pedido?', color: 'text-cherry',
     content: [
       { type: 'steps', items: [
         'Toca el botón rojo "Hacer pedido" en la parte inferior de la pantalla.',
-        'Llena tus datos: nombre, teléfono / WhatsApp y dirección de entrega.',
-        'Escribe lo que quieres pedir en el campo "¿Qué vas a pedir?".',
-        'Selecciona cómo vas a pagar (Efectivo, Transferencia o Nequi).',
-        'Toca "Enviar pedido" y espera la cotización del cajero.',
+        'Llena tus datos: nombre, teléfono / WhatsApp y dirección de entrega. Si ya pediste antes, tus datos y dirección aparecen automáticamente.',
+        'Escribe lo que quieres pedir en el campo "¿Qué vas a pedir?" con todos los detalles.',
+        'Agrega indicaciones adicionales si las tienes (sin cebolla, timbre 2B, etc.).',
+        'Selecciona cómo vas a pagar: Efectivo, Transferencia o Nequi.',
+        'Si pagas por Transferencia o Nequi, escanea el código QR que aparece en pantalla para hacer el pago.',
+        'Toca "🚀 Enviar pedido" y espera la cotización del cajero.',
       ]},
     ],
   },
@@ -897,48 +1110,76 @@ const CLIENT_HELP_SECTIONS = [
     id: 'cotizacion', emoji: '💰', title: '¿Qué es la cotización?', color: 'text-tangelo',
     content: [
       { type: 'p', text: 'Después de enviar tu pedido, un cajero revisa la disponibilidad y te envía el precio del pedido más el valor del domicilio. Verás el total directamente en tu pedido activo.' },
-      { type: 'tip', text: 'No pagues hasta recibir la cotización. El cajero puede enviarte notas adicionales (horario, disponibilidad, etc.).' },
+      { type: 'tip', text: 'No pagues hasta recibir la cotización. El cajero puede dejarte una nota con información adicional (disponibilidad, tiempo estimado, datos de pago, etc.).' },
     ],
   },
   {
     id: 'seguimiento', emoji: '📍', title: '¿Cómo sigo mi pedido?', color: 'text-mint',
     content: [
+      { type: 'p', text: 'Toca tu pedido activo para ver el estado en tiempo real:' },
       { type: 'table', rows: [
         ['📋 Pedido enviado',        'Esperando cotización del cajero'],
-        ['💰 Cotización recibida',   'Revisa el precio — puedes pagar'],
-        ['🛵 Domiciliario asignado', 'Te asignaron un repartidor'],
+        ['💰 Cotización recibida',   'Revisa el precio en el detalle del pedido'],
+        ['🛵 Domiciliario asignado', 'Ya tienen un repartidor para ti'],
         ['✅ Domiciliario aceptó',   'El repartidor confirmó que va'],
-        ['🏃 En camino',             'El repartidor está en ruta'],
-        ['📍 Llegó al destino',      'Ya está en tu puerta'],
-        ['🎉 ¡Entregado!',           'Pedido completado'],
+        ['🏃 En camino',             'El repartidor está en ruta — puedes ver su ubicación'],
+        ['📍 Llegó al destino',      'El domiciliario ya está en tu puerta'],
+        ['🎉 ¡Entregado!',           'Pedido completado, ¡buen provecho!'],
       ]},
+      { type: 'tip', text: 'Cuando el domiciliario está "En camino", aparece un botón para ver su ubicación en Google Maps en tiempo real.' },
     ],
   },
   {
     id: 'pago', emoji: '💳', title: 'Formas de pago', color: 'text-coal',
     content: [
       { type: 'table', rows: [
-        ['Efectivo',      'Pagas al domiciliario al recibir el pedido'],
-        ['Transferencia', 'Transferencia bancaria antes de la entrega'],
-        ['Nequi',         'Pago por Nequi antes de la entrega'],
+        ['💵 Efectivo',      'Pagas directamente al domiciliario cuando llega a tu puerta'],
+        ['🏦 Transferencia', 'Transferencia bancaria a la cuenta de DeliStars antes de la entrega'],
+        ['📱 Nequi',         'Pago por Nequi a la cuenta de DeliStars antes de la entrega'],
       ]},
-      { type: 'tip', text: 'Para transferencia o Nequi, el cajero te enviará los datos de pago en la nota de cotización.' },
+      { type: 'tip', text: 'Para Transferencia y Nequi: al seleccionar ese método de pago en el formulario, aparece un código QR de Bancolombia (DELISTARS · Ahorros *3891) para escanear y pagar de inmediato.' },
     ],
   },
   {
-    id: 'sede', emoji: '📍', title: 'Selección de sede', color: 'text-coal',
+    id: 'comprobante', emoji: '📎', title: 'Subir comprobante de pago', color: 'text-tangelo',
     content: [
-      { type: 'p', text: 'Tu pedido se atiende desde la sede que seleccionaste al entrar. Puedes cambiarla tocando el ícono de ubicación en la parte superior o el botón "Cambiar" en la tarjeta de sede.' },
+      { type: 'p', text: 'Si pagas por Transferencia o Nequi, debes subir el comprobante para que el cajero confirme el pago:' },
+      { type: 'steps', items: [
+        'Abre el detalle de tu pedido activo.',
+        'En la sección "Comprobante de Transferencia / Nequi", toca "Subir comprobante".',
+        'Selecciona la foto o PDF del comprobante desde tu celular.',
+        'Espera a que el cajero valide el pago — verás "✅ Pago validado" cuando esté confirmado.',
+      ]},
+      { type: 'tip', text: 'Puedes subir la foto del comprobante incluso antes de recibir la cotización para agilizar el proceso.' },
+    ],
+  },
+  {
+    id: 'cancelar', emoji: '❌', title: '¿Puedo cancelar un pedido?', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'Sí, puedes cancelar un pedido mientras está en estado "Pedido enviado" (antes de que el cajero lo procese).' },
+      { type: 'steps', items: [
+        'Abre el detalle de tu pedido activo.',
+        'Desplázate hacia abajo y toca "Cancelar pedido".',
+        'Confirma la cancelación. Esta acción no se puede deshacer.',
+      ]},
+      { type: 'tip', text: 'Una vez que el cajero cotiza o asigna un domiciliario, ya no es posible cancelar desde la app. En ese caso escríbenos por WhatsApp.' },
+    ],
+  },
+  {
+    id: 'sede', emoji: '🏠', title: 'Sedes y zonas de cobertura', color: 'text-coal',
+    content: [
+      { type: 'p', text: 'Selecciona la sede más cercana a tu dirección de entrega. Puedes cambiarla tocando el ícono de ubicación 📍 en la parte superior o el botón "Cambiar" en la tarjeta de sede.' },
       { type: 'table', rows: [
-        ['Santa Lucía',    'Cra. 87 #48e-3'],
-        ['Santa Teresita', 'Cl 35B #87A-165'],
+        ['Santa Lucía',    'Cra. 87 #48e-3, Santa Rosa De Lima'],
+        ['Santa Teresita', 'Cl 35B #87A-165, La América'],
       ]},
     ],
   },
   {
     id: 'horario', emoji: '🕕', title: 'Horario de atención', color: 'text-mustard',
     content: [
-      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 6:00 PM a 11:00 PM. Si la plataforma aparece cerrada, intenta más tarde o escríbenos por WhatsApp.' },
+      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 6:00 PM a 11:00 PM. Si la plataforma aparece como "cerrada", intenta más tarde o escríbenos por WhatsApp.' },
+      { type: 'tip', text: 'Cada sede tiene su propio número de WhatsApp. Lo encuentras en la tarjeta de sede del panel principal.' },
     ],
   },
 ]
