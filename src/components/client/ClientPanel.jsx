@@ -589,8 +589,6 @@ function ClientOrderCard({ order, onClick }) {
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
-  const [cancelConfirm,    setCancelConfirm]   = useState(false)
-  const [cancelling,       setCancelling]      = useState(false)
   const [elapsed,          setElapsed]         = useState(null)
   const [uploadProgress,   setUploadProgress]  = useState(null)
   const [uploadError,      setUploadError]     = useState('')
@@ -640,18 +638,6 @@ function ClientOrderDetail({ order, onClose }) {
   const progress = Math.round(((stepIdx + 1) / STATUS_STEPS.length) * 100)
   const isDelivered = DELIVERED_STATUSES.includes(order.status)
   const hasQuote = order.totalPrice > 0
-
-  const handleCancel = async () => {
-    setCancelling(true)
-    try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        status:      'cancelled',
-        cancelledAt: serverTimestamp(),
-        updatedAt:   serverTimestamp(),
-      })
-      onClose()
-    } finally { setCancelling(false) }
-  }
 
   const openDriverMap = () => {
     if (order.driverLat && order.driverLng) {
@@ -821,30 +807,6 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
-          {/* Cancel button — only when pending (cashier hasn't touched it yet) */}
-          {order.status === 'pending' && (
-            cancelConfirm ? (
-              <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 flex flex-col gap-3">
-                <p className="font-body text-sm text-coal font-semibold text-center">¿Cancelar este pedido?</p>
-                <p className="font-body text-xs text-coal/60 text-center">Esta acción no se puede deshacer.</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setCancelConfirm(false)}
-                    className="flex-1 px-4 py-2 rounded-xl border border-coal/20 text-coal/60 text-sm font-semibold font-body">
-                    No, volver
-                  </button>
-                  <button onClick={handleCancel} disabled={cancelling}
-                    className="flex-1 px-4 py-2 rounded-xl bg-pepper text-white text-sm font-semibold font-body">
-                    {cancelling ? 'Cancelando…' : 'Sí, cancelar'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setCancelConfirm(true)}
-                className="w-full text-sm font-body font-semibold text-pepper/70 hover:text-pepper py-2 transition-colors">
-                Cancelar pedido
-              </button>
-            )
-          )}
 
           {/* Order items */}
           <div className="card">
@@ -1157,13 +1119,8 @@ const CLIENT_HELP_SECTIONS = [
   {
     id: 'cancelar', emoji: '❌', title: '¿Puedo cancelar un pedido?', color: 'text-coal',
     content: [
-      { type: 'p', text: 'Sí, puedes cancelar un pedido mientras está en estado "Pedido enviado" (antes de que el cajero lo procese).' },
-      { type: 'steps', items: [
-        'Abre el detalle de tu pedido activo.',
-        'Desplázate hacia abajo y toca "Cancelar pedido".',
-        'Confirma la cancelación. Esta acción no se puede deshacer.',
-      ]},
-      { type: 'tip', text: 'Una vez que el cajero cotiza o asigna un domiciliario, ya no es posible cancelar desde la app. En ese caso escríbenos por WhatsApp.' },
+      { type: 'p', text: 'Para cancelar un pedido escríbenos por WhatsApp y con gusto te ayudamos.' },
+      { type: 'tip', text: 'Encuentra el número de WhatsApp de tu sede en la pantalla principal.' },
     ],
   },
   {
