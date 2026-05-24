@@ -60,7 +60,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     if (!order.fullAddress || !orderSede) { setDistanceKm(-1); return }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
-    const q = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
+    // Las direcciones colombianas tipo "Carrera 85 C, número 34 a 27" o "Cra 50 #45-10"
+    // confunden a Photon con los números secundarios. Se extrae solo la calle principal.
+    const street = order.fullAddress
+      .replace(/\bnum[eé]ro\b.*/i, '')  // quita "número X a Y"
+      .replace(/#[^\s,]*/g, '')          // quita "#45-10"
+      .split(',')[0]
+      .trim()
+    const barrio = order.barrio ? `, ${order.barrio}` : ''
+    const q = encodeURIComponent(`${street}${barrio}, Medellín, Colombia`)
     const url = `https://photon.komoot.io/api/?q=${q}&limit=1&lat=6.2442&lon=-75.5812`
     fetch(url, { signal: controller.signal })
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
