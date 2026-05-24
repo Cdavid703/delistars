@@ -126,7 +126,8 @@ export default function CashierPanel() {
   // Sonido al recibir mensaje nuevo del cliente en el chat
   useEffect(() => {
     if (clientMsgCountRef.current === null) {
-      // Primera carga: registrar conteos actuales sin reproducir sonido
+      // Primera carga: solo inicializar si ya hay pedidos cargados
+      if (orders.length === 0) return   // esperar al primer snapshot real
       clientMsgCountRef.current = {}
       orders.forEach(o => {
         clientMsgCountRef.current[o.id] = (o.clientMessages || []).filter(m => m.role === 'client').length
@@ -136,8 +137,9 @@ export default function CashierPanel() {
     let played = false
     orders.forEach(o => {
       const count = (o.clientMessages || []).filter(m => m.role === 'client').length
-      const prev  = clientMsgCountRef.current[o.id] ?? 0
-      if (count > prev && !played) { playMessageSound(); played = true }
+      const prev  = clientMsgCountRef.current[o.id]
+      // Solo sonar si el pedido ya estaba registrado (prev !== undefined) y el conteo subió
+      if (prev !== undefined && count > prev && !played) { playMessageSound(); played = true }
       clientMsgCountRef.current[o.id] = count
     })
   }, [orders])
