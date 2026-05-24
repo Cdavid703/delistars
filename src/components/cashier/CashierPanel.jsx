@@ -135,7 +135,10 @@ export default function CashierPanel() {
   useEffect(() => {
     const loadDrivers = async () => {
       const snap = await getDocs(collection(db, 'roles_drivers'))
-      const firestoreDrivers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const firestoreDrivers = snap.docs.map(d => ({
+        id: d.id, ...d.data(),
+        phone: d.data().phone || DEFAULT_DRIVER_PHONES[d.id] || null,
+      }))
       const firestoreIds = firestoreDrivers.map(d => d.id)
       const defaultDriverObjs = DEFAULT_DRIVERS
         .filter(email => !firestoreIds.includes(email))
