@@ -59,12 +59,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   useEffect(() => {
     if (!order.fullAddress || !orderSede) { setDistanceKm(-1); return }
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 6000)
+    const timer = setTimeout(() => controller.abort(), 8000)
     const q = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
-    fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-      headers: { 'Accept-Language': 'es' },
-      referrer: 'https://delistars.com/',
-      referrerPolicy: 'no-referrer-when-downgrade',
+    fetch(`/api/geo/search?q=${q}&format=json&limit=1`, {
       signal: controller.signal,
     })
       .then(r => r.json())
