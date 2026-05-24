@@ -61,16 +61,20 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
     const q = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
-    fetch(`/api/geo/search?q=${q}&format=json&limit=1`, {
+    // Photon (photon.komoot.io): OSM gratuito, CORS habilitado, sin User-Agent requerido
+    // lat/lon sesga los resultados hacia Medellín para mejor precisión
+    fetch(`https://photon.komoot.io/api/?q=${q}&limit=1&lang=es&lat=6.2442&lon=-75.5812`, {
       signal: controller.signal,
     })
       .then(r => r.json())
-      .then(results => {
+      .then(data => {
         clearTimeout(timer)
-        if (results[0]) {
+        const feature = data.features?.[0]
+        if (feature) {
+          const [lon, lat] = feature.geometry.coordinates  // GeoJSON: [lon, lat]
           setDistanceKm(haversineKm(
             orderSede.coords.lat, orderSede.coords.lng,
-            parseFloat(results[0].lat), parseFloat(results[0].lon)
+            lat, lon
           ))
         } else {
           setDistanceKm(-1)
