@@ -14,9 +14,10 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation, Search,
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp
+  HelpCircle, ChevronDown, ChevronUp, Send
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
+import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const STATUS_STEPS = [
   { key: 'pending',       label: 'Pedido enviado',        emoji: '📋' },
@@ -53,8 +54,28 @@ const isToday = ts => {
 
 const fmt = v => v ? `$${Number(v).toLocaleString('es-CO')}` : null
 
+const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent)
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone
+
+function playMessageSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') ctx.resume()
+    ;[660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'; osc.frequency.value = freq
+      const t = ctx.currentTime + i * 0.13
+      gain.gain.setValueAtTime(0.25, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
+      osc.start(t); osc.stop(t + 0.24)
+    })
+  } catch (_) {}
+}
+
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
+  const { canInstall, install } = usePWAInstall()
   const [orders,         setOrders]         = useState([])
   const [selectedId,     setSelectedId]     = useState(null)
   const [showForm,       setShowForm]       = useState(false)
@@ -62,7 +83,15 @@ export default function ClientPanel() {
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
   const [ratingOrder,    setRatingOrder]    = useState(null)
+  const [installDismissed, setInstallDismissed] = useState(
+    () => localStorage.getItem('client_install_dismissed') === '1'
+  )
 
+  const [seenCounts, setSeenCounts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ds_chat_seen') || '{}') } catch { return {} }
+  })
+
+  const cashierMsgCountRef = useRef(null)  // null = primera carga, no reproducir
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
@@ -83,6 +112,24 @@ export default function ClientPanel() {
     }, err => console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message))
   }, [user?.uid])
 
+  // Sonido al recibir mensaje nuevo del cajero en el chat
+  useEffect(() => {
+    if (cashierMsgCountRef.current === null) {
+      cashierMsgCountRef.current = {}
+      orders.forEach(o => {
+        cashierMsgCountRef.current[o.id] = (o.clientMessages || []).filter(m => m.role === 'cashier').length
+      })
+      return
+    }
+    let played = false
+    orders.forEach(o => {
+      const count = (o.clientMessages || []).filter(m => m.role === 'cashier').length
+      const prev  = cashierMsgCountRef.current[o.id] ?? 0
+      if (count > prev && !played) { playMessageSound(); played = true }
+      cashierMsgCountRef.current[o.id] = count
+    })
+  }, [orders])
+
   // Disparar modal de calificación cuando un pedido de hoy se entrega sin calificar
   useEffect(() => {
     const prompted = JSON.parse(localStorage.getItem('ds_rated') || '[]')
@@ -102,6 +149,26 @@ export default function ClientPanel() {
   const rejectedOrders  = orders.filter(o => CLOSED_STATUSES.includes(o.status) && isToday(o.createdAt))
   // Always derive selected from live orders so the detail modal reflects real-time updates
   const selected = selectedId ? orders.find(o => o.id === selectedId) ?? null : null
+
+  // Mark cashier messages as seen and open detail
+  const openOrderDetail = (orderId) => {
+    const o = orders.find(x => x.id === orderId)
+    if (o) {
+      const count = (o.clientMessages || []).filter(m => m.role === 'cashier').length
+      const updated = { ...seenCounts, [orderId]: count }
+      setSeenCounts(updated)
+      try { localStorage.setItem('ds_chat_seen', JSON.stringify(updated)) } catch {}
+    }
+    setSelectedId(orderId)
+  }
+
+  // Per-order count of unread cashier messages
+  const unreadChatMap = Object.fromEntries(
+    orders.map(o => {
+      const cashierMsgs = (o.clientMessages || []).filter(m => m.role === 'cashier').length
+      return [o.id, Math.max(0, cashierMsgs - (seenCounts[o.id] || 0))]
+    })
+  )
 
   if (platformActive === false && effectiveRole === 'client') {
     return (
@@ -220,22 +287,48 @@ export default function ClientPanel() {
         </div>
       </div>
 
+      {/* PWA install card */}
+      {!isStandalone && !installDismissed && (canInstall || isIOS) && (
+        <div className="mx-4 mt-3 flex items-center gap-3 bg-coal text-cream rounded-2xl px-4 py-3 shadow-lg">
+          <img src="/logo_sello.png" alt="DeliStars" className="w-10 h-10 flex-shrink-0 rounded-xl object-cover" />
+          <div className="flex-1 min-w-0">
+            <p className="font-body font-semibold text-sm leading-tight">Instala la app</p>
+            <p className="font-body text-[11px] text-cream/60">
+              {isIOS ? 'Pulsa Compartir → Agregar a inicio' : 'Ábrela directo desde tu pantalla de inicio'}
+            </p>
+          </div>
+          {canInstall && !isIOS && (
+            <button onClick={async () => {
+              const accepted = await install()
+              if (!accepted) { setInstallDismissed(true); localStorage.setItem('client_install_dismissed', '1') }
+            }}
+              className="flex-shrink-0 bg-cherry text-cream font-body text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-cherry/80 transition-colors">
+              Instalar
+            </button>
+          )}
+          <button onClick={() => { setInstallDismissed(true); localStorage.setItem('client_install_dismissed', '1') }}
+            className="flex-shrink-0 text-cream/40 hover:text-cream transition-colors ml-1">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Info banner */}
       <div className="mx-4 mt-3">
         <div className="bg-mustard/10 border border-mustard/20 rounded-2xl px-4 py-3 flex items-start gap-2">
           <Info size={16} className="text-mustard flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-body text-xs text-coal/70">
-              Haz tu pedido aquí y un cajero te lo confirmará pronto.
+            <p className="font-body text-xs text-coal/70 leading-relaxed">
+              Haz tu pedido aquí y un cajero te lo confirmará pronto. Si la app falla o tienes algún problema, contáctanos por WhatsApp.
             </p>
             {sede?.whatsapp && (
               <a
-                href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! 👋 Quiero hacer un pedido.`)}`}
+                href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! 👋 Tengo un problema con la plataforma.`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 mt-2 bg-[#25D366] text-white rounded-xl px-3 py-1.5 text-xs font-semibold font-body"
               >
-                <MessageSquare size={13} /> Escribir por WhatsApp
+                <MessageSquare size={13} /> Soporte por WhatsApp
               </a>
             )}
           </div>
@@ -259,7 +352,7 @@ export default function ClientPanel() {
         ) : (
           <div className="flex flex-col gap-3">
             {activeOrders.map(o => (
-              <ClientOrderCard key={o.id} order={o} onClick={() => setSelectedId(o.id)} />
+              <ClientOrderCard key={o.id} order={o} unreadCount={unreadChatMap[o.id] || 0} onClick={() => openOrderDetail(o.id)} />
             ))}
           </div>
         )}
@@ -271,7 +364,7 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Entregados hoy</p>
           <div className="flex flex-col gap-2">
             {deliveredOrders.slice(0, 5).map(o => (
-              <button key={o.id} onClick={() => setSelectedId(o.id)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
+              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
                 <div>
                   {o.orderNumber && <span className="font-display text-base text-cherry mr-2">#{o.orderNumber}</span>}
                   <span className="font-body text-sm">{o.items?.slice(0, 40)}…</span>
@@ -289,7 +382,7 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Rechazados</p>
           <div className="flex flex-col gap-2">
             {rejectedOrders.map(o => (
-              <button key={o.id} onClick={() => setSelectedId(o.id)} className="card w-full text-left border-l-4 border-pepper/50">
+              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card w-full text-left border-l-4 border-pepper/50">
                 <div className="flex items-start gap-2">
                   <span className="text-xl">❌</span>
                   <div className="flex-1 min-w-0">
@@ -353,7 +446,7 @@ export default function ClientPanel() {
       {selected && <ClientOrderDetail order={selected} onClose={() => setSelectedId(null)} />}
 
       {/* History modal */}
-      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); setSelectedId(o.id) }} />}
+      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); openOrderDetail(o.id) }} />}
 
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
@@ -537,9 +630,13 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
               alt="QR Bancolombia DELISTARS"
               className="w-52 h-52 object-contain"
             />
-            <p className="font-body text-[11px] text-coal/50 text-center">
-              DELISTARS · Bancolombia Ahorros *3891
+            <p className="font-body text-xs text-coal/70 text-center font-semibold">
+              Bancolombia Ahorros
             </p>
+            <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
+              420 679 938 91
+            </p>
+            <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
           </div>
         )}
       </div>
@@ -555,14 +652,14 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 }
 
 // ─── Order card ───────────────────────────────────────────────────────────────
-function ClientOrderCard({ order, onClick }) {
+function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = getProgress(order.status)
   const hasQuote = order.totalPrice > 0
 
   return (
-    <button onClick={onClick} className="order-card w-full text-left border-l-4 border-cherry">
+    <button onClick={onClick} className={`order-card w-full text-left border-l-4 ${unreadCount > 0 ? 'border-tangelo' : 'border-cherry'}`}>
       <div className="flex items-start justify-between gap-2 mb-3">
         <div>
           {order.orderNumber && <p className="font-display text-xl text-cherry">#{order.orderNumber}</p>}
@@ -576,6 +673,17 @@ function ClientOrderCard({ order, onClick }) {
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
           <span className="font-body text-xs font-semibold text-tangelo">💰 Total cotizado</span>
           <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
+        </div>
+      )}
+
+      {/* Unread cashier message badge */}
+      {unreadCount > 0 && (
+        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2 animate-pulse">
+          <MessageSquare size={13} className="text-tangelo flex-shrink-0" />
+          <span className="font-body text-xs font-semibold text-tangelo">
+            {unreadCount === 1 ? '1 mensaje nuevo del cajero' : `${unreadCount} mensajes nuevos del cajero`}
+          </span>
+          <span className="ml-auto text-[10px] font-body text-tangelo/70 font-semibold">Toca para ver →</span>
         </div>
       )}
 
@@ -593,9 +701,30 @@ function ClientOrderCard({ order, onClick }) {
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
+  const { user } = useAuth()
   const [elapsed,          setElapsed]         = useState(null)
   const [uploadProgress,   setUploadProgress]  = useState(null)
   const [uploadError,      setUploadError]     = useState('')
+  const [clientMsgText,    setClientMsgText]   = useState('')
+  const [sendingClientMsg, setSendingClientMsg] = useState(false)
+  const [billAmount,       setBillAmount]       = useState(null)
+
+  const sendClientMessage = async () => {
+    if (!clientMsgText.trim()) return
+    setSendingClientMsg(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        clientMessages: arrayUnion({
+          role: 'client',
+          name: user?.displayName || 'Cliente',
+          text: clientMsgText.trim(),
+          ts:   Date.now(),
+        }),
+        updatedAt: serverTimestamp(),
+      })
+      setClientMsgText('')
+    } finally { setSendingClientMsg(false) }
+  }
 
   const handleUploadReceipt = (e) => {
     const file = e.target.files?.[0]
@@ -691,6 +820,78 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* Calculadora de cambio — solo para efectivo con cotización */}
+          {hasQuote && order.payment === 'Efectivo' && !isDelivered && (
+            <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-base tracking-wide text-coal">💵 ¿Con qué billete vas a pagar?</p>
+              <p className="font-body text-xs text-coal/60">
+                Total a pagar: <span className="font-bold text-tangelo">{fmt(order.totalPrice)}</span>
+              </p>
+
+              {/* Billetes comunes */}
+              <div className="flex flex-wrap gap-2">
+                {[10000, 20000, 50000, 100000, 200000].filter(b => b >= order.totalPrice).map(b => (
+                  <button key={b} onClick={() => setBillAmount(b)}
+                    className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+                      billAmount === b
+                        ? 'bg-mustard text-cream border-mustard'
+                        : 'bg-cream border-mustard/40 text-coal hover:bg-mustard/20'
+                    }`}>
+                    {fmt(b)}
+                  </button>
+                ))}
+                <button onClick={() => setBillAmount(order.totalPrice)}
+                  className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+                    billAmount === order.totalPrice
+                      ? 'bg-mint text-cream border-mint'
+                      : 'bg-cream border-mint/40 text-coal hover:bg-mint/20'
+                  }`}>
+                  Exacto
+                </button>
+              </div>
+
+              {/* Campo personalizado */}
+              <div>
+                <label className="label-field">O ingresa el valor de tu billete</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="Ej: 50000"
+                  value={billAmount ?? ''}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value)
+                    setBillAmount(isNaN(v) ? null : v)
+                  }}
+                />
+              </div>
+
+              {/* Resultado */}
+              {billAmount !== null && (
+                billAmount < order.totalPrice ? (
+                  <div className="bg-pepper/10 border border-pepper/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <p className="font-body text-sm text-pepper font-semibold">
+                      Ese valor no cubre el total ({fmt(order.totalPrice - billAmount)} de diferencia)
+                    </p>
+                  </div>
+                ) : billAmount === order.totalPrice ? (
+                  <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <span className="text-lg">✅</span>
+                    <p className="font-body text-sm text-mint font-semibold">Pagas exacto — no necesitas cambio</p>
+                  </div>
+                ) : (
+                  <div className="bg-tangelo/10 border border-tangelo/30 rounded-xl px-4 py-3 flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-body text-sm text-coal font-semibold">Tu cambio será:</p>
+                      <p className="font-display text-2xl text-tangelo">{fmt(billAmount - order.totalPrice)}</p>
+                    </div>
+                    <p className="font-body text-xs text-coal/50">El domiciliario te traerá ese cambio</p>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
           {/* Cashier note to client */}
           {order.cashierNotes && (
             <div className="bg-mustard/10 border border-mustard/20 rounded-2xl p-4 flex items-start gap-3">
@@ -721,9 +922,13 @@ function ClientOrderDetail({ order, onClose }) {
                     alt="QR Bancolombia DELISTARS"
                     className="w-52 h-52 object-contain"
                   />
-                  <p className="font-body text-[11px] text-coal/50 text-center">
-                    DELISTARS · Bancolombia Ahorros *3891
+                  <p className="font-body text-xs text-coal/70 text-center font-semibold">
+                    Bancolombia Ahorros
                   </p>
+                  <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
+                    420 679 938 91
+                  </p>
+                  <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
                 </div>
               )}
 
@@ -798,6 +1003,27 @@ function ClientOrderDetail({ order, onClose }) {
                  order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
                                                  '📍 Domiciliario llegó'}
               </p>
+              {order.driverName && (
+                <p className="font-body text-sm text-coal/70">
+                  Domiciliario: <span className="font-semibold text-coal">{order.driverName}</span>
+                </p>
+              )}
+              {order.driverPhone && (() => {
+                const digits  = order.driverPhone.replace(/\D/g, '')
+                const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
+                return (
+                  <div className="flex gap-2 mt-1">
+                    <a href={`tel:${order.driverPhone}`}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors">
+                      📞 Llamar
+                    </a>
+                    <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-sm font-semibold hover:bg-[#25D366]/20 transition-colors">
+                      📱 WhatsApp
+                    </a>
+                  </div>
+                )
+              })()}
               {elapsed !== null && order.status !== 'arrived' && (
                 <p className="font-body text-sm text-coal/60">
                   Hace {elapsed < 1 ? 'menos de 1 min' : `${elapsed} min${elapsed !== 1 ? 's' : ''}`}
@@ -867,6 +1093,51 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="font-body text-xs text-coal/50 mt-3">
                 Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
               </p>
+            </div>
+          )}
+
+          {/* Chat con el cajero */}
+          {!['rejected','cancelled'].includes(order.status) && (
+            <div className="card border-2 border-cherry/30 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={16} className="text-cherry" />
+                <p className="font-display text-base tracking-wide text-coal">Chat con el cajero</p>
+                {(order.clientMessages || []).filter(m => m.role === 'cashier').length > 0 && (
+                  <span className="ml-auto inline-flex items-center gap-1 bg-cherry/10 text-cherry rounded-full px-2 py-0.5 text-[10px] font-body font-bold uppercase tracking-wider">
+                    {(order.clientMessages || []).filter(m => m.role === 'cashier').length} del cajero
+                  </span>
+                )}
+              </div>
+
+              {(order.clientMessages?.length > 0) ? (
+                <div className="flex flex-col gap-2">
+                  {[...order.clientMessages].sort((a,b) => a.ts - b.ts).map((m, i) => (
+                    <div key={i} className={`rounded-xl px-3 py-2 ${m.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 mr-4' : 'bg-cherry/5 border border-cherry/20 ml-4'}`}>
+                      <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
+                        {m.role === 'cashier' ? '🧾 Cajero' : '🛍️ Tú'}
+                      </p>
+                      <p className="font-body text-sm text-coal">{m.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-body text-xs text-coal/40">Puedes escribirle al cajero aquí si tienes alguna duda</p>
+              )}
+
+              {!isDelivered && (
+                <div className="flex gap-2">
+                  <textarea
+                    className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                    placeholder="Escríbele al cajero…"
+                    value={clientMsgText}
+                    onChange={e => setClientMsgText(e.target.value)}
+                  />
+                  <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
+                    className="btn-primary px-3 self-end">
+                    <Send size={16} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

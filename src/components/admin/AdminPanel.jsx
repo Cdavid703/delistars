@@ -129,10 +129,15 @@ function DashboardTab({ sede }) {
     return onSnapshot(q, snap => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
   }, [sede])
 
+  const todayStr  = new Date().toDateString()
+  const isToday   = ts => ts?.toDate ? ts.toDate().toDateString() === todayStr : false
+
+  // Activos: sin filtro de fecha (un pedido de ayer aún en tránsito importa)
   const active    = orders.filter(o => ['assigned','accepted','in_transit','arrived'].includes(o.status)).length
-  const delivered = orders.filter(o => ['delivered_paid','completed'].includes(o.status)).length
+  // Entregados y total: solo hoy (el dashboard dice "Resumen de hoy")
+  const delivered = orders.filter(o => ['delivered_paid','completed'].includes(o.status) && isToday(o.createdAt)).length
   const cuadre    = orders.filter(o => o.status === 'pending_cuadre').length
-  const total     = orders.length
+  const total     = orders.filter(o => isToday(o.createdAt)).length
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
@@ -383,9 +388,14 @@ function OrdersTab({ sede }) {
   const COMPLETED_STATUSES = ['completed', 'delivered_paid', 'delivered_cash', 'pending_cuadre']
 
   const filtered = orders.filter(o => {
+    // Filtros por estado específico (asignados, en camino, cuadre) → sin límite de fecha,
+    // para que pedidos viejos atascados sigan visibles y el admin pueda eliminarlos
     if (filter !== 'all' && filter !== 'entregados' && o.status !== filter) return false
+    // Entregados: solo los estados completados, con selector de fecha
     if (filter === 'entregados' && !COMPLETED_STATUSES.includes(o.status)) return false
     if (filter === 'entregados') return isAdminDay(o.createdAt, historyDate)
+    // Todos: filtra por fecha (hoy por defecto), con selector para días anteriores
+    if (filter === 'all') return isAdminDay(o.createdAt, historyDate)
     return true
   })
 
@@ -399,7 +409,7 @@ function OrdersTab({ sede }) {
           { v: 'pending_cuadre',l: 'Cuadre' },
           { v: 'entregados',    l: 'Entregados' },
         ].map(f => (
-          <button key={f.v} onClick={() => setFilter(f.v)}
+          <button key={f.v} onClick={() => { setFilter(f.v); setHistoryDate('') }}
             className={`px-4 py-2 rounded-full text-xs font-semibold font-body uppercase tracking-wider whitespace-nowrap transition-all ${
               filter === f.v ? 'bg-cherry text-cream' : 'bg-smoked text-coal/60 hover:bg-smoked/80'
             }`}>
@@ -408,8 +418,8 @@ function OrdersTab({ sede }) {
         ))}
       </div>
 
-      {/* Date picker for entregados */}
-      {filter === 'entregados' && (
+      {/* Date picker para "Todos" y "Entregados" */}
+      {(filter === 'all' || filter === 'entregados') && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1">
             <Search size={16} className="text-coal/40 flex-shrink-0" />

@@ -1,5 +1,5 @@
 // DeliStars Service Worker — cache app shell para funcionar offline
-const CACHE = 'delistars-v3'
+const CACHE = 'delistars-v10'
 
 self.addEventListener('install', e => {
   // self.registration.scope = e.g. 'https://delistars.com/domicilios/'

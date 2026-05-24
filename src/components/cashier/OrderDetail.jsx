@@ -24,7 +24,8 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.asin(Math.sqrt(a))
 }
 
-const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+const fmt    = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;')
 
 const fmtTime = (ts) => {
   if (!ts?.toDate) return null
@@ -40,6 +41,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [commentText,      setCommentText]      = useState('')
   const [sendingComment,   setSendingComment]   = useState(false)
   const [validatingTransfer, setValidatingTransfer] = useState(false)
+  const [editingPrice,      setEditingPrice]      = useState(false)
+  const [editQuotedPrice,   setEditQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
+  const [editDeliveryPrice, setEditDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
+  const [clientMsgText,     setClientMsgText]     = useState('')
+  const [sendingClientMsg,  setSendingClientMsg]  = useState(false)
 
   // Quote form state (for pending orders)
   const [localOrderNumber,   setLocalOrderNumber]   = useState(order.orderNumber   || '')
@@ -158,15 +164,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   }
 
   const handlePrint = () => {
-    const orderNum    = order.orderNumber  || ''
-    const clientName  = order.name || order.clientName || '—'
+    const orderNum    = escHtml(order.orderNumber || '')
+    const clientName  = escHtml(order.name || order.clientName || '—')
     const qp          = fmt(order.quotedPrice)
     const dp          = fmt(order.deliveryPrice)
     const tp          = fmt(order.totalPrice)
-    const paymentStr  = order.payment || '—'
-    const items       = (order.items || '').replace(/\n/g, '<br/>')
-    const notesStr    = order.notes ? `<p><em>Indicaciones: ${order.notes}</em></p>` : ''
-    const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${order.cashierNotes}</em></p>` : ''
+    const paymentStr  = escHtml(order.payment || '—')
+    const items       = escHtml(order.items || '').replace(/\n/g, '<br/>')
+    const notesStr    = order.notes ? `<p><em>Indicaciones: ${escHtml(order.notes)}</em></p>` : ''
+    const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${escHtml(order.cashierNotes)}</em></p>` : ''
     const date        = new Date().toLocaleString('es-CO')
 
     const win = window.open('', '_blank', 'width=420,height=700')
@@ -185,9 +191,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     <p class="center" style="font-size:11px">${date}</p>
     <div class="divider"></div>
     <div class="row"><span class="bold">Cliente:</span><span>${clientName}</span></div>
-    <div class="row"><span class="bold">Tel:</span><span>${order.phone || '—'}</span></div>
-    <div class="row"><span class="bold">Dirección:</span><span>${order.fullAddress || '—'}</span></div>
-    ${order.barrio ? `<div class="row"><span class="bold">Barrio:</span><span>${order.barrio}</span></div>` : ''}
+    <div class="row"><span class="bold">Tel:</span><span>${escHtml(order.phone || '—')}</span></div>
+    <div class="row"><span class="bold">Dirección:</span><span>${escHtml(order.fullAddress || '—')}</span></div>
+    ${order.barrio ? `<div class="row"><span class="bold">Barrio:</span><span>${escHtml(order.barrio)}</span></div>` : ''}
     <div class="divider"></div>
     <p class="bold">Pedido:</p>
     <div class="items">${items}</div>
@@ -231,6 +237,38 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         updatedAt: serverTimestamp(),
       })
     } finally { setValidatingTransfer(false) }
+  }
+
+  const saveEditedPrice = async () => {
+    const qp = parseFloat(editQuotedPrice)  || 0
+    const dp = parseFloat(editDeliveryPrice) || 0
+    setLoading(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        quotedPrice:   qp,
+        deliveryPrice: dp,
+        totalPrice:    qp + dp,
+        updatedAt:     serverTimestamp(),
+      })
+      setEditingPrice(false)
+    } finally { setLoading(false) }
+  }
+
+  const sendClientMessage = async () => {
+    if (!clientMsgText.trim()) return
+    setSendingClientMsg(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        clientMessages: arrayUnion({
+          role: 'cashier',
+          name: user?.displayName || user?.email || 'Cajero',
+          text: clientMsgText.trim(),
+          ts:   Date.now(),
+        }),
+        updatedAt: serverTimestamp(),
+      })
+      setClientMsgText('')
+    } finally { setSendingClientMsg(false) }
   }
 
   const distColor = distanceKm === null ? '' : distanceKm > 5 ? 'text-pepper' : distanceKm > 3 ? 'text-mustard' : 'text-mint'
@@ -340,7 +378,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           </Section>
 
           {/* Transfer receipt */}
-          {order.payment === 'Transferencia' && order.transferReceiptUrl && (
+          {['Transferencia', 'Nequi'].includes(order.payment) && order.transferReceiptUrl && (
             <div className={`card border flex flex-col gap-3 ${order.transferValidated ? 'border-mint/30 bg-mint/5' : 'border-mustard/30 bg-mustard/5'}`}>
               <div className="flex items-center gap-2">
                 <FileCheck size={16} className={order.transferValidated ? 'text-mint' : 'text-mustard'} />
@@ -366,22 +404,59 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Quoted prices (if already set) */}
           {order.totalPrice > 0 && (
             <div className="card bg-tangelo/5 border border-tangelo/20">
-              <p className="font-display text-base tracking-wide mb-3">💰 Cotización enviada</p>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex justify-between font-body text-sm">
-                  <span className="text-coal/60">Valor pedido:</span>
-                  <span className="font-semibold">{fmt(order.quotedPrice)}</span>
-                </div>
-                <div className="flex justify-between font-body text-sm">
-                  <span className="text-coal/60">Domicilio:</span>
-                  <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
-                </div>
-                <div className="border-t border-tangelo/20 pt-2 flex justify-between">
-                  <span className="font-body font-bold text-coal">TOTAL:</span>
-                  <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-display text-base tracking-wide">💰 Cotización enviada</p>
+                {!['rejected','cancelled','completed'].includes(order.status) && !editingPrice && (
+                  <button
+                    onClick={() => { setEditQuotedPrice(String(order.quotedPrice ?? '')); setEditDeliveryPrice(String(order.deliveryPrice ?? '')); setEditingPrice(true) }}
+                    className="text-xs font-body font-semibold text-tangelo underline underline-offset-2"
+                  >
+                    ✏️ Editar precio
+                  </button>
+                )}
               </div>
-              {order.cashierNotes && (
+              {editingPrice ? (
+                <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">Valor pedido</label>
+                      <input className="input-field" value={editQuotedPrice}
+                        onChange={e => setEditQuotedPrice(e.target.value)} placeholder="$0" type="number" />
+                    </div>
+                    <div>
+                      <label className="label-field">Domicilio</label>
+                      <input className="input-field" value={editDeliveryPrice}
+                        onChange={e => setEditDeliveryPrice(e.target.value)} placeholder="$0" type="number" />
+                    </div>
+                  </div>
+                  <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-2 flex items-center justify-between">
+                    <span className="font-body text-sm font-semibold">TOTAL</span>
+                    <span className="font-display text-lg text-cherry">{fmt((parseFloat(editQuotedPrice)||0) + (parseFloat(editDeliveryPrice)||0))}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingPrice(false)} className="btn-secondary flex-1 btn-sm">Cancelar</button>
+                    <button onClick={saveEditedPrice} disabled={loading} className="btn-primary flex-1 btn-sm">
+                      {loading ? 'Guardando…' : '✓ Guardar precio'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Valor pedido:</span>
+                    <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Domicilio:</span>
+                    <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
+                  </div>
+                  <div className="border-t border-tangelo/20 pt-2 flex justify-between">
+                    <span className="font-body font-bold text-coal">TOTAL:</span>
+                    <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
+                  </div>
+                </div>
+              )}
+              {order.cashierNotes && !editingPrice && (
                 <div className="mt-3 bg-mustard/10 rounded-xl p-3">
                   <p className="font-body text-xs text-coal/50 uppercase tracking-wider mb-1">Nota al cliente</p>
                   <p className="font-body text-sm text-coal">{order.cashierNotes}</p>
@@ -627,6 +702,44 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <Send size={16} />
               </button>
             </div>
+          </div>
+
+          {/* Chat con el cliente */}
+          <div className="card border border-cherry/15 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={15} className="text-cherry" />
+              <p className="font-display text-sm tracking-wide text-coal">Chat con el cliente</p>
+            </div>
+
+            {(order.clientMessages?.length > 0) ? (
+              <div className="flex flex-col gap-2">
+                {[...order.clientMessages].sort((a,b) => a.ts - b.ts).map((m, i) => (
+                  <div key={i} className={`rounded-xl px-3 py-2 ${m.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 ml-4' : 'bg-cherry/5 border border-cherry/20 mr-4'}`}>
+                    <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
+                      {m.role === 'cashier' ? '🧾 Cajero' : '🛍️ Cliente'} · {m.name}
+                    </p>
+                    <p className="font-body text-sm text-coal">{m.text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="font-body text-xs text-coal/40">Sin mensajes aún — el cliente también puede escribir desde su panel</p>
+            )}
+
+            {!['rejected','cancelled','completed'].includes(order.status) && (
+              <div className="flex gap-2">
+                <textarea
+                  className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                  placeholder="Mensaje para el cliente (ej: tu pedido está casi listo…)"
+                  value={clientMsgText}
+                  onChange={e => setClientMsgText(e.target.value)}
+                />
+                <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
+                  className="btn-primary px-3 self-end">
+                  <Send size={16} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Timestamps */}

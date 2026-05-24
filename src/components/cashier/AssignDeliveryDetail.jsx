@@ -49,6 +49,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
         change:        cashOnDelivery && !payExact ? change : null,
         driverEmail:   resolvedEmail,
         driverName:    driver?.name || driver?.id || driverId,
+        driverPhone:   driver?.phone || null,
         driverNotes:   driverNotes.trim(),
         assignedAt:    serverTimestamp(),
         updatedAt:     serverTimestamp(),

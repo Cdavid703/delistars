@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_DRIVER_PHONES, ROLES } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, ROLES } from '../../services/roles'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
@@ -68,13 +68,29 @@ function createAlarmPlayer() {
 }
 const alarm = createAlarmPlayer()
 
+function playMessageSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (ctx.state === 'suspended') ctx.resume()
+    ;[660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'; osc.frequency.value = freq
+      const t = ctx.currentTime + i * 0.13
+      gain.gain.setValueAtTime(0.25, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
+      osc.start(t); osc.stop(t + 0.24)
+    })
+  } catch (_) {}
+}
+
 export default function CashierPanel() {
   const { user, sede, logout, selectSede, setViewingAs, allRoles } = useAuth()
   const [tab,             setTab]            = useState('active')
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])
   const [showForm,        setShowForm]       = useState(false)
-  const [selected,        setSelected]       = useState(null)
+  const [selectedId,      setSelectedId]     = useState(null)
   const [assigning,       setAssigning]      = useState(null)
   const [addDriver,       setAddDriver]      = useState(false)
   const [newDriverEmail,  setNewDriverEmail] = useState('')
@@ -91,7 +107,8 @@ export default function CashierPanel() {
   const [showTracking,    setShowTracking]   = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
 
-  const prevPendingIdsRef = useRef(null)
+  const prevPendingIdsRef  = useRef(null)
+  const clientMsgCountRef  = useRef(null)   // null = primera carga, no reproducir
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
@@ -105,6 +122,25 @@ export default function CashierPanel() {
       active: !platformActive, updatedBy: user.email, updatedAt: serverTimestamp(),
     })
   }
+
+  // Sonido al recibir mensaje nuevo del cliente en el chat
+  useEffect(() => {
+    if (clientMsgCountRef.current === null) {
+      // Primera carga: registrar conteos actuales sin reproducir sonido
+      clientMsgCountRef.current = {}
+      orders.forEach(o => {
+        clientMsgCountRef.current[o.id] = (o.clientMessages || []).filter(m => m.role === 'client').length
+      })
+      return
+    }
+    let played = false
+    orders.forEach(o => {
+      const count = (o.clientMessages || []).filter(m => m.role === 'client').length
+      const prev  = clientMsgCountRef.current[o.id] ?? 0
+      if (count > prev && !played) { playMessageSound(); played = true }
+      clientMsgCountRef.current[o.id] = count
+    })
+  }, [orders])
 
   const dismissAlert = useCallback(() => {
     alarm.stop(); setAlarmActive(false); setNewOrderAlert(null)
@@ -132,6 +168,9 @@ export default function CashierPanel() {
     })
   }, [sede])
 
+  // Derivar el pedido seleccionado desde el array en vivo (así el modal refleja cambios en tiempo real)
+  const selected = selectedId ? orders.find(o => o.id === selectedId) ?? null : null
+
   useEffect(() => () => alarm.stop(), [])
 
   useEffect(() => {
@@ -139,12 +178,12 @@ export default function CashierPanel() {
       const snap = await getDocs(collection(db, 'roles_drivers'))
       const firestoreDrivers = snap.docs.map(d => ({
         id: d.id, ...d.data(),
-        phone: d.data().phone || DEFAULT_DRIVER_PHONES[d.id] || null,
+        phone: d.data().phone || null,
       }))
       const firestoreIds = firestoreDrivers.map(d => d.id)
       const defaultDriverObjs = DEFAULT_DRIVERS
         .filter(email => !firestoreIds.includes(email))
-        .map(email => ({ id: email, name: DEFAULT_DRIVER_NAMES[email] || email, phone: DEFAULT_DRIVER_PHONES[email] || null }))
+        .map(email => ({ id: email, name: DEFAULT_DRIVER_NAMES[email] || email, phone: null }))
       setDrivers([...defaultDriverObjs, ...firestoreDrivers])
     }
     loadDrivers()
@@ -216,10 +255,10 @@ export default function CashierPanel() {
         phone: editPhone.trim() || null,
       }, { merge: true })
       const snap = await getDocs(collection(db, 'roles_drivers'))
-      const fd   = snap.docs.map(d => ({ id: d.id, ...d.data(), phone: d.data().phone || DEFAULT_DRIVER_PHONES[d.id] || null }))
+      const fd   = snap.docs.map(d => ({ id: d.id, ...d.data(), phone: d.data().phone || null }))
       const fids = fd.map(d => d.id)
       setDrivers([
-        ...DEFAULT_DRIVERS.filter(e => !fids.includes(e)).map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e, phone: DEFAULT_DRIVER_PHONES[e] || null })),
+        ...DEFAULT_DRIVERS.filter(e => !fids.includes(e)).map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e, phone: null })),
         ...fd,
       ])
       setEditingDriver(null)
@@ -446,7 +485,7 @@ export default function CashierPanel() {
           <OrderCard
             key={order.id}
             order={order}
-            onClick={() => tab === 'assign' ? setAssigning(order) : setSelected(order)}
+            onClick={() => tab === 'assign' ? setAssigning(order) : setSelectedId(order.id)}
           />
         ))}
       </main>
@@ -503,11 +542,11 @@ export default function CashierPanel() {
       {selected && (
         <OrderDetail
           order={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedId(null)}
           drivers={drivers}
           alarmActive={alarmActive}
           onDismissAlarm={dismissAlert}
-          onReassign={order => { setSelected(null); setAssigning(order) }}
+          onReassign={order => { setSelectedId(null); setAssigning(order) }}
         />
       )}
 
@@ -557,7 +596,7 @@ export default function CashierPanel() {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-coal/20 text-coal/60 font-semibold text-sm hover:bg-smoked transition-colors">
                 Silenciar
               </button>
-              <button onClick={() => { dismissAlert(); setSelected(newOrderAlert) }} className="flex-1 btn-primary">
+              <button onClick={() => { dismissAlert(); setSelectedId(newOrderAlert?.id ?? null) }} className="flex-1 btn-primary">
                 <BellRing size={16} /> Ver pedido
               </button>
             </div>
@@ -570,7 +609,8 @@ export default function CashierPanel() {
 
 // ─── PDF export ───────────────────────────────────────────────────────────────
 function exportarPDF(orders, fecha, sedeName) {
-  const f = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+  const f       = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+  const esc     = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;')
   const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
   const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
   const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
@@ -579,11 +619,11 @@ function exportarPDF(orders, fecha, sedeName) {
   const rows = orders.map((o, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><strong>#${o.orderNumber || '—'}</strong></td>
-      <td>${o.name || o.clientName || '—'}</td>
-      <td style="max-width:160px">${(o.items || '—').slice(0, 60)}${(o.items || '').length > 60 ? '…' : ''}</td>
-      <td>${o.driverName || '—'}</td>
-      <td>${o.payment || '—'}</td>
+      <td><strong>#${esc(o.orderNumber || '—')}</strong></td>
+      <td>${esc(o.name || o.clientName || '—')}</td>
+      <td style="max-width:160px">${esc((o.items || '—').slice(0, 60))}${(o.items || '').length > 60 ? '…' : ''}</td>
+      <td>${esc(o.driverName || '—')}</td>
+      <td>${esc(o.payment || '—')}</td>
       <td>${f(o.quotedPrice)}</td>
       <td>${f(o.deliveryPrice)}</td>
       <td><strong>${f(o.totalPrice)}</strong></td>

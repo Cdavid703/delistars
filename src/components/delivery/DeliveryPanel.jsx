@@ -18,6 +18,7 @@ import {
   Send, Radio, Route, Target
 } from 'lucide-react'
 import { ROLES, SEDES } from '../../services/roles'
+import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -77,6 +78,7 @@ const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toL
 
 export default function DeliveryPanel() {
   const { user, sede, logout, selectSede, allRoles, setViewingAs } = useAuth()
+  const { canInstall, install } = usePWAInstall()
   const [orders,          setOrders]         = useState([])
   const [tab,             setTab]            = useState('pending')
   const [selected,        setSelected]       = useState(null)
@@ -86,6 +88,7 @@ export default function DeliveryPanel() {
   const [historyDate,     setHistoryDate]    = useState('')
   const [locationSharing, setLocationSharing] = useState(false)
   const [showRoute,       setShowRoute]      = useState(false)
+  const [showReturnNav,   setShowReturnNav]  = useState(null)
   // Cache persistente { fullAddress: { lat, lng } | null }
   const [geoCache, setGeoCache] = useState(() => {
     try { return JSON.parse(localStorage.getItem('ds_geo_cache_v1') || '{}') } catch { return {} }
@@ -105,7 +108,7 @@ export default function DeliveryPanel() {
       try {
         const snap = await getDocs(q)
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        const newPending = all.filter(o => o.status === 'assigned').length
+        const newPending = all.filter(o => o.status === 'assigned' && isToday(o.createdAt)).length
         if (newPending > prevCount.current) {
           playNotifSound()
           try {
@@ -206,7 +209,7 @@ export default function DeliveryPanel() {
     }
   }
 
-  const pendingOrders   = orders.filter(o => o.status === 'assigned')
+  const pendingOrders   = orders.filter(o => o.status === 'assigned' && isToday(o.createdAt))
   const activeOrders    = orders.filter(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
   const completedOrders = orders.filter(o => {
     if (!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status)) return false
@@ -347,6 +350,32 @@ export default function DeliveryPanel() {
         })}
       </div>
 
+      {/* Botones volver a sede */}
+      <div className="mx-4 mt-2 flex gap-2">
+        {Object.values(SEDES).map(s => (
+          <button key={s.id} onClick={() => { setShowReturnNav(s.id) }}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry hover:bg-cherry/20 transition-colors">
+            <MapPin size={13} className="flex-shrink-0" />
+            <span className="font-body text-xs font-semibold truncate">Volver a {s.name}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* PWA install banner */}
+      {canInstall && (
+        <div className="mx-4 mt-2 flex items-center gap-3 bg-coal/90 text-cream rounded-2xl px-4 py-3 shadow-lg">
+          <img src="/logo_sello.png" alt="DeliStars" className="w-9 h-9 flex-shrink-0 rounded-xl object-cover" />
+          <div className="flex-1 min-w-0">
+            <p className="font-body font-semibold text-sm leading-tight">Instala la app</p>
+            <p className="font-body text-[11px] text-cream/60">Ábrela directo desde tu pantalla de inicio</p>
+          </div>
+          <button onClick={install}
+            className="flex-shrink-0 bg-cherry text-cream font-body text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-cherry/80 transition-colors">
+            Instalar
+          </button>
+        </div>
+      )}
+
       {/* Date picker for completed tab */}
       {tab === 'completed' && (
         <div className="mx-4 mt-3 flex items-center gap-3">
@@ -462,6 +491,53 @@ export default function DeliveryPanel() {
           onOrderClick={o => { setShowRoute(false); setSelected(o) }}
         />
       )}
+
+      {showReturnNav && (
+        <ReturnToSedeModal sedeId={showReturnNav} onClose={() => setShowReturnNav(null)} />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal de regreso a sede ───────────────────────────────────────────────────
+function ReturnToSedeModal({ sedeId, onClose }) {
+  const sede = SEDES[sedeId]
+  if (!sede) return null
+
+  const openMaps = () => {
+    const dest = sede.mapsAddress || sede.address
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`, '_blank')
+  }
+
+  const openWaze = () => {
+    window.open(`https://waze.com/ul?ll=${sede.coords.lat},${sede.coords.lng}&navigate=yes`, '_blank')
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-cream w-full max-w-sm rounded-t-3xl sm:rounded-3xl animate-scale-in shadow-2xl">
+        <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-6 py-5 rounded-t-3xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MapPin size={20} className="text-cream" />
+            <div>
+              <p className="font-display text-xl text-cream tracking-wide">Volver a {sede.name}</p>
+              <p className="font-body text-xs text-cream/70">{sede.address}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-cream/70 hover:text-cream"><X size={22} /></button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-3 pb-8">
+          <p className="font-body text-sm text-coal/60 text-center">¿Con qué app quieres navegar?</p>
+          <button onClick={openMaps} className="btn-primary w-full btn-lg">
+            <Navigation size={18} /> Abrir en Google Maps
+          </button>
+          <button onClick={openWaze} className="btn-secondary w-full btn-lg">
+            <ExternalLink size={18} /> Abrir en Waze
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
