@@ -57,21 +57,29 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const orderSede = SEDES[order.sedeId]
 
   useEffect(() => {
-    if (!order.fullAddress || !orderSede) return
+    if (!order.fullAddress || !orderSede) { setDistanceKm(-1); return }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 6000)
     const q = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
     fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
       headers: { 'Accept-Language': 'es' },
+      referrer: 'https://delistars.com/',
+      referrerPolicy: 'no-referrer-when-downgrade',
+      signal: controller.signal,
     })
       .then(r => r.json())
       .then(results => {
+        clearTimeout(timer)
         if (results[0]) {
           setDistanceKm(haversineKm(
             orderSede.coords.lat, orderSede.coords.lng,
             parseFloat(results[0].lat), parseFloat(results[0].lon)
           ))
+        } else {
+          setDistanceKm(-1)
         }
       })
-      .catch(() => {})
+      .catch(() => setDistanceKm(-1))
   }, [order.fullAddress, orderSede])
 
   const time = order.createdAt?.toDate
@@ -271,8 +279,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     } finally { setSendingClientMsg(false) }
   }
 
-  const distColor = distanceKm === null ? '' : distanceKm > 5 ? 'text-pepper' : distanceKm > 3 ? 'text-mustard' : 'text-mint'
-  const distLabel = distanceKm === null ? 'Calculando distancia…' : `~${distanceKm.toFixed(1)} km de la sede`
+  const distColor = distanceKm === null ? 'text-coal/40'
+    : distanceKm < 0 ? 'text-coal/30'
+    : distanceKm > 5 ? 'text-pepper'
+    : distanceKm > 3 ? 'text-mustard'
+    : 'text-mint'
+  const distLabel = distanceKm === null ? 'Calculando distancia…'
+    : distanceKm < 0 ? 'Distancia no disponible'
+    : `~${distanceKm.toFixed(1)} km de la sede`
 
   // Timestamps
   const timestamps = [
@@ -341,9 +355,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
             {order.fullAddress && (
               <div className={`flex items-center gap-1.5 mt-1 ${distColor}`}>
-                {distanceKm !== null && distanceKm > 5 && <AlertTriangle size={14} />}
+                {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && <AlertTriangle size={14} />}
                 <span className="font-body text-xs font-semibold">{distLabel}</span>
-                {distanceKm !== null && distanceKm > 5 && (
+                {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
                   <span className="font-body text-xs text-pepper">(fuera de cobertura recomendada)</span>
                 )}
               </div>
@@ -470,7 +484,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
               <p className="font-display text-lg text-coal tracking-wide">📋 Cotizar pedido al cliente</p>
 
-              {distanceKm !== null && distanceKm > 5 && (
+              {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
                 <div className="flex items-center gap-2 bg-pepper/10 border border-pepper/30 rounded-xl px-3 py-2">
                   <AlertTriangle size={14} className="text-pepper flex-shrink-0" />
                   <p className="font-body text-xs text-pepper">
