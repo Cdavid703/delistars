@@ -319,7 +319,7 @@ export default function ClientPanel() {
           <Info size={16} className="text-mustard flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-body text-xs text-coal/70 leading-relaxed">
-              Haz tu pedido aquí y un cajero te lo confirmará pronto. Si la app falla o tienes algún problema, contáctanos por WhatsApp.
+              ¿Algo falla o tienes un problema con la plataforma? Escríbenos por WhatsApp y te ayudamos.
             </p>
             {sede?.whatsapp && (
               <a
