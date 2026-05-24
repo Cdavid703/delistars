@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp,
+  collection, query, where, onSnapshot, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import { db, storage } from '../../services/firebase'
@@ -46,7 +46,7 @@ const fmt = v => v ? `$${Number(v).toLocaleString('es-CO')}` : null
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
   const [orders,         setOrders]         = useState([])
-  const [selected,       setSelected]       = useState(null)
+  const [selectedId,     setSelectedId]     = useState(null)
   const [showForm,       setShowForm]       = useState(false)
   const [platformActive, setPlatformActive] = useState(true)
   const [showHelp,       setShowHelp]       = useState(false)
@@ -66,19 +66,11 @@ export default function ClientPanel() {
   useEffect(() => {
     if (!user?.uid) return
     const q = query(collection(db, 'orders'), where('clientUid', '==', user.uid))
-    const fetchOrders = async () => {
-      try {
-        const snap = await getDocs(q)
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-        setOrders(docs)
-      } catch (err) {
-        console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message)
-      }
-    }
-    fetchOrders()
-    const interval = setInterval(fetchOrders, 5000)
-    return () => clearInterval(interval)
+    return onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      setOrders(docs)
+    }, err => console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message))
   }, [user?.uid])
 
   // Disparar modal de calificación cuando un pedido de hoy se entrega sin calificar
@@ -98,6 +90,8 @@ export default function ClientPanel() {
   // Delivered: only today
   const deliveredOrders = orders.filter(o => DELIVERED_STATUSES.includes(o.status) && isToday(o.createdAt))
   const rejectedOrders  = orders.filter(o => CLOSED_STATUSES.includes(o.status) && isToday(o.createdAt))
+  // Always derive selected from live orders so the detail modal reflects real-time updates
+  const selected = selectedId ? orders.find(o => o.id === selectedId) ?? null : null
 
   if (platformActive === false && effectiveRole === 'client') {
     return (
@@ -255,7 +249,7 @@ export default function ClientPanel() {
         ) : (
           <div className="flex flex-col gap-3">
             {activeOrders.map(o => (
-              <ClientOrderCard key={o.id} order={o} onClick={() => setSelected(o)} />
+              <ClientOrderCard key={o.id} order={o} onClick={() => setSelectedId(o.id)} />
             ))}
           </div>
         )}
@@ -267,7 +261,7 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Entregados hoy</p>
           <div className="flex flex-col gap-2">
             {deliveredOrders.slice(0, 5).map(o => (
-              <button key={o.id} onClick={() => setSelected(o)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
+              <button key={o.id} onClick={() => setSelectedId(o.id)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
                 <div>
                   {o.orderNumber && <span className="font-display text-base text-cherry mr-2">#{o.orderNumber}</span>}
                   <span className="font-body text-sm">{o.items?.slice(0, 40)}…</span>
@@ -285,7 +279,7 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Rechazados</p>
           <div className="flex flex-col gap-2">
             {rejectedOrders.map(o => (
-              <button key={o.id} onClick={() => setSelected(o)} className="card w-full text-left border-l-4 border-pepper/50">
+              <button key={o.id} onClick={() => setSelectedId(o.id)} className="card w-full text-left border-l-4 border-pepper/50">
                 <div className="flex items-start gap-2">
                   <span className="text-xl">❌</span>
                   <div className="flex-1 min-w-0">
@@ -346,10 +340,10 @@ export default function ClientPanel() {
       )}
 
       {/* Order detail modal */}
-      {selected && <ClientOrderDetail order={selected} onClose={() => setSelected(null)} />}
+      {selected && <ClientOrderDetail order={selected} onClose={() => setSelectedId(null)} />}
 
       {/* History modal */}
-      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); setSelected(o) }} />}
+      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); setSelectedId(o.id) }} />}
 
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
