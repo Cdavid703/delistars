@@ -109,6 +109,17 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     } finally { setLoading(false) }
   }
 
+  const markPreparing = async () => {
+    setLoading(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:      'preparing',
+        preparingAt: serverTimestamp(),
+        updatedAt:   serverTimestamp(),
+      })
+    } finally { setLoading(false) }
+  }
+
   const markCashReceived = async () => {
     setLoading(true)
     try {
@@ -537,6 +548,19 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 className="btn-primary w-full"
               >
                 <Bike size={16} /> Cambiar domiciliario
+              </button>
+            </div>
+          )}
+
+          {/* Marcar en preparación — cajero puede activarlo cuando accepted */}
+          {order.status === 'accepted' && (
+            <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-lg text-coal tracking-wide">🍳 En preparación</p>
+              <p className="font-body text-sm text-coal/70">
+                Avisa al cliente que el pedido está siendo preparado.
+              </p>
+              <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
+                {loading ? 'Procesando…' : 'Marcar en preparación'}
               </button>
             </div>
           )}

@@ -23,6 +23,7 @@ const STATUS_STEPS = [
   { key: 'quoted',     label: 'Cotización recibida',   emoji: '💰' },
   { key: 'assigned',   label: 'Domiciliario asignado', emoji: '🛵' },
   { key: 'accepted',   label: 'Domiciliario aceptó',   emoji: '✅' },
+  { key: 'preparing',  label: 'En preparación',         emoji: '🍳' },
   { key: 'in_transit', label: 'En camino',              emoji: '🏃' },
   { key: 'arrived',    label: 'Llegó al destino',       emoji: '📍' },
   { key: 'delivered_paid',  label: '¡Entregado!',       emoji: '🎉' },

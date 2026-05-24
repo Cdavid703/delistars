@@ -28,7 +28,7 @@ const TABS = [
   { id: 'completed', label: 'Entregados' },
 ]
 
-const ACTIVE_STATUSES   = ['pending', 'assigned', 'accepted', 'in_transit', 'arrived']
+const ACTIVE_STATUSES   = ['pending', 'assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
 const ASSIGN_STATUSES   = ['quoted']
 const CUADRE_STATUSES   = ['pending_cuadre']
 const COMPLETE_STATUSES = ['completed', 'rejected', 'delivered_paid', 'delivered_cash']

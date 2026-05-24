@@ -69,6 +69,7 @@
   .badge-pending   { @apply badge bg-mustard/20 text-mustard; }
   .badge-assigned  { @apply badge bg-tangelo/20 text-tangelo; }
   .badge-accepted  { @apply badge bg-mint/20 text-mint; }
+  .badge-preparing { @apply badge bg-mustard/30 text-mustard; }
   .badge-transit   { @apply badge bg-cherry/20 text-cherry; }
   .badge-arrived   { @apply badge bg-tangelo/30 text-tangelo; }
   .badge-delivered { @apply badge bg-mint/30 text-mint; }

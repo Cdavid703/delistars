@@ -137,11 +137,11 @@ export default function DeliveryPanel() {
   }, [])
 
   useEffect(() => {
-    const hasActive = orders.some(o => ['accepted','in_transit','arrived'].includes(o.status))
+    const hasActive = orders.some(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
     if (hasActive && !geoWatchId.current && navigator.geolocation) {
       geoWatchId.current = navigator.geolocation.watchPosition(
         async pos => {
-          const active = orders.find(o => ['accepted','in_transit','arrived'].includes(o.status))
+          const active = orders.find(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
           if (active) {
             await updateDoc(doc(db, 'orders', active.id), {
               driverLat: pos.coords.latitude,
@@ -207,7 +207,7 @@ export default function DeliveryPanel() {
   }
 
   const pendingOrders   = orders.filter(o => o.status === 'assigned')
-  const activeOrders    = orders.filter(o => ['accepted','in_transit','arrived'].includes(o.status))
+  const activeOrders    = orders.filter(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
   const completedOrders = orders.filter(o => {
     if (!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status)) return false
     const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
@@ -533,9 +533,10 @@ function DriverOrderDetail({ order, onClose }) {
     } finally { setSendingComment(false) }
   }
 
-  const accept    = () => update({ status: 'accepted',    acceptedAt:   serverTimestamp() })
-  const transit   = () => update({ status: 'in_transit',  inTransitAt:  serverTimestamp() })
-  const arrived   = () => update({ status: 'arrived',     arrivedAt:    serverTimestamp() })
+  const accept    = () => update({ status: 'accepted',   acceptedAt:   serverTimestamp() })
+  const prepare   = () => update({ status: 'preparing',  preparingAt:  serverTimestamp() })
+  const transit   = () => update({ status: 'in_transit', inTransitAt:  serverTimestamp() })
+  const arrived   = () => update({ status: 'arrived',    arrivedAt:    serverTimestamp() })
 
   const markDelivered = () => {
     const isCash = order.cashOnDelivery || order.payment === 'Efectivo'
@@ -709,6 +710,16 @@ function DriverOrderDetail({ order, onClose }) {
               </button>
             )}
             {order.status === 'accepted' && (
+              <>
+                <button onClick={prepare} disabled={loading} className="btn-mustard w-full btn-lg">
+                  🍳 En preparación
+                </button>
+                <button onClick={transit} disabled={loading} className="btn-primary w-full btn-lg">
+                  <Navigation size={20} /> Iniciar entrega
+                </button>
+              </>
+            )}
+            {order.status === 'preparing' && (
               <button onClick={transit} disabled={loading} className="btn-primary w-full btn-lg">
                 <Navigation size={20} /> Iniciar entrega
               </button>
