@@ -8,7 +8,7 @@
     "dev:vacantes": "vite --config vite.vacantes.config.js",
     "build": "vite build",
     "build:vacantes": "vite build --config vite.vacantes.config.js && node scripts/postbuild-vacantes.cjs",
-    "build:turnos": "vite build --config vite.turnos.config.js",
+    "build:turnos": "vite build --config vite.turnos.config.js && node scripts/postbuild-turnos.cjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:vacantes": "vite preview --config vite.vacantes.config.js",
