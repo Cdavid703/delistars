@@ -6,6 +6,7 @@ import { format, addWeeks, startOfWeek, addDays, getISOWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ADMIN_EMAILS } from '../services/roles'
 import { LogIn, LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
+import Logo from '../components/common/Logo'
 
 // ─── Empleados ────────────────────────────────────────────────────────────────
 const EMPLOYEES = [
@@ -271,13 +272,13 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-cherry to-tangelo flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center gap-6 text-center max-w-xs w-full">
-        <div>
-          <p className="font-script text-cream/70 text-xl">DeliStars</p>
-          <h1 className="font-display text-5xl text-cream tracking-widest">Turnos</h1>
-          <p className="font-body text-cream/60 text-sm mt-2">Panel de gestión de empleados</p>
+        <div className="flex flex-col items-center gap-2">
+          <Logo variant="dark" size="lg" />
+          <h1 className="font-display text-4xl text-cream tracking-widest">Turnos</h1>
+          <p className="font-body text-cream/60 text-sm">Panel de gestión de empleados</p>
         </div>
-        <div className="bg-cream/10 rounded-2xl p-1 w-full">
-          <Calendar size={40} className="text-cream/40 mx-auto my-4" />
+        <div className="bg-cream/10 rounded-2xl p-4 w-full flex justify-center">
+          <Calendar size={36} className="text-cream/40" />
         </div>
         <button onClick={onLogin}
           className="w-full flex items-center justify-center gap-3 bg-cream text-coal font-body font-semibold text-base py-3.5 px-6 rounded-2xl shadow-lg hover:bg-cream/90 transition-colors">
@@ -382,9 +383,12 @@ export default function TurnosPage() {
   const Header = () => (
     <header className="bg-gradient-to-r from-cherry to-tangelo px-5 py-5 shadow-md">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
-        <div>
-          <p className="font-script text-cream/70 text-base leading-none">DeliStars</p>
-          <h1 className="font-display text-3xl text-cream tracking-widest">Turnos</h1>
+        <div className="flex items-center gap-3">
+          <Logo variant="dark" size="sm" />
+          <div>
+            <h1 className="font-display text-2xl text-cream tracking-widest leading-tight">Turnos</h1>
+            <p className="font-body text-[11px] text-cream/60">Gestión de empleados</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">Admin</span>}
