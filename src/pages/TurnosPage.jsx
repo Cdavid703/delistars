@@ -91,7 +91,8 @@ const getCell = (value, type) => {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function TurnosPage() {
-  const [user,        setUser]        = useState(undefined)   // undefined = cargando
+  const [user,        setUser]        = useState(null)         // null = sin sesión
+  const [authReady,   setAuthReady]   = useState(false)
   const [weekOffset,  setWeekOffset]  = useState(1)           // 1 = próxima semana (inicio desde sem 8 jun)
   const [schedule,    setSchedule]    = useState({})
   const [saved,       setSaved]       = useState({})
@@ -105,8 +106,16 @@ export default function TurnosPage() {
   const isAdmin  = ADMIN_EMAILS.map(e => e.toLowerCase()).includes(user?.email?.toLowerCase() ?? '')
   const dirty    = JSON.stringify(schedule) !== JSON.stringify(saved)
 
-  // Auth
-  useEffect(() => onAuthStateChanged(auth, u => setUser(u ?? null)), [])
+  // Auth — timeout de 4s para no bloquear la página si Firebase tarda
+  useEffect(() => {
+    const timer = setTimeout(() => setAuthReady(true), 4000)
+    const unsub = onAuthStateChanged(auth, u => {
+      setUser(u ?? null)
+      setAuthReady(true)
+      clearTimeout(timer)
+    })
+    return () => { unsub(); clearTimeout(timer) }
+  }, [])
 
   // Cargar turno desde Firestore
   useEffect(() => {
@@ -147,13 +156,6 @@ export default function TurnosPage() {
     setSchedule(prev => ({ ...prev, [empId]: { ...(prev[empId] ?? {}), [dayKey]: value } }))
     setPicker(null)
   }
-
-  // Cargando auth
-  if (user === undefined) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cherry to-tangelo">
-      <div className="w-10 h-10 border-4 border-cream/30 border-t-cream rounded-full animate-spin" />
-    </div>
-  )
 
   return (
     <div className="min-h-screen bg-gradient-soft">
