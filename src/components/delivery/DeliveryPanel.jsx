@@ -56,15 +56,23 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 // Umbral para considerar 2 pedidos "cercanos" (en km)
 const NEARBY_THRESHOLD_KM = 0.4
 
-// Geocoder via Nominatim (OpenStreetMap). Rate-limited a ~1 req/s.
+// Geocoder via Photon (komoot.io) — OSM-based, no API key, CORS habilitado.
 async function geocodeAddress(fullAddress) {
   try {
-    const q = encodeURIComponent(fullAddress + ', Medellín, Colombia')
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-      headers: { 'Accept-Language': 'es' },
-    })
-    const json = await res.json()
-    if (json[0]) return { lat: parseFloat(json[0].lat), lng: parseFloat(json[0].lon) }
+    const street = fullAddress
+      .replace(/\bnum[eé]ro\b.*/i, '')   // quitar "número X a Y"
+      .replace(/#[^\s,]*/g, '')           // quitar "#45-10"
+      .split(',')[0]
+      .trim()
+    const q = encodeURIComponent(street + ', Medellín, Colombia')
+    const res = await fetch(`https://photon.komoot.io/api/?q=${q}&limit=1&lat=6.2442&lon=-75.5812`)
+    if (!res.ok) return null
+    const data = await res.json()
+    const feature = data.features?.[0]
+    if (feature) {
+      const [lon, lat] = feature.geometry.coordinates  // GeoJSON: [lon, lat]
+      return { lat, lng: lon }
+    }
   } catch (_) {}
   return null
 }
@@ -226,7 +234,7 @@ export default function DeliveryPanel() {
     try { localStorage.setItem('ds_geo_cache_v1', JSON.stringify(geoCache)) } catch {}
   }, [geoCache])
 
-  // Geocodificar direcciones nuevas (rate-limited a 1.2s entre requests para respetar Nominatim)
+  // Geocodificar direcciones nuevas (rate-limited a 1.2s entre requests para respetar Photon fair-use)
   const routableAddrKey = routableOrders.map(o => o.fullAddress).join('|')
   useEffect(() => {
     const toGeocode = routableOrders
@@ -399,8 +407,8 @@ export default function DeliveryPanel() {
       )}
 
       {/* Cash to collect banner in active tab */}
-      {tab === 'active' && activeOrders.some(o => o.cashOnDelivery || o.payment === 'Efectivo') && (() => {
-        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo').reduce((s, o) => s + (o.totalPrice || 0), 0)
+      {tab === 'active' && activeOrders.some(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto') && (() => {
+        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto').reduce((s, o) => s + (o.totalPrice || 0), 0)
         return (
           <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
             <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo a cobrar en ruta:</span>
@@ -580,9 +588,18 @@ function DriverOrderCard({ order, onClick }) {
 // ─── Full detail + actions ────────────────────────────────────────────────────
 function DriverOrderDetail({ order, onClose }) {
   const { user } = useAuth()
-  const [loading,      setLoading]     = useState(false)
-  const [commentText,  setCommentText] = useState('')
+  const [loading,        setLoading]       = useState(false)
+  const [commentText,    setCommentText]   = useState('')
   const [sendingComment, setSendingComment] = useState(false)
+
+  // Address editing
+  const [localAddr,      setLocalAddr]      = useState(order.fullAddress || '')
+  const [editingAddr,    setEditingAddr]    = useState(false)
+  const [addrDraft,      setAddrDraft]      = useState('')
+  const [addrSuggestions, setAddrSuggestions] = useState([])
+  const [searchingAddr,  setSearchingAddr]  = useState(false)
+  const [addrSearched,   setAddrSearched]   = useState(false)
+  const [savingAddr,     setSavingAddr]     = useState(false)
 
   const update = async (data) => {
     setLoading(true)
@@ -609,20 +626,59 @@ function DriverOrderDetail({ order, onClose }) {
     } finally { setSendingComment(false) }
   }
 
+  const searchAddr = async () => {
+    if (!addrDraft.trim()) return
+    setSearchingAddr(true)
+    setAddrSuggestions([])
+    setAddrSearched(false)
+    try {
+      const cleaned = addrDraft.replace(/#[^\s,]*/g, '').split(',')[0].trim()
+      const q = encodeURIComponent(cleaned + ', Medellín, Colombia')
+      const res = await fetch(`https://photon.komoot.io/api/?q=${q}&limit=4&lat=6.2442&lon=-75.5812`)
+      if (res.ok) {
+        const data = await res.json()
+        setAddrSuggestions((data.features || []).map(f => {
+          const p = f.properties
+          const num = p.housenumber ? ` #${p.housenumber}` : ''
+          const street = p.street ? `${p.street}${num}` : (p.name || '')
+          const locality = p.district || p.suburb || p.city || ''
+          return [street, locality].filter(Boolean).join(', ')
+        }).filter(Boolean))
+      }
+    } catch (_) {}
+    setAddrSearched(true)
+    setSearchingAddr(false)
+  }
+
+  const saveAddr = async () => {
+    if (!addrDraft.trim()) return
+    setSavingAddr(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        fullAddress: addrDraft.trim(),
+        updatedAt:   serverTimestamp(),
+      })
+      setLocalAddr(addrDraft.trim())
+      setEditingAddr(false)
+      setAddrSuggestions([])
+      setAddrSearched(false)
+    } finally { setSavingAddr(false) }
+  }
+
   const accept    = () => update({ status: 'accepted',   acceptedAt:   serverTimestamp() })
   const prepare   = () => update({ status: 'preparing',  preparingAt:  serverTimestamp() })
   const transit   = () => update({ status: 'in_transit', inTransitAt:  serverTimestamp() })
   const arrived   = () => update({ status: 'arrived',    arrivedAt:    serverTimestamp() })
 
   const markDelivered = () => {
-    const isCash = order.cashOnDelivery || order.payment === 'Efectivo'
+    const isCash = order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto'
     const newStatus = isCash ? 'pending_cuadre' : 'completed'
     update({ status: newStatus, deliveredAt: serverTimestamp() })
   }
 
-  const navAddress = encodeURIComponent(order.fullAddress + ', Medellín, Colombia')
+  const navAddress = encodeURIComponent(localAddr + ', Medellín, Colombia')
   const openMaps = () => window.open(`https://www.google.com/maps/dir/?api=1&destination=${navAddress}`, '_blank')
-  const openWaze = () => window.open(`https://waze.com/ul?q=${encodeURIComponent(order.fullAddress)}&navigate=yes`, '_blank')
+  const openWaze = () => window.open(`https://waze.com/ul?q=${encodeURIComponent(localAddr)}&navigate=yes`, '_blank')
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
@@ -662,18 +718,78 @@ function DriverOrderDetail({ order, onClose }) {
 
           {/* Address + navigation */}
           <div className="card">
-            <div className="flex items-start gap-2 mb-3">
-              <MapPin size={16} className="text-cherry flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-body font-semibold text-sm">{order.fullAddress}</p>
-                {order.barrio    && <p className="font-body text-xs text-coal/50">Barrio: {order.barrio}</p>}
-                {order.reference && <p className="font-body text-xs text-coal/50">Ref: {order.reference}</p>}
+            {!editingAddr ? (
+              <>
+                <div className="flex items-start gap-2 mb-3">
+                  <MapPin size={16} className="text-cherry flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-body font-semibold text-sm">{localAddr}</p>
+                    {order.barrio    && <p className="font-body text-xs text-coal/50">Barrio: {order.barrio}</p>}
+                    {order.reference && <p className="font-body text-xs text-coal/50">Ref: {order.reference}</p>}
+                  </div>
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><Navigation size={14} />Maps</button>
+                  <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><ExternalLink size={14} />Waze</button>
+                </div>
+                {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
+                  <button
+                    onClick={() => { setAddrDraft(localAddr); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
+                    className="text-xs font-body font-semibold text-tangelo underline underline-offset-2"
+                  >
+                    ✏️ Corregir dirección
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    className="input-field flex-1 text-sm"
+                    value={addrDraft}
+                    onChange={e => { setAddrDraft(e.target.value); setAddrSuggestions([]); setAddrSearched(false) }}
+                    placeholder="Calle, número, barrio…"
+                    autoComplete="off"
+                  />
+                  <button
+                    onClick={searchAddr}
+                    disabled={searchingAddr || !addrDraft.trim()}
+                    className="btn-secondary btn-sm px-3 flex-shrink-0"
+                    title="Buscar dirección"
+                  >
+                    {searchingAddr ? <span className="font-body text-xs">…</span> : <Search size={15} />}
+                  </button>
+                </div>
+
+                {addrSuggestions.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Sugerencias</p>
+                    {addrSuggestions.map((s, i) => (
+                      <button key={i} type="button"
+                        onClick={() => { setAddrDraft(s); setAddrSuggestions([]) }}
+                        className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
+                        📍 {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {addrSearched && addrSuggestions.length === 0 && (
+                  <p className="font-body text-xs text-coal/40">
+                    Sin sugerencias — edita la dirección manualmente.
+                  </p>
+                )}
+
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => { setEditingAddr(false); setAddrSuggestions([]); setAddrSearched(false) }} className="btn-secondary flex-1 btn-sm">
+                    Cancelar
+                  </button>
+                  <button onClick={saveAddr} disabled={savingAddr || !addrDraft.trim()} className="btn-primary flex-1 btn-sm">
+                    {savingAddr ? 'Guardando…' : '✓ Guardar'}
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><Navigation size={14} />Maps</button>
-              <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><ExternalLink size={14} />Waze</button>
-            </div>
+            )}
           </div>
 
           {/* Order items */}
@@ -720,7 +836,7 @@ function DriverOrderDetail({ order, onClose }) {
                   <span className="font-bold text-cherry">{fmt(order.totalPrice)}</span>
                 </div>
                 {/* Cash handling info */}
-                {(order.cashOnDelivery || order.payment === 'Efectivo') && (
+                {(order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto') && (
                   <div className="mt-1 bg-mustard/10 rounded-lg p-2">
                     {order.payExact ? (
                       <p className="font-body text-xs text-coal font-semibold">✓ El cliente paga exacto</p>
@@ -828,7 +944,7 @@ function DriverOrderDetail({ order, onClose }) {
 
 // ─── Driver entregados summary ────────────────────────────────────────────────
 function DriverEntregadosSummary({ orders }) {
-  const cashOrders   = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const cashOrders   = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const totalFees    = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
   const totalCash    = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
 
@@ -869,7 +985,7 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
     ['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status) && isToday(o.createdAt)
   )
 
-  const cashOrders = completedToday.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const cashOrders = completedToday.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const totalCash  = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
 
   const feeOrders  = completedToday.filter(o => o.deliveryPrice > 0)

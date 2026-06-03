@@ -35,9 +35,6 @@ export const DEFAULT_DRIVER_NAMES = {
   'josemanuellondonorivillas@gmail.com': 'José Manuel Londoño',
 }
 
-export const DEFAULT_DRIVER_PHONES = {
-  'cdavid.jaramillo@gmail.com': '3508341643',
-}
 
 export const ROLES = {
   ADMIN:    'admin',

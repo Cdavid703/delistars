@@ -3,7 +3,7 @@ import {
   collection, query, where, onSnapshot, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
-import { db, storage } from '../../services/firebase'
+import { db, storage, getNextOrderNumber } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -14,7 +14,7 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation, Search,
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp, Send
+  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, Download
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
@@ -206,14 +206,18 @@ export default function ClientPanel() {
   }
 
   const handleCreateOrder = async (data) => {
+    let orderNumber = ''
+    try { orderNumber = String(await getNextOrderNumber()) } catch (_) {}
     await addDoc(collection(db, 'orders'), {
       ...data,
+      orderNumber,
       clientUid:   user.uid,
       clientEmail: user.email   || null,
       clientName:  data.name    || user.displayName || 'Invitado',
       sedeId:      sede?.id     || '',
       sedeName:    sede?.name   || '',
       status:      'pending',
+      cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
@@ -400,6 +404,18 @@ export default function ClientPanel() {
         </div>
       )}
 
+      {/* Botón de descarga del menú */}
+      <div className="px-4 mt-4">
+        <a
+          href={import.meta.env.BASE_URL + 'menu-delistars.pdf'}
+          download="Menu-DeliStars.pdf"
+          className="flex items-center justify-center gap-3 w-full bg-gradient-to-r from-cherry to-tangelo text-cream font-display tracking-wide text-lg py-4 rounded-2xl shadow-glow hover:opacity-90 transition-opacity"
+        >
+          <Download size={22} />
+          Ver menú DeliStars
+        </a>
+      </div>
+
       {/* Sedes info */}
       <div className="px-4 mt-2 mb-24">
         <p className="section-title mb-3">Nuestras sedes</p>
@@ -474,18 +490,22 @@ export default function ClientPanel() {
 // ─── Order form ───────────────────────────────────────────────────────────────
 function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [form, setForm] = useState({
-    name:        user?.displayName || '',
-    phone:       '',
-    fullAddress: '',
-    barrio:      '',
-    reference:   '',
-    items:       '',
-    payment:     '',
-    notes:       '',
+    name:               user?.displayName || '',
+    phone:              '',
+    fullAddress:        '',
+    barrio:             '',
+    reference:          '',
+    items:              '',
+    payment:            '',
+    notes:              '',
+    mixtoEfectivo:      '',
+    mixtoTransferencia: '',
   })
-  const [savedAddresses, setSavedAddresses] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [errors,  setErrors]  = useState([])
+  const [savedAddresses,    setSavedAddresses]    = useState([])
+  const [loading,           setLoading]           = useState(false)
+  const [errors,            setErrors]            = useState([])
+  const [addrSuggestions,   setAddrSuggestions]   = useState([])
+  const [detectingLocation, setDetectingLocation] = useState(false)
   const errorsRef = useRef(null)
 
   useEffect(() => {
@@ -510,6 +530,35 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const detectLocation = () => {
+    if (!navigator.geolocation) return
+    setDetectingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords
+          const res = await fetch(
+            `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}&limit=4`
+          )
+          if (res.ok) {
+            const data = await res.json()
+            const suggestions = (data.features || []).map(f => {
+              const p = f.properties
+              const num    = p.housenumber ? ` #${p.housenumber}` : ''
+              const street = p.street ? `${p.street}${num}` : (p.name || '')
+              const locality = p.district || p.suburb || p.city || ''
+              return [street, locality].filter(Boolean).join(', ')
+            }).filter(Boolean)
+            setAddrSuggestions(suggestions)
+          }
+        } catch (_) {}
+        setDetectingLocation(false)
+      },
+      () => setDetectingLocation(false),
+      { timeout: 10000, maximumAge: 30000 }
+    )
+  }
+
   const handleSubmit = async () => {
     const errs = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
@@ -517,6 +566,9 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (!form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
     if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
+    if (form.payment === 'Mixto' && (!form.mixtoEfectivo || !form.mixtoTransferencia)) {
+      errs.push('Indica cuánto pagarás en efectivo y cuánto en transferencia')
+    }
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     try {
@@ -572,8 +624,43 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 
       <div>
         <label className="label-field">Dirección de entrega *</label>
-        <input className="input-field" value={form.fullAddress} onChange={e => set('fullAddress', e.target.value)} placeholder="Calle, número, apartamento…" />
-        {savedAddresses.length > 0 && (
+        <div className="flex gap-2">
+          <input
+            className="input-field flex-1"
+            value={form.fullAddress}
+            onChange={e => { set('fullAddress', e.target.value); setAddrSuggestions([]) }}
+            placeholder="Calle, número, apartamento…"
+          />
+          <button
+            type="button"
+            onClick={detectLocation}
+            disabled={detectingLocation}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl border border-cherry/20 bg-cherry/5 text-cherry text-xs font-semibold font-body hover:bg-cherry/10 transition-colors disabled:opacity-50"
+            title="Detectar mi ubicación"
+          >
+            <LocateFixed size={14} />
+            {detectingLocation ? 'Detectando…' : 'Ubicación'}
+          </button>
+        </div>
+
+        {addrSuggestions.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1">
+            <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Selecciona la más cercana a tu dirección</p>
+            {addrSuggestions.map((s, i) => (
+              <button key={i} type="button"
+                onClick={() => { set('fullAddress', s); setAddrSuggestions([]) }}
+                className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
+                📍 {s}
+              </button>
+            ))}
+            <button type="button" onClick={() => setAddrSuggestions([])}
+              className="text-[10px] font-body text-coal/40 hover:text-coal/60 text-right">
+              Ninguna — escribir manualmente
+            </button>
+          </div>
+        )}
+
+        {savedAddresses.length > 0 && addrSuggestions.length === 0 && (
           <div className="mt-1.5 flex flex-col gap-1">
             <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Entregas anteriores</p>
             {[...savedAddresses].reverse().slice(0, 3).map((addr, i) => (
@@ -582,6 +669,15 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
                 📍 {addr}
               </button>
             ))}
+          </div>
+        )}
+
+        {!user?.email && (
+          <div className="mt-2 bg-cherry/5 border border-cherry/15 rounded-xl px-3 py-2.5 flex items-start gap-2">
+            <Info size={13} className="text-cherry/50 flex-shrink-0 mt-0.5" />
+            <p className="font-body text-[11px] text-coal/55 leading-relaxed">
+              Si <strong>inicias sesión con Google</strong>, tu nombre, teléfono y dirección se guardan automáticamente para no tener que escribirlos en el próximo pedido.
+            </p>
           </div>
         )}
       </div>
@@ -622,11 +718,14 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           <option>Efectivo</option>
           <option>Transferencia</option>
           <option>Nequi</option>
+          <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
         </select>
-        {['Transferencia', 'Nequi'].includes(form.payment) && (
+
+        {/* QR para pago digital */}
+        {['Transferencia', 'Nequi', 'Mixto'].includes(form.payment) && (
           <div className="mt-3 flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
             <p className="font-body text-xs text-coal/60 text-center font-semibold">
-              Escanea para pagar con {form.payment}
+              Escanea para pagar con transferencia
             </p>
             <img
               src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
@@ -640,6 +739,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
               420 679 938 91
             </p>
             <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
+          </div>
+        )}
+
+        {/* Campos de monto para pago mixto */}
+        {form.payment === 'Mixto' && (
+          <div className="mt-3 bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
+            <p className="font-body text-xs text-coal/70 font-semibold">
+              ¿Cuánto pagarás en cada forma? (el cajero confirma el total exacto)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label-field">💵 En efectivo</label>
+                <input className="input-field" type="number" min="0"
+                  value={form.mixtoEfectivo}
+                  onChange={e => set('mixtoEfectivo', e.target.value)}
+                  placeholder="$0" />
+              </div>
+              <div>
+                <label className="label-field">📲 En transferencia</label>
+                <input className="input-field" type="number" min="0"
+                  value={form.mixtoTransferencia}
+                  onChange={e => set('mixtoTransferencia', e.target.value)}
+                  placeholder="$0" />
+              </div>
+            </div>
           </div>
         )}
       </div>

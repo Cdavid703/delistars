@@ -20,7 +20,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
   const [loading,       setLoading]       = useState(false)
   const [errors,        setErrors]        = useState([])
 
-  const cashOnDelivery = order.payment === 'Efectivo'
+  const cashOnDelivery = order.payment === 'Efectivo' || order.payment === 'Mixto'
   const qp    = parseFloat(quotedPrice)   || 0
   const dp    = parseFloat(deliveryPrice) || 0
   const total = qp + dp

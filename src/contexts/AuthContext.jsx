@@ -60,7 +60,9 @@ export function AuthProvider({ children }) {
         // Restore sede from localStorage — only for staff, never for pure clients
         if (resolvedRole !== ROLES.CLIENT) {
           const savedSede = localStorage.getItem(`sede_${firebaseUser.uid}`)
-          if (savedSede) setSede(JSON.parse(savedSede))
+          if (savedSede) {
+            try { setSede(JSON.parse(savedSede)) } catch { localStorage.removeItem(`sede_${firebaseUser.uid}`) }
+          }
         }
       } else {
         setUser(null)

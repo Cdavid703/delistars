@@ -2,13 +2,14 @@
   "name": "DeliStars — Domicilios",
   "short_name": "DeliStars",
   "description": "Plataforma de domicilios Tasty & Cool",
-  "start_url": "/",
+  "start_url": "/domicilios/",
+  "scope": "/domicilios/",
   "display": "standalone",
   "background_color": "#f5efe6",
   "theme_color": "#e63946",
   "orientation": "portrait",
   "icons": [
-    { "src": "/logo_sello.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/logo_sello.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/domicilios/logo_sello.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/domicilios/logo_sello.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

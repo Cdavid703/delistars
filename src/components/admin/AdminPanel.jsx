@@ -322,17 +322,18 @@ const isAdminDay = (ts, targetDate) => {
 
 function AdminEntregadosSummary({ orders }) {
   const fmt2 = v => v ? `$${Number(v).toLocaleString('es-CO')}` : '—'
-  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
-  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
+  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo' && o.payment !== 'Mixto')
   const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
   const totalFees     = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+  const netRevenue    = totalRevenue - totalFees
   return (
     <div className="bg-gradient-to-r from-cherry/10 to-tangelo/10 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-3">
       <p className="font-display text-base tracking-wide text-coal">Resumen del día filtrado</p>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-cream/80 rounded-xl p-2">
           <p className="font-display text-2xl text-cherry">{orders.length}</p>
-          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Total</p>
+          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Pedidos</p>
         </div>
         <div className="bg-cream/80 rounded-xl p-2">
           <p className="font-display text-2xl text-mustard">{cashOrders.length}</p>
@@ -349,8 +350,12 @@ function AdminEntregadosSummary({ orders }) {
           <span className="font-display text-base text-coal">{fmt2(totalRevenue)}</span>
         </div>
         <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
-          <span className="font-body text-xs text-coal/60">Total en domicilios:</span>
+          <span className="font-body text-xs text-coal/60">Total domicilios:</span>
           <span className="font-display text-base text-mint">{fmt2(totalFees)}</span>
+        </div>
+        <div className="flex justify-between items-center bg-tangelo/10 border border-tangelo/20 rounded-lg px-3 py-2">
+          <span className="font-body text-xs font-semibold text-coal/70">Neto (sin domicilios):</span>
+          <span className="font-display text-base text-tangelo">{fmt2(netRevenue)}</span>
         </div>
       </div>
     </div>
@@ -435,8 +440,8 @@ function OrdersTab({ sede }) {
         </div>
       )}
 
-      {/* Summary when viewing entregados */}
-      {filter === 'entregados' && filtered.length > 0 && (
+      {/* Summary when viewing all (by date) or entregados */}
+      {(filter === 'entregados' || filter === 'all') && filtered.length > 0 && (
         <AdminEntregadosSummary orders={filtered} />
       )}
 
@@ -534,8 +539,8 @@ function ReportsTab({ sede }) {
   })
 
   const completed     = filtered.filter(o => COMPLETED_STATUSES_R.includes(o.status))
-  const cashOrders    = completed.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
-  const digitalOrders = completed.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const cashOrders    = completed.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
+  const digitalOrders = completed.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo' && o.payment !== 'Mixto')
   const totalRevenue  = completed.reduce((s, o) => s + (o.totalPrice    || 0), 0)
   const totalFees     = completed.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
 

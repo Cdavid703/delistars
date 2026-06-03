@@ -3,7 +3,7 @@ import {
   collection, addDoc, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, getDocs
 } from 'firebase/firestore'
-import { db } from '../../services/firebase'
+import { db, getNextOrderNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, ROLES } from '../../services/roles'
 import Logo from '../common/Logo'
@@ -72,15 +72,20 @@ function playMessageSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
     if (ctx.state === 'suspended') ctx.resume()
-    ;[660, 880].forEach((freq, i) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = 'sine'; osc.frequency.value = freq
-      const t = ctx.currentTime + i * 0.13
-      gain.gain.setValueAtTime(0.25, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
-      osc.start(t); osc.stop(t + 0.24)
-    })
+    // Doble ráfaga de 3 tonos — mucho más audible que un bip simple
+    const burst = (offset) => {
+      [880, 1100, 880].forEach((freq, i) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'; osc.frequency.value = freq
+        const t = ctx.currentTime + offset + i * 0.14
+        gain.gain.setValueAtTime(0.55, t)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
+        osc.start(t); osc.stop(t + 0.20)
+      })
+    }
+    burst(0)
+    burst(0.55)   // repite a los 0.55s para asegurar que se escuche
   } catch (_) {}
 }
 
@@ -107,8 +112,13 @@ export default function CashierPanel() {
   const [showTracking,    setShowTracking]   = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
 
-  const prevPendingIdsRef  = useRef(null)
-  const clientMsgCountRef  = useRef(null)   // null = primera carga, no reproducir
+  const [cashierSeenCounts, setCashierSeenCounts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ds_cashier_chat_seen') || '{}') } catch { return {} }
+  })
+
+  const prevPendingIdsRef    = useRef(null)
+  const clientMsgCountRef    = useRef(null)   // null = primera carga, no reproducir
+  const seenInitializedRef   = useRef(false)  // inicializar seenCounts una sola vez
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
@@ -122,6 +132,28 @@ export default function CashierPanel() {
       active: !platformActive, updatedBy: user.email, updatedAt: serverTimestamp(),
     })
   }
+
+  // Inicializar seenCounts en la primera carga de pedidos:
+  // los pedidos que ya existían en Firestore se marcan como "vistos"
+  // para que no aparezcan como no leídos retroactivamente.
+  useEffect(() => {
+    if (seenInitializedRef.current || orders.length === 0) return
+    seenInitializedRef.current = true
+    const updated = { ...cashierSeenCounts }
+    let changed = false
+    orders.forEach(o => {
+      if (!(o.id in updated)) {
+        // Pedido no trackeado → marcar mensajes actuales como vistos
+        updated[o.id] = (o.clientMessages || []).filter(m => m.role === 'client').length
+        changed = true
+      }
+    })
+    if (changed) {
+      setCashierSeenCounts(updated)
+      try { localStorage.setItem('ds_cashier_chat_seen', JSON.stringify(updated)) } catch {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders])
 
   // Sonido al recibir mensaje nuevo del cliente en el chat
   useEffect(() => {
@@ -147,6 +179,28 @@ export default function CashierPanel() {
   const dismissAlert = useCallback(() => {
     alarm.stop(); setAlarmActive(false); setNewOrderAlert(null)
   }, [])
+
+  // Marcar mensajes del cliente como vistos al abrir el pedido
+  const openOrderDetail = (orderId) => {
+    if (!orderId) return
+    const o = orders.find(x => x.id === orderId)
+    if (o) {
+      const count = (o.clientMessages || []).filter(m => m.role === 'client').length
+      const updated = { ...cashierSeenCounts, [orderId]: count }
+      setCashierSeenCounts(updated)
+      try { localStorage.setItem('ds_cashier_chat_seen', JSON.stringify(updated)) } catch {}
+    }
+    setSelectedId(orderId)
+  }
+
+  // Mapa de mensajes no leídos por pedido (mensajes del cliente que el cajero no ha visto)
+  const unreadChatMap = Object.fromEntries(
+    orders.map(o => {
+      const clientMsgs = (o.clientMessages || []).filter(m => m.role === 'client').length
+      return [o.id, Math.max(0, clientMsgs - (cashierSeenCounts[o.id] || 0))]
+    })
+  )
+  const totalUnreadChat = Object.values(unreadChatMap).reduce((s, n) => s + n, 0)
 
   useEffect(() => {
     if (!sede) return
@@ -209,23 +263,36 @@ export default function CashierPanel() {
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
+    console.error('[CashierPanel] handleCreateOrder — data:', data, '| sede:', sede?.id)
     const driver = drivers.find(d => d.id === data.driverId)
     const driverEmail = (driver?.id || data.driverId || '').toLowerCase().trim()
-    await addDoc(collection(db, 'orders'), {
-      ...data,
-      sedeId:        sede.id,
-      sedeName:      sede.name,
-      status:        'assigned',
-      cashierId:     user.uid,
-      cashierName:   user.displayName,
-      driverEmail,
-      driverName:    driver?.name || driver?.id || '',
-      cashOnDelivery: data.payment === 'Efectivo',
-      assignedAt:    serverTimestamp(),
-      createdAt:     serverTimestamp(),
-      updatedAt:     serverTimestamp(),
-    })
-    setShowForm(false)
+    // Auto-asignar número solo si el cajero no escribió uno manualmente
+    let orderNumber = data.orderNumber?.trim() || ''
+    if (!orderNumber) {
+      try { orderNumber = String(await getNextOrderNumber()) } catch (_) {}
+    }
+    try {
+      await addDoc(collection(db, 'orders'), {
+        ...data,
+        orderNumber,
+        sedeId:        sede.id,
+        sedeName:      sede.name,
+        status:        'assigned',
+        cashierId:     user.uid,
+        cashierName:   user.displayName,
+        driverEmail,
+        driverName:    driver?.name || driver?.id || '',
+        cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
+        assignedAt:    serverTimestamp(),
+        createdAt:     serverTimestamp(),
+        updatedAt:     serverTimestamp(),
+      })
+      console.error('[CashierPanel] addDoc OK')
+      setShowForm(false)
+    } catch (err) {
+      console.error('[CashierPanel] addDoc ERROR:', err)
+      throw err   // re-lanzar para que OrderForm muestre el error
+    }
   }
 
   const handleAddDriver = async () => {
@@ -414,6 +481,11 @@ export default function CashierPanel() {
             {t.id === 'active'  && pendingCount > 0 && (
               <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">{pendingCount}</span>
             )}
+            {t.id === 'active'  && totalUnreadChat > 0 && (
+              <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                <MessageCircle size={8} />{totalUnreadChat}
+              </span>
+            )}
             {t.id === 'assign'  && assignCount  > 0 && (
               <span className="ml-1 bg-tangelo text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full">{assignCount}</span>
             )}
@@ -423,6 +495,21 @@ export default function CashierPanel() {
           </button>
         ))}
       </div>
+
+      {/* Banner global de mensajes sin leer del cliente */}
+      {totalUnreadChat > 0 && (
+        <div className="mx-4 mt-2 bg-cherry/10 border border-cherry/30 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
+            <MessageCircle size={18} className="text-cream" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-body text-sm font-semibold text-cherry">
+              {totalUnreadChat === 1 ? '1 mensaje sin leer de un cliente' : `${totalUnreadChat} mensajes sin leer de clientes`}
+            </p>
+            <p className="font-body text-xs text-coal/50">Toca el pedido resaltado para responder</p>
+          </div>
+        </div>
+      )}
 
       {/* History date picker (only in completed tab) */}
       {tab === 'completed' && (
@@ -487,7 +574,8 @@ export default function CashierPanel() {
           <OrderCard
             key={order.id}
             order={order}
-            onClick={() => tab === 'assign' ? setAssigning(order) : setSelectedId(order.id)}
+            unreadCount={unreadChatMap[order.id] || 0}
+            onClick={() => tab === 'assign' ? setAssigning(order) : openOrderDetail(order.id)}
           />
         ))}
       </main>
@@ -598,7 +686,7 @@ export default function CashierPanel() {
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-coal/20 text-coal/60 font-semibold text-sm hover:bg-smoked transition-colors">
                 Silenciar
               </button>
-              <button onClick={() => { dismissAlert(); setSelectedId(newOrderAlert?.id ?? null) }} className="flex-1 btn-primary">
+              <button onClick={() => { dismissAlert(); openOrderDetail(newOrderAlert?.id ?? null) }} className="flex-1 btn-primary">
                 <BellRing size={16} /> Ver pedido
               </button>
             </div>
@@ -613,8 +701,8 @@ export default function CashierPanel() {
 function exportarPDF(orders, fecha, sedeName) {
   const f       = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
   const esc     = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;')
-  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
-  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
+  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo' && o.payment !== 'Mixto')
   const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
   const totalFees     = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
 
@@ -682,8 +770,8 @@ function exportarPDF(orders, fecha, sedeName) {
 
 // ─── Entregados summary ───────────────────────────────────────────────────────
 function EntregadosSummary({ orders, sedeName, fecha }) {
-  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
-  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo')
+  const cashOrders    = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
+  const digitalOrders = orders.filter(o => !o.cashOnDelivery && o.payment !== 'Efectivo' && o.payment !== 'Mixto')
   const totalRevenue  = orders.reduce((s, o) => s + (o.totalPrice || 0), 0)
   const totalFees     = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
 
@@ -957,7 +1045,7 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
     ? completedToday.filter(o => o.driverEmail === selectedDriver)
     : completedToday
 
-  const cashOrders    = filtered.filter(o => o.cashOnDelivery || o.payment === 'Efectivo')
+  const cashOrders    = filtered.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const cashPending   = cashOrders.filter(o => o.status === 'pending_cuadre')
   const totalCash     = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
 

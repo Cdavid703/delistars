@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
-import { db } from '../../services/firebase'
+import { db, getNextOrderNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
@@ -11,7 +11,7 @@ import {
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Printer, Hash, DollarSign, MessageSquare, Clock,
-  Send, FileCheck, CheckCircle
+  Send, FileCheck, CheckCircle, Search
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -52,7 +52,20 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [localQuotedPrice,   setLocalQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
   const [localDeliveryPrice, setLocalDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
   const [localCashierNotes,  setLocalCashierNotes]  = useState(order.cashierNotes  || '')
+
+  // Order number inline editing (any non-final status)
+  const [editingOrderNum, setEditingOrderNum] = useState(false)
+  const [editOrderNum,    setEditOrderNum]    = useState(order.orderNumber || '')
+  const [savingOrderNum,  setSavingOrderNum]  = useState(false)
   const [quoteErrors,        setQuoteErrors]         = useState([])
+
+  // Address editing
+  const [editingAddr,    setEditingAddr]    = useState(false)
+  const [addrDraft,      setAddrDraft]      = useState('')
+  const [addrSuggestions, setAddrSuggestions] = useState([])
+  const [searchingAddr,  setSearchingAddr]  = useState(false)
+  const [addrSearched,   setAddrSearched]   = useState(false)
+  const [savingAddr,     setSavingAddr]     = useState(false)
 
   const orderSede = SEDES[order.sedeId]
 
@@ -85,6 +98,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       .catch(() => setDistanceKm(-1))
   }, [order.fullAddress, orderSede])
 
+
   const time = order.createdAt?.toDate
     ? format(order.createdAt.toDate(), "dd MMM yyyy 'a las' HH:mm", { locale: es })
     : '--'
@@ -93,15 +107,75 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const ldp   = parseFloat(localDeliveryPrice) || 0
   const localTotal = lqp + ldp
 
-  const sendQuote = async () => {
-    const errs = []
-    if (!localOrderNumber.trim()) errs.push('El número de orden es obligatorio')
-    if (errs.length) { setQuoteErrors(errs); return }
-    setLoading(true)
+  const searchAddr = async () => {
+    if (!addrDraft.trim()) return
+    setSearchingAddr(true)
+    setAddrSuggestions([])
+    setAddrSearched(false)
+    try {
+      const cleaned = addrDraft.replace(/#[^\s,]*/g, '').split(',')[0].trim()
+      const q = encodeURIComponent(cleaned + ', Medellín, Colombia')
+      const res = await fetch(`https://photon.komoot.io/api/?q=${q}&limit=4&lat=6.2442&lon=-75.5812`)
+      if (res.ok) {
+        const data = await res.json()
+        setAddrSuggestions((data.features || []).map(f => {
+          const p = f.properties
+          const num = p.housenumber ? ` #${p.housenumber}` : ''
+          const street = p.street ? `${p.street}${num}` : (p.name || '')
+          const locality = p.district || p.suburb || p.city || ''
+          return [street, locality].filter(Boolean).join(', ')
+        }).filter(Boolean))
+      }
+    } catch (_) {}
+    setAddrSearched(true)
+    setSearchingAddr(false)
+  }
+
+  const saveAddr = async () => {
+    if (!addrDraft.trim()) return
+    setSavingAddr(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
+        fullAddress: addrDraft.trim(),
+        updatedAt:   serverTimestamp(),
+      })
+      setEditingAddr(false)
+      setAddrSuggestions([])
+      setAddrSearched(false)
+    } finally { setSavingAddr(false) }
+  }
+
+  const saveOrderNumber = async () => {
+    const num = editOrderNum.trim()
+    if (!num) return
+    setSavingOrderNum(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        orderNumber: num,
+        updatedAt:   serverTimestamp(),
+      })
+      setEditingOrderNum(false)
+    } finally { setSavingOrderNum(false) }
+  }
+
+  const sendQuote = async () => {
+    setLoading(true)
+    try {
+      // Auto-asignar número si el cajero no escribió uno
+      let orderNum = localOrderNumber.trim()
+      if (!orderNum) {
+        try {
+          orderNum = String(await getNextOrderNumber())
+          setLocalOrderNumber(orderNum)
+        } catch (_) {
+          setQuoteErrors(['No se pudo asignar número automáticamente. Escríbelo manualmente.'])
+          setLoading(false)
+          return
+        }
+      }
+      await updateDoc(doc(db, 'orders', order.id), {
         status:        'quoted',
-        orderNumber:   localOrderNumber.trim(),
+        orderNumber:   orderNum,
         quotedPrice:   lqp,
         deliveryPrice: ldp,
         totalPrice:    localTotal,
@@ -311,7 +385,41 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         {/* Header */}
         <div className="sticky top-0 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
           <div className="flex items-center gap-2">
-            {order.orderNumber && <span className="font-display text-2xl text-cherry">#{order.orderNumber}</span>}
+            {!editingOrderNum ? (
+              <div className="flex items-center gap-2">
+                <span className="font-display text-2xl text-cherry">
+                  {order.orderNumber ? `#${order.orderNumber}` : '# —'}
+                </span>
+                {!['completed','rejected','cancelled'].includes(order.status) && (
+                  <button
+                    onClick={() => { setEditOrderNum(order.orderNumber || ''); setEditingOrderNum(true) }}
+                    className="text-[10px] font-body font-semibold text-tangelo underline underline-offset-2"
+                    title="Editar número de pedido"
+                  >
+                    ✏️
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-body text-sm text-coal/50">#</span>
+                <input
+                  className="input-field py-1 px-2 text-lg font-display text-cherry w-24"
+                  value={editOrderNum}
+                  onChange={e => setEditOrderNum(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter') saveOrderNumber(); if (e.key === 'Escape') setEditingOrderNum(false) }}
+                />
+                <button onClick={saveOrderNumber} disabled={savingOrderNum || !editOrderNum.trim()}
+                  className="text-xs font-body font-semibold text-mint bg-mint/10 px-2 py-1 rounded-lg hover:bg-mint/20">
+                  {savingOrderNum ? '…' : '✓'}
+                </button>
+                <button onClick={() => setEditingOrderNum(false)}
+                  className="text-xs font-body text-coal/40 hover:text-coal/60">
+                  ✕
+                </button>
+              </div>
+            )}
             <StatusBadge status={order.status} />
           </div>
           <div className="flex items-center gap-1">
@@ -352,28 +460,89 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
           {/* Address + distance */}
           <Section title="Dirección de entrega">
-            <Row icon={MapPin} label="Dirección"  value={order.fullAddress} />
-            {order.barrio    && <Row icon={MapPin} label="Barrio"     value={order.barrio} />}
-            {order.reference && <Row icon={MapPin} label="Referencia" value={order.reference} />}
+            {!editingAddr ? (
+              <>
+                <Row icon={MapPin} label="Dirección"  value={order.fullAddress} />
+                {order.barrio    && <Row icon={MapPin} label="Barrio"     value={order.barrio} />}
+                {order.reference && <Row icon={MapPin} label="Referencia" value={order.reference} />}
 
-            {order.fullAddress && (
-              <div className={`flex items-center gap-1.5 mt-1 ${distColor}`}>
-                {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && <AlertTriangle size={14} />}
-                <span className="font-body text-xs font-semibold">{distLabel}</span>
-                {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
-                  <span className="font-body text-xs text-pepper">(fuera de cobertura recomendada)</span>
+                {order.fullAddress && (
+                  <div className={`flex items-center gap-1.5 mt-1 ${distColor}`}>
+                    {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && <AlertTriangle size={14} />}
+                    <span className="font-body text-xs font-semibold">{distLabel}</span>
+                    {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
+                      <span className="font-body text-xs text-pepper">(fuera de cobertura recomendada)</span>
+                    )}
+                  </div>
                 )}
+
+                <div className="flex gap-2 mt-3">
+                  <button onClick={openDirections} className="btn-secondary btn-sm flex-1">
+                    <Navigation size={14} /> Ver ruta
+                  </button>
+                  <button onClick={openWaze} className="btn-secondary btn-sm flex-1">
+                    <ExternalLink size={14} /> Waze
+                  </button>
+                </div>
+
+                {!['rejected','cancelled','completed'].includes(order.status) && (
+                  <button
+                    onClick={() => { setAddrDraft(order.fullAddress || ''); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
+                    className="text-xs font-body font-semibold text-tangelo underline underline-offset-2 mt-2 block"
+                  >
+                    ✏️ Editar dirección
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    className="input-field flex-1 text-sm"
+                    value={addrDraft}
+                    onChange={e => { setAddrDraft(e.target.value); setAddrSuggestions([]); setAddrSearched(false) }}
+                    placeholder="Calle, número, barrio…"
+                    autoComplete="off"
+                  />
+                  <button
+                    onClick={searchAddr}
+                    disabled={searchingAddr || !addrDraft.trim()}
+                    className="btn-secondary btn-sm px-3 flex-shrink-0"
+                    title="Buscar dirección"
+                  >
+                    {searchingAddr ? <span className="font-body text-xs">…</span> : <Search size={15} />}
+                  </button>
+                </div>
+
+                {addrSuggestions.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Sugerencias</p>
+                    {addrSuggestions.map((s, i) => (
+                      <button key={i} type="button"
+                        onClick={() => { setAddrDraft(s); setAddrSuggestions([]) }}
+                        className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
+                        📍 {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {addrSearched && addrSuggestions.length === 0 && (
+                  <p className="font-body text-xs text-coal/40">
+                    Sin sugerencias — edita la dirección manualmente.
+                  </p>
+                )}
+
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => { setEditingAddr(false); setAddrSuggestions([]); setAddrSearched(false) }} className="btn-secondary flex-1 btn-sm">
+                    Cancelar
+                  </button>
+                  <button onClick={saveAddr} disabled={savingAddr || !addrDraft.trim()} className="btn-primary flex-1 btn-sm">
+                    {savingAddr ? 'Guardando…' : '✓ Guardar'}
+                  </button>
+                </div>
               </div>
             )}
-
-            <div className="flex gap-2 mt-3">
-              <button onClick={openDirections} className="btn-secondary btn-sm flex-1">
-                <Navigation size={14} /> Ver ruta
-              </button>
-              <button onClick={openWaze} className="btn-secondary btn-sm flex-1">
-                <ExternalLink size={14} /> Waze
-              </button>
-            </div>
           </Section>
 
           {/* Order items */}
@@ -392,10 +561,26 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Payment */}
           <Section title="Pago">
             <Row icon={CreditCard} label="Forma de pago" value={order.payment} />
+            {order.payment === 'Mixto' && (
+              <div className="mt-2 bg-smoked/50 rounded-xl p-3 flex flex-col gap-1">
+                {order.mixtoEfectivo > 0 && (
+                  <div className="flex justify-between text-sm font-body">
+                    <span className="text-coal/60">💵 Efectivo:</span>
+                    <span className="font-semibold text-coal">{fmt(order.mixtoEfectivo)}</span>
+                  </div>
+                )}
+                {order.mixtoTransferencia > 0 && (
+                  <div className="flex justify-between text-sm font-body">
+                    <span className="text-coal/60">📲 Transferencia:</span>
+                    <span className="font-semibold text-coal">{fmt(order.mixtoTransferencia)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </Section>
 
           {/* Transfer receipt */}
-          {['Transferencia', 'Nequi'].includes(order.payment) && order.transferReceiptUrl && (
+          {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) && order.transferReceiptUrl && (
             <div className={`card border flex flex-col gap-3 ${order.transferValidated ? 'border-mint/30 bg-mint/5' : 'border-mustard/30 bg-mustard/5'}`}>
               <div className="flex items-center gap-2">
                 <FileCheck size={16} className={order.transferValidated ? 'text-mint' : 'text-mustard'} />

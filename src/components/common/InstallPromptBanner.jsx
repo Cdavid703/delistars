@@ -1,26 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { X } from 'lucide-react'
+import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 export default function InstallPromptBanner() {
-  const [prompt,    setPrompt]    = useState(null)
+  const { canInstall, install } = usePWAInstall()
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem('pwa_install_dismissed') === '1'
   )
 
-  useEffect(() => {
-    const handler = e => { e.preventDefault(); setPrompt(e) }
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
+  if (!canInstall || dismissed) return null
 
-  if (!prompt || dismissed) return null
-
-  const install = async () => {
-    prompt.prompt()
-    const { outcome } = await prompt.userChoice
-    if (outcome === 'accepted') {
-      setPrompt(null)
-    } else {
+  const handleInstall = async () => {
+    const accepted = await install()
+    if (!accepted) {
       setDismissed(true)
       localStorage.setItem('pwa_install_dismissed', '1')
     }
@@ -39,7 +31,7 @@ export default function InstallPromptBanner() {
         <p className="font-body text-xs text-cream/60">Agrega la app a tu pantalla de inicio</p>
       </div>
       <button
-        onClick={install}
+        onClick={handleInstall}
         className="flex-shrink-0 bg-cherry text-cream font-body text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-cherry/80 transition-colors"
       >
         Instalar
