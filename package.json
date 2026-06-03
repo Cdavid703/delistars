@@ -8,9 +8,11 @@
     "dev:vacantes": "vite --config vite.vacantes.config.js",
     "build": "vite build",
     "build:vacantes": "vite build --config vite.vacantes.config.js && node scripts/postbuild-vacantes.cjs",
+    "build:turnos": "vite build --config vite.turnos.config.js",
     "lint": "eslint .",
     "preview": "vite preview",
-    "preview:vacantes": "vite preview --config vite.vacantes.config.js"
+    "preview:vacantes": "vite preview --config vite.vacantes.config.js",
+    "preview:turnos": "vite preview --config vite.turnos.config.js"
   },
   "dependencies": {
     "date-fns": "^4.2.1",
