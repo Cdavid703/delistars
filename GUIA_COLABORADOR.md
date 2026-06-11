@@ -543,20 +543,20 @@ Tu backend queda en `http://localhost:8010` y tu frontend en `http://localhost:8
 
 ### 14.4 Migrar tu base de datos actual
 
-Cuando tengas los datos listos para producción, exporta tu base de datos
-local y mándale el archivo a Carlos:
+Cuando tengas los datos listos, exporta tu base de datos y **súbela al repo**:
 
 ```bash
 # Exportar (ejecuta esto en tu máquina)
 pg_dump -U TU_USUARIO -d TU_BASE_DE_DATOS > dump.sql
+
+# Subir al repo
+git add dump.sql
+git commit -m "db: exportar base de datos inicial"
+git push origin web
 ```
 
-Mándale `dump.sql` por WhatsApp o Drive. Carlos lo importa en el servidor:
-
-```bash
-# Esto lo hace Carlos en el VPS — tú no necesitas hacer nada más
-docker compose exec db psql -U delistars -d delistars_menu < dump.sql
-```
+Carlos jala el repo desde el servidor e importa el dump. Tú no haces
+nada más — el deploy completo lo maneja Carlos desde GitHub.
 
 ### 14.5 URL de conexión — local vs producción
 
