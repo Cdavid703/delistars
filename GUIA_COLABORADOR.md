@@ -36,12 +36,33 @@ El repo ya tiene configurado:
 
 ### Credenciales de Firebase
 
-Copia el archivo `.env.example` como `.env.local` en la raíz y pídele
-a Carlos los valores reales. No subas `.env.local` al repo (ya está en `.gitignore`).
+El repo ya incluye un archivo `.env.example` en la raíz con las variables
+que necesitas. **No subas `.env.local` al repo** (ya está en `.gitignore`).
+
+**Paso 1** — copia el ejemplo:
 
 ```bash
+# Windows
+copy .env.example .env.local
+
+# Mac / Linux
 cp .env.example .env.local
 ```
+
+**Paso 2** — pídele a Carlos (cdavid.jaramillo@gmail.com) que te mande
+los valores reales por WhatsApp o privado. Tu `.env.local` debe quedar así:
+
+```
+VITE_FIREBASE_API_KEY=AIza...
+VITE_FIREBASE_AUTH_DOMAIN=delistars-domicilios.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=delistars-domicilios
+VITE_FIREBASE_STORAGE_BUCKET=delistars-domicilios.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=757400...
+VITE_FIREBASE_APP_ID=1:757400...
+```
+
+> Todas las apps del proyecto (domicilios, turnos, vacantes, web) usan
+> el **mismo** proyecto de Firebase. No crees uno nuevo.
 
 ---
 
