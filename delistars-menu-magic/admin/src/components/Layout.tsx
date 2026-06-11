@@ -1,0 +1,116 @@
+import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Menu, X, LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
+
+const Layout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+  const { user, logout } = useAuthStore()
+
+  const navItems = [
+    { label: 'Dashboard', path: '/', icon: '📊' },
+    { label: 'Productos', path: '/productos', icon: '🍔' },
+    { label: 'Ventas', path: '/ventas', icon: '💰' },
+    { label: 'Trabajadores', path: '/trabajadores', icon: '👥' },
+    { label: 'Sedes', path: '/sedes', icon: '📍' },
+  ]
+
+  const isActive = (path: string) => location.pathname === path
+
+  return (
+    <div className="flex h-screen bg-white">
+      {/* Sidebar */}
+      <aside
+        className={`${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } fixed left-0 top-0 z-40 h-full w-64 bg-coal text-white transition-transform duration-300 ease-in-out lg:static lg:translate-x-0`}
+      >
+        {/* Logo Section */}
+        <div className="border-b border-gray-700 p-6">
+          <h1 className="text-2xl font-display font-bold text-primary">DeliStars</h1>
+          <p className="text-xs text-gray-400 mt-1">Panel de Administración</p>
+        </div>
+
+        {/* Navigation */}
+        <nav className="space-y-1 px-4 py-6">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+                isActive(item.path)
+                  ? 'bg-primary text-white shadow-soft'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`}
+            >
+              <span className="text-lg">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Logout Button */}
+        <div className="absolute bottom-0 left-0 right-0 border-t border-gray-700 p-4">
+          <button onClick={logout} className="w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-primary transition-colors">
+            <LogOut className="w-4 h-4" />
+            Cerrar Sesión
+          </button>
+        </div>
+      </aside>
+
+      {/* Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="border-b border-gray-200 bg-white">
+          <div className="flex items-center justify-between px-4 py-4 sm:px-6">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden inline-flex items-center justify-center p-2 rounded-lg text-coal hover:bg-gray-100"
+            >
+              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+            
+            <div className="flex-1 hidden sm:flex items-center gap-4 ml-4">
+              <h2 className="text-lg font-display font-semibold text-coal">
+                {navItems.find(item => isActive(item.path))?.label || 'Dashboard'}
+              </h2>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="hidden sm:flex flex-col items-end">
+                <p className="text-sm font-semibold text-coal">
+                  {user?.nombre_trabajador} {user?.apellido_trabajador}
+                </p>
+                <p className="text-xs text-muted-fg">{user?.usuario}</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-primary font-bold">
+                  {user?.nombre_trabajador?.[0] || 'A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-auto bg-gray-50">
+          <div className="p-4 sm:p-6">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+export default Layout

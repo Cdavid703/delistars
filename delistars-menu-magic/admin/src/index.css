@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cherry: 234 85% 58%;
+  --tangelo: 9 84% 59%;
+  --mustard: 37 100% 46%;
+  --pepper: 12 100% 40%;
+  --cream: 36 60% 88%;
+  --cream-deep: 36 16% 92%;
+  --coal: 0 0% 15%;
+  --border: 36 20% 80%;
+  --input: 36 25% 86%;
+}
+
+* {
+  @apply box-border;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-white text-coal font-sans;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply font-display font-semibold;
+}
+
+h1 {
+  @apply text-4xl tracking-wide;
+}
+
+h2 {
+  @apply text-3xl tracking-wide;
+}
+
+h3 {
+  @apply text-2xl tracking-wide;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary;
+}
+
+/* Transiciones suaves */
+a, button, [role="button"] {
+  @apply transition-colors duration-200;
+}
+
+/* Focus states */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2;
+}
