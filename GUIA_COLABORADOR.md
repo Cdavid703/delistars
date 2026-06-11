@@ -447,14 +447,183 @@ actualización. No es un bug de tu lado.
 
 ---
 
-## 13. Flujo de trabajo en GitHub
+## 13. Reglas de GitHub
 
-- Trabaja **solo en la rama `web`** — nunca hagas push directo a `main`
-- Cuando tengas algo listo para revisión, crea un **Pull Request** hacia `main`
-- Carlos revisa, aprueba y hace el merge
-- El deploy al servidor lo hace Carlos — tú **nunca necesitas acceso al VPS**
-- Asegúrate de que `docker-compose.yml` y todos los `Dockerfile` estén
-  incluidos en el PR para que el deploy funcione
+### 13.1 Rama de trabajo
+
+Trabaja **únicamente en la rama `web`**. Nunca hagas push directo a `main`.
+
+```bash
+# Verificar que estás en la rama correcta antes de cualquier commit
+git branch        # debe mostrar * web
+
+# Si alguien más hizo cambios en web, actualízate antes de trabajar
+git pull origin web
+```
+
+### 13.2 Qué archivos SÍ subir
+
+```
+✅ Todo tu código fuente (backend, frontends)
+✅ docker-compose.yml
+✅ Dockerfile de cada servicio
+✅ .env.docker.example     ← solo con nombres de variables, sin valores
+✅ dump.sql                ← exportación de tu base de datos
+```
+
+### 13.3 Qué archivos NUNCA subir
+
+```
+❌ .env
+❌ .env.local
+❌ .env.docker             ← contiene contraseñas reales
+❌ node_modules/
+❌ dist/ dist-landing/ dist-web/ o cualquier carpeta de build
+❌ *.log
+```
+
+Verifica que tu `.gitignore` incluya todas estas entradas antes de
+hacer tu primer commit. Si accidentalmente subiste un archivo con
+credenciales, avísale a Carlos de inmediato.
+
+### 13.4 Formato de commits
+
+Usa este prefijo en cada commit para que el historial sea legible:
+
+| Prefijo | Cuándo usarlo |
+|---------|--------------|
+| `feat:` | Nueva funcionalidad |
+| `fix:` | Corrección de bug |
+| `style:` | Cambios visuales, CSS |
+| `db:` | Cambios en la base de datos o dump.sql |
+| `docs:` | Documentación |
+| `docker:` | Cambios en docker-compose o Dockerfiles |
+| `config:` | Variables de entorno, configuración |
+
+```bash
+# Ejemplos
+git commit -m "feat: agregar carrito de compras"
+git commit -m "db: exportar dump con productos iniciales"
+git commit -m "docker: agregar healthcheck al servicio backend"
+```
+
+### 13.5 Pull Requests
+
+Cuando tengas algo listo para revisión:
+
+1. Haz push de tu rama: `git push origin web`
+2. Ve a [github.com/Cdavid703/delistars](https://github.com/Cdavid703/delistars)
+3. Crea un Pull Request de `web` → `main`
+4. En la descripción explica qué hiciste y qué hay que probar
+5. **Espera la aprobación de Carlos** — no asumas que está desplegado hasta que él te confirme
+
+Carlos revisa, aprueba y hace el deploy. Tú no tienes acceso al servidor y no lo necesitas.
+
+### 13.6 Tamaño del dump.sql
+
+GitHub rechaza archivos mayores a **100 MB** (advertencia desde 50 MB).
+
+- Si tu `dump.sql` pesa menos de 50 MB → súbelo normal con git
+- Si pesa entre 50 MB y 100 MB → instala [Git LFS](https://git-lfs.com) y súbelo con LFS
+- Si pesa más de 100 MB → avísale a Carlos antes para coordinar cómo entregarlo
+
+```bash
+# Verificar el tamaño antes de hacer commit
+# Windows
+(Get-Item dump.sql).Length / 1MB
+
+# Mac / Linux
+du -sh dump.sql
+```
+
+---
+
+## 15. Integración con el sistema de domicilios
+
+Esta sección define exactamente qué es **responsabilidad tuya** y qué
+maneja Carlos.
+
+### ✅ Tu responsabilidad
+
+#### A. Carrito → domicilios (localStorage)
+
+Cuando el cliente haga clic en "Pedir", tu app **debe** escribir el
+carrito en localStorage y redirigir. Este contrato es obligatorio para
+que los dos sistemas se conecten:
+
+```js
+localStorage.setItem('delistars_cart', JSON.stringify({
+  items: [
+    {
+      nombre: 'Hamburguesa Clásica',
+      cantidad: 2,
+      precio_unitario: 18000,
+      adiciones: ['Queso extra'],
+      comentario: 'Sin cebolla'
+    }
+  ],
+  total: 36000,
+  comentario_general: ''   // opcional
+}))
+
+window.location.href = '/domicilios/'
+```
+
+Si este paso no está implementado correctamente, el sistema de
+domicilios no puede recibir el pedido.
+
+#### B. CORS en tu backend
+
+Tu API debe aceptar peticiones desde estos orígenes:
+
+```
+http://localhost:5173      ← domicilios en desarrollo
+http://localhost:5176      ← tu frontend en desarrollo
+https://delistars.com      ← producción
+```
+
+Configúralo en tu backend antes de entregar. Si no está configurado,
+el frontend de domicilios no podrá consultar tu API en producción.
+
+#### C. URL de tu API como variable de entorno
+
+Tu frontend **nunca** debe tener la URL del backend hardcodeada.
+Usa una variable de entorno:
+
+```js
+// ✅ Correcto
+const API_URL = import.meta.env.VITE_API_URL
+
+// ❌ Incorrecto
+const API_URL = 'http://localhost:8010'
+```
+
+Agrega `VITE_API_URL` a tu `.env.docker.example`:
+
+```
+VITE_API_URL=http://localhost:8010     # para desarrollo local
+# En producción Carlos la define como https://delistars.com/menu-api/
+```
+
+#### D. Sin credenciales hardcodeadas
+
+Ninguna contraseña, API key, ni secret en el código. Todo por variables
+de entorno. Esto aplica para la conexión a PostgreSQL, cualquier
+servicio externo, y cualquier clave de Firebase que uses.
+
+---
+
+### 🔒 Responsabilidad de Carlos (no es tu problema)
+
+| Tarea | Quién |
+|-------|-------|
+| Configurar nginx para enrutar tus puertos | Carlos |
+| Crear `.env.docker` con contraseñas reales en el servidor | Carlos |
+| Importar el `dump.sql` en producción | Carlos |
+| SSL / HTTPS | Carlos |
+| Deploy al servidor | Carlos |
+| Leer el carrito de localStorage en la app de domicilios | Carlos |
+| Actualizar nginx cuando cambien los puertos | Carlos |
 
 ---
 
