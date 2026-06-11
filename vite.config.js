@@ -5,4 +5,12 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/domicilios/',
+  server: {
+    port: 5173,
+    hmr: {
+      // Permite hot reload a través del gateway nginx
+      host: 'localhost',
+      protocol: 'ws',
+    },
+  },
 })

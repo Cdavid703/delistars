@@ -8,7 +8,7 @@ import DeliveryPanel        from './components/delivery/DeliveryPanel'
 import ClientPanel          from './components/client/ClientPanel'
 import AdminPanel           from './components/admin/AdminPanel'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
-import { ROLES } from './services/roles'
+import { ROLES, SEDES } from './services/roles'
 
 function LoadingScreen() {
   return (
@@ -39,7 +39,17 @@ function OfflineBanner() {
 }
 
 export default function App() {
-  const { user, role, effectiveRole, viewingAs, sede, loading } = useAuth()
+  const { user, role, effectiveRole, viewingAs, sede, selectSede, loading } = useAuth()
+
+  useEffect(() => {
+    if (!user || sede) return
+    try {
+      const raw = localStorage.getItem('ds_cart_handoff')
+      if (!raw) return
+      const { sedeId } = JSON.parse(raw)
+      if (sedeId && SEDES[sedeId]) selectSede(SEDES[sedeId])
+    } catch (_) {}
+  }, [user, sede])
 
   if (loading) return <LoadingScreen />
 

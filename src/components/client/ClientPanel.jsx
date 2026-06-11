@@ -78,7 +78,7 @@ export default function ClientPanel() {
   const { canInstall, install } = usePWAInstall()
   const [orders,         setOrders]         = useState([])
   const [selectedId,     setSelectedId]     = useState(null)
-  const [showForm,       setShowForm]       = useState(false)
+  const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff'))
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
@@ -506,7 +506,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [errors,            setErrors]            = useState([])
   const [addrSuggestions,   setAddrSuggestions]   = useState([])
   const [detectingLocation, setDetectingLocation] = useState(false)
+  const [fromMenu,          setFromMenu]          = useState(false)
+  const [menuTotal,         setMenuTotal]         = useState(0)
   const errorsRef = useRef(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ds_cart_handoff')
+      if (!raw) return
+      const { items: cartItems, total } = JSON.parse(raw)
+      if (!Array.isArray(cartItems) || cartItems.length === 0) return
+      const lines = cartItems.map(it => {
+        let line = `${it.quantity}x ${it.name}`
+        if (it.addons?.length) line += ` (+ ${it.addons.join(', ')})`
+        if (it.notes) line += ` — "${it.notes}"`
+        return line
+      })
+      setForm(f => ({
+        ...f,
+        items: lines.join('\n'),
+      }))
+      setFromMenu(true)
+      setMenuTotal(total || 0)
+      localStorage.removeItem('ds_cart_handoff')
+    } catch (_) {}
+  }, [])
 
   useEffect(() => {
     if (errors.length > 0) {
@@ -695,9 +719,21 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
 
       <div>
         <label className="label-field">¿Qué vas a pedir? *</label>
-        <textarea className="textarea-field h-28 scroll-custom" value={form.items}
-          onChange={e => set('items', e.target.value)}
-          placeholder="Ej: 1 hamburguesa clásica, 1 papas medianas, 1 gaseosa…" />
+        <textarea
+          className={`textarea-field h-28 scroll-custom ${fromMenu ? 'bg-coal/5 text-coal/70' : ''}`}
+          value={form.items}
+          onChange={e => !fromMenu && set('items', e.target.value)}
+          readOnly={fromMenu}
+          placeholder="Ej: 1 hamburguesa clásica, 1 papas medianas, 1 gaseosa…"
+        />
+        {fromMenu && menuTotal > 0 && (
+          <div className="mt-2 flex items-center justify-between bg-cherry/10 border border-cherry/20 rounded-xl px-4 py-2.5">
+            <span className="font-body text-sm text-coal/70">Total del pedido</span>
+            <span className="font-display text-lg text-cherry">
+              ${menuTotal.toLocaleString('es-CO')}
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
