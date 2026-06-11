@@ -22,7 +22,15 @@ git checkout web
 npm install
 ```
 
-### Stack del proyecto
+### Herramientas que necesitas tener instaladas
+
+| Herramienta | Para qué |
+|-------------|---------|
+| Git | Control de versiones |
+| Node.js 20+ | Desarrollo local del frontend |
+| Docker Desktop | Levantar backend + base de datos en local |
+
+### Stack del proyecto (frontend)
 
 El repo ya tiene configurado:
 
@@ -90,6 +98,17 @@ web.html                ← tu entry point HTML (cópialo de index.html como bas
 src/web-main.jsx        ← tu entry point React
 src/web/                ← todos tus componentes, páginas y lógica
 vite.web.config.js      ← tu config de Vite (ver abajo)
+
+backend/                ← tu backend completo (API + lógica)
+  Dockerfile
+  ...
+
+admin/                  ← tu frontend de administración (si es separado)
+  Dockerfile
+  ...
+
+docker-compose.yml      ← orquesta todos tus servicios (ver sección 14)
+.env.docker.example     ← variables de entorno para Docker (ver sección 14)
 ```
 
 ### Crear tu config de Vite
@@ -142,18 +161,25 @@ npm run dev:web   # → http://localhost:5176
 
 ## 3. Arquitectura del proyecto
 
-El dominio `delistars.com` tiene cuatro apps independientes:
+El dominio `delistars.com` tiene estas rutas:
 
-| URL | Descripción | Acceso |
-|-----|-------------|--------|
-| `delistars.com/` | **Tu app** — menú, landing, punto de entrada | Todos |
-| `delistars.com/domicilios/` | App de pedidos (cajero, cliente, domiciliario) | Todos |
-| `delistars.com/turnos/` | Gestión de turnos del equipo | Solo empleados |
-| `delistars.com/vacantes/` | Ofertas de empleo | Todos |
+| URL | Descripción | Quién lo maneja |
+|-----|-------------|-----------------|
+| `delistars.com/` | **Tu frontend** — menú, landing | Tu contenedor frontend |
+| `delistars.com/menu-api/` | **Tu backend** — API REST / GraphQL | Tu contenedor backend |
+| `delistars.com/admin/` | **Tu panel admin** — gestión de menú | Tu contenedor admin |
+| `delistars.com/domicilios/` | App de pedidos | Archivos estáticos (nginx) |
+| `delistars.com/turnos/` | Gestión de turnos | Archivos estáticos (nginx) |
+| `delistars.com/vacantes/` | Ofertas de empleo | Archivos estáticos (nginx) |
 
-Cada app tiene su propio build de Vite y se despliega de forma
-independiente. No comparten código en tiempo de ejecución, solo
-el dominio y el proyecto de Firebase.
+Carlos configura el nginx del servidor para que enrute cada URL al
+contenedor correcto según los puertos que tú expongas en `docker-compose.yml`.
+
+### Tu stack corre en Docker
+
+Tus tres servicios (frontend menú, backend, PostgreSQL) y opcionalmente
+el admin frontend corren todos en contenedores. Carlos hace el deploy
+en el VPS — tú nunca necesitas acceso al servidor.
 
 ### Placeholder actual en producción
 
@@ -382,7 +408,14 @@ Solo escribe en `delistars_cart`.
 
 ---
 
-## 11. Colecciones de Firestore existentes — no las dupliques
+## 11. Base de datos — tu PostgreSQL
+
+Tu menú, categorías, adiciones y todo lo relacionado con productos
+vive en **tu propio PostgreSQL** dentro del contenedor Docker.
+No uses Firestore para datos del menú.
+
+Las colecciones de Firestore que existen son de la app de domicilios —
+no las toques ni dupliques:
 
 | Colección | Qué guarda |
 |-----------|------------|
@@ -396,14 +429,11 @@ Solo escribe en `delistars_cart`.
 | `turnos` | Turnos semanales |
 | `counters` | Contadores de pedidos |
 
-Para tus colecciones usa el prefijo `menu_`:
-`menu_productos`, `menu_categorias`, `menu_adiciones`.
+### Imágenes del menú
 
-### Imágenes en Firebase Storage
-
-Para fotos del menú usa la ruta `/menu/<archivo>`. Avísale a Carlos
-antes de implementarlo para que habilite esa ruta en las reglas de
-Storage.
+Para fotos de productos puedes usar Firebase Storage en la ruta
+`/menu/<archivo>` (avísale a Carlos para que habilite esa ruta),
+o servir las imágenes desde tu propio backend. Coordínalo con Carlos.
 
 ---
 
@@ -422,4 +452,119 @@ actualización. No es un bug de tu lado.
 - Trabaja **solo en la rama `web`** — nunca hagas push directo a `main`
 - Cuando tengas algo listo para revisión, crea un **Pull Request** hacia `main`
 - Carlos revisa, aprueba y hace el merge
-- El deploy al servidor lo hace Carlos — tú no tienes acceso al VPS
+- El deploy al servidor lo hace Carlos — tú **nunca necesitas acceso al VPS**
+- Asegúrate de que `docker-compose.yml` y todos los `Dockerfile` estén
+  incluidos en el PR para que el deploy funcione
+
+---
+
+## 14. Docker — estructura y deploy
+
+### 14.1 Estructura esperada del docker-compose.yml
+
+Crea `docker-compose.yml` en la raíz del repo con esta estructura base.
+Ajusta los nombres de imagen y puertos según tu proyecto, pero **respeta
+los puertos asignados abajo** para que Carlos configure nginx sin sorpresas:
+
+```yaml
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No expongas el puerto 5432 al exterior — solo acceso interno
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8010:8000"        # puerto externo 8010 → interno 8000
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend      # o src/web/ si está ahí
+    restart: unless-stopped
+    ports:
+      - "8011:80"          # puerto externo 8011 → nginx interno en 80
+
+  admin:                   # omite este bloque si el admin está integrado al frontend
+    build: ./admin
+    restart: unless-stopped
+    ports:
+      - "8012:80"          # puerto externo 8012 → nginx interno en 80
+
+volumes:
+  postgres_data:
+```
+
+> **Puertos reservados para tu stack:** `8010` (backend), `8011` (frontend),
+> `8012` (admin). No uses puertos que ya tienen otras apps en el servidor
+> (80, 443, 3000, 5173).
+
+### 14.2 Variables de entorno para Docker
+
+Crea `.env.docker.example` en la raíz (este sí se sube al repo, sin valores reales):
+
+```
+DB_NAME=delistars_menu
+DB_USER=delistars
+DB_PASSWORD=
+```
+
+El archivo real `.env.docker` (con la contraseña) lo creas tú en local
+y **se lo mandas a Carlos por privado** — nunca lo subas al repo.
+Carlos lo coloca en el servidor antes de levantar los contenedores.
+
+### 14.3 Levantar en local para desarrollo
+
+```bash
+# Primera vez
+docker compose up --build
+
+# Las siguientes veces
+docker compose up
+
+# Parar
+docker compose down
+```
+
+Tu backend queda en `http://localhost:8010` y tu frontend en `http://localhost:8011`.
+
+### 14.4 Migrar tu base de datos actual
+
+Cuando tengas los datos listos para producción, exporta tu base de datos
+local y mándale el archivo a Carlos:
+
+```bash
+# Exportar (ejecuta esto en tu máquina)
+pg_dump -U TU_USUARIO -d TU_BASE_DE_DATOS > dump.sql
+```
+
+Mándale `dump.sql` por WhatsApp o Drive. Carlos lo importa en el servidor:
+
+```bash
+# Esto lo hace Carlos en el VPS — tú no necesitas hacer nada más
+docker compose exec db psql -U delistars -d delistars_menu < dump.sql
+```
+
+### 14.5 URL de conexión — local vs producción
+
+| Entorno | DATABASE_URL |
+|---------|-------------|
+| Local (fuera de Docker) | `postgresql://TU_USUARIO:TU_PASS@localhost:5432/TU_DB` |
+| Local (dentro de Docker) | `postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}` |
+| Producción (en el VPS) | `postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}` |
+
+En Docker el hostname del servidor de base de datos es `db` (el nombre
+del servicio en docker-compose.yml), no `localhost`. Asegúrate de que
+tu backend use la variable de entorno `DATABASE_URL` y no una URL
+hardcodeada.
