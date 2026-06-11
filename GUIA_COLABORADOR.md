@@ -520,9 +520,11 @@ DB_USER=delistars
 DB_PASSWORD=
 ```
 
-El archivo real `.env.docker` (con la contraseña) lo creas tú en local
-y **se lo mandas a Carlos por privado** — nunca lo subas al repo.
-Carlos lo coloca en el servidor antes de levantar los contenedores.
+**Tú no manejas contraseñas de producción.** Carlos crea el archivo
+`.env.docker` real directamente en el servidor con las credenciales que
+él defina. Tu único trabajo es asegurarte de que tu código lea
+`DATABASE_URL` desde variables de entorno y no tenga credenciales
+hardcodeadas en ningún archivo.
 
 ### 14.3 Levantar en local para desarrollo
 
