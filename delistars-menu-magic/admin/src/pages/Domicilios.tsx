@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInfo } from '@/lib/orders'
 
@@ -9,10 +9,9 @@ export default function Domicilios() {
   const [sede, setSede] = useState<string>('')
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'orders'), (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Order, 'id'>) }))
-      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      setOrders(docs)
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
+    return onSnapshot(q, (snap) => {
+      setOrders(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Order, 'id'>) })))
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])
 

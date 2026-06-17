@@ -75,7 +75,7 @@ function generarRotacion(): Schedule {
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function Turnos() {
   const { user } = useAuthStore()
-  const [weekOffset, setWeekOffset] = useState(1)
+  const [weekOffset, setWeekOffset] = useState(0)
   const [schedule, setSchedule] = useState<Schedule>({})
   const [saved, setSaved] = useState<Schedule>({})
   const [loading, setLoading] = useState(false)

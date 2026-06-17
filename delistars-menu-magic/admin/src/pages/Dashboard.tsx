@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo } from '@/lib/orders'
 
@@ -17,7 +17,8 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([])
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'orders'), (snap) => {
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
+    return onSnapshot(q, (snap) => {
       setOrders(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Order, 'id'>) })))
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])

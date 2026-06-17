@@ -699,7 +699,7 @@ const Productos = () => {
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="confirmar"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter' && deleteConfirmText.toLowerCase() === 'confirmar') {
                       handleConfirmDelete()
                     }
@@ -757,7 +757,7 @@ const Productos = () => {
                   onChange={(e) => setNewCategoriaName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="ej: Pizzas"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       handleCreateCategoria()
                     }
