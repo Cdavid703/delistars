@@ -14,6 +14,7 @@ const Layout = () => {
     { label: 'Sedes', path: '/sedes', icon: '📍' },
     { label: 'Trabajadores', path: '/trabajadores', icon: '👥' },
     { label: 'Domicilios', path: '/domicilios', icon: '🛵' },
+    { label: 'Usuarios', path: '/usuarios', icon: '🧑‍🍳' },
     { label: 'Turnos', path: '/turnos', icon: '🗓️' },
     { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]

@@ -28,6 +28,7 @@ export interface Producto {
   id_categoria: number;
   image_url1?: string;
   image_url2?: string;
+  disponible?: boolean;
 }
 
 export interface Categoria {
@@ -261,121 +262,6 @@ export const apiService = {
       return data.data || data;
     } catch (error) {
       console.error('Error creating categoria:', error);
-      throw error;
-    }
-  },
-
-  // Ventas
-  async getVentas(startDate?: string, endDate?: string, limit?: number, offset?: number, confirmed?: boolean): Promise<any[]> {
-    try {
-      const params = new URLSearchParams();
-      if (startDate) params.append('startDate', startDate);
-      if (endDate) params.append('endDate', endDate);
-      if (typeof confirmed !== 'undefined') params.append('confirmed', String(confirmed));
-      if (limit !== undefined) params.append('limit', String(limit));
-      if (offset !== undefined) params.append('offset', String(offset));
-      const url = `${API_BASE_URL}/ventas${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch ventas');
-      const data = await response.json();
-      return data.data || [];
-    } catch (error) {
-      console.error('Error fetching ventas:', error);
-      throw error;
-    }
-  },
-
-  async getVentaById(id: number): Promise<any> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/ventas/${id}`);
-      if (!response.ok) throw new Error('Failed to fetch venta');
-      const data = await response.json();
-      return data.data || data;
-    } catch (error) {
-      console.error('Error fetching venta:', error);
-      throw error;
-    }
-  },
-
-  async confirmarPedido(id: number): Promise<any> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/ventas/${id}/confirmar`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) throw new Error('Failed to confirm pedido');
-      const data = await response.json();
-      return data.data || data;
-    } catch (error) {
-      console.error('Error confirming pedido:', error);
-      throw error;
-    }
-  },
-
-  async cancelarPedido(id: number): Promise<any> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/ventas/${id}/cancelar`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) throw new Error('Failed to cancel pedido');
-      const data = await response.json();
-      return data.data || data;
-    } catch (error) {
-      console.error('Error canceling pedido:', error);
-      throw error;
-    }
-  },
-
-  async getVentasSummary(startDate?: string, endDate?: string, confirmed?: boolean): Promise<{ total: number }> {
-    try {
-      const params = new URLSearchParams();
-      if (startDate) params.append('startDate', startDate);
-      if (endDate) params.append('endDate', endDate);
-      if (typeof confirmed !== 'undefined') params.append('confirmed', String(confirmed));
-      const url = `${API_BASE_URL}/ventas/summary${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch ventas summary');
-      const data = await response.json();
-      return data.data || { total: 0 };
-    } catch (error) {
-      console.error('Error fetching ventas summary:', error);
-      throw error;
-    }
-  },
-  async getValorDomiciliosSummary(startDate?: string, endDate?: string, confirmed?: boolean): Promise<{ total: number }> {
-    try {
-      const params = new URLSearchParams();
-      if (startDate) params.append('startDate', startDate);
-      if (endDate) params.append('endDate', endDate);
-      if (typeof confirmed !== 'undefined') params.append('confirmed', String(confirmed));
-      const url = `${API_BASE_URL}/ventas/summary/domicilio${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch valor_domicilio summary');
-      const data = await response.json();
-      return data.data || { total: 0 };
-    } catch (error) {
-      console.error('Error fetching valor_domicilio summary:', error);
-      throw error;
-    }
-  },
-  async getVentasCount(startDate?: string, endDate?: string, confirmed?: boolean): Promise<{ count: number }> {
-    try {
-      const params = new URLSearchParams();
-      if (startDate) params.append('startDate', startDate);
-      if (endDate) params.append('endDate', endDate);
-      if (typeof confirmed !== 'undefined') params.append('confirmed', String(confirmed));
-      const url = `${API_BASE_URL}/ventas/count${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch ventas count');
-      const data = await response.json();
-      return data.data || { count: 0 };
-    } catch (error) {
-      console.error('Error fetching ventas count:', error);
       throw error;
     }
   },
