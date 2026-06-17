@@ -27,8 +27,10 @@ ENV VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET
 ENV VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID
 ENV VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 
-# Build con Vite
+# Build con Vite — las tres apps del repo de domicilios (mismo código base)
 RUN npm run build
+RUN npm run build:turnos
+RUN npm run build:vacantes
 
 # Production stage - Nginx
 FROM nginx:alpine
@@ -36,9 +38,10 @@ FROM nginx:alpine
 # Copiar configuración de nginx
 COPY domicilios-nginx.conf /etc/nginx/nginx.conf
 
-# Copiar archivos buildados a /usr/share/nginx/html/domicilios/
-# para que la URL /domicilios/ mapee correctamente
-COPY --from=builder /app/dist /usr/share/nginx/html/domicilios
+# Cada app a su ruta: /domicilios/, /turnos/, /vacantes/
+COPY --from=builder /app/dist          /usr/share/nginx/html/domicilios
+COPY --from=builder /app/dist-turnos   /usr/share/nginx/html/turnos
+COPY --from=builder /app/dist-vacantes /usr/share/nginx/html/vacantes
 
 # Exponer puerto
 EXPOSE 80

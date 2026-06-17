@@ -20,7 +20,7 @@ Un solo `docker compose` levanta 6 contenedores en red interna:
 | `backend` | API del menú (Node/TS) | 3001 → 3000 (interno) |
 | `frontend` | Menú web (clientes) | vía gateway |
 | `admin` | Panel admin del menú | vía gateway |
-| `domicilios` | App de pedidos (la tuya) | vía gateway |
+| `domicilios` | Sirve 3 apps del repo: domicilios + turnos + vacantes | vía gateway |
 | `gateway` | Nginx que enruta todo | **80** |
 
 El gateway enruta:
@@ -28,9 +28,15 @@ El gateway enruta:
 ```
 /            → frontend (menú)
 /domicilios/ → domicilios
+/turnos/     → domicilios (mismo contenedor)
+/vacantes/   → domicilios (mismo contenedor)
 /admin/      → admin
 /api/        → backend
 ```
+
+> El contenedor `domicilios` compila y sirve las tres apps del mismo repo
+> (`build`, `build:turnos`, `build:vacantes`) bajo sus rutas. Así el deploy es
+> autocontenido: no hace falta que el nginx del host sirva turnos/vacantes aparte.
 
 **Dónde vive la base de datos:** en el contenedor `postgres`, en TU servidor.
 No está en GitHub ni en Firebase. Los 47 productos vienen de `seeds.sql` y se
@@ -159,7 +165,9 @@ curl http://127.0.0.1:8090/                # debe devolver el HTML del menú
 Luego en el navegador:
 - `https://delistars.com/` → menú (selección de productos)
 - `https://delistars.com/domicilios/` → app de pedidos
-- `https://delistars.com/admin/` → panel admin del menú
+- `https://delistars.com/turnos/` → turnos del equipo
+- `https://delistars.com/vacantes/` → portal de vacantes
+- `https://delistars.com/admin/` → panel de administración unificado
 
 ---
 
