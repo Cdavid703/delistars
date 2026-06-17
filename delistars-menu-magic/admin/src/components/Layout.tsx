@@ -9,11 +9,13 @@ const Layout = () => {
   const { user, logout } = useAuthStore()
 
   const navItems = [
-    { label: 'Dashboard', path: '/', icon: '📊' },
+    { label: 'Resumen', path: '/', icon: '📊' },
     { label: 'Productos', path: '/productos', icon: '🍔' },
-    { label: 'Ventas', path: '/ventas', icon: '💰' },
-    { label: 'Trabajadores', path: '/trabajadores', icon: '👥' },
     { label: 'Sedes', path: '/sedes', icon: '📍' },
+    { label: 'Trabajadores', path: '/trabajadores', icon: '👥' },
+    { label: 'Domicilios', path: '/domicilios', icon: '🛵' },
+    { label: 'Turnos', path: '/turnos', icon: '🗓️' },
+    { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]
 
   const isActive = (path: string) => location.pathname === path
@@ -89,14 +91,18 @@ const Layout = () => {
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex flex-col items-end">
                 <p className="text-sm font-semibold text-coal">
-                  {user?.nombre_trabajador} {user?.apellido_trabajador}
+                  {user?.displayName || 'Administrador'}
                 </p>
-                <p className="text-xs text-muted-fg">{user?.usuario}</p>
+                <p className="text-xs text-muted-fg">{user?.email}</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-primary font-bold">
-                  {user?.nombre_trabajador?.[0] || 'A'}
-                </span>
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-primary font-bold">
+                    {(user?.displayName || user?.email || 'A')[0].toUpperCase()}
+                  </span>
+                )}
               </div>
             </div>
           </div>

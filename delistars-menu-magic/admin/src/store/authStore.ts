@@ -1,47 +1,43 @@
 import { create } from 'zustand'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
-
-interface User {
-  id_trabajador: number
-  nombre_trabajador: string
-  apellido_trabajador: string
-  usuario: string
-}
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth'
+import { auth, provider, isAdminEmail } from '@/services/firebase'
 
 interface AuthState {
-  user: User | null
-  loading: boolean
-  login: (usuario: string, password: string) => Promise<void>
+  user: User | null      // solo se setea si es admin
+  ready: boolean         // el estado de auth ya se resolvió
+  loading: boolean       // login en curso
+  login: () => Promise<void>
   logout: () => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: JSON.parse(sessionStorage.getItem('ds_admin_user') || 'null'),
+  user: null,
+  ready: false,
   loading: false,
 
-  login: async (usuario, password) => {
+  login: async () => {
     set({ loading: true })
     try {
-      const res = await fetch(`${API_BASE_URL}/trabajadores/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuario, usuario_password: password }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Credenciales incorrectas')
+      const res = await signInWithPopup(auth, provider)
+      if (!isAdminEmail(res.user.email)) {
+        await signOut(auth)
+        throw new Error('Esta cuenta no tiene acceso de administrador')
       }
-      sessionStorage.setItem('ds_admin_user', JSON.stringify(data.data))
-      set({ user: data.data, loading: false })
-    } catch (err: any) {
+      // onAuthStateChanged se encarga de setear el user
+    } finally {
       set({ loading: false })
-      throw err
     }
   },
 
-  logout: () => {
-    sessionStorage.removeItem('ds_admin_user')
-    set({ user: null })
-  },
+  logout: () => { signOut(auth) },
 }))
+
+// Hidratar el estado de sesión: solo admins quedan autenticados.
+onAuthStateChanged(auth, (u) => {
+  if (u && !isAdminEmail(u.email)) {
+    signOut(auth)
+    useAuthStore.setState({ user: null, ready: true })
+    return
+  }
+  useAuthStore.setState({ user: u, ready: true })
+})
