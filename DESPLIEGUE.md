@@ -107,19 +107,11 @@ VITE_FIREBASE_APP_ID=1:757400771350:web:57cb5b1affd8e170850e37
 ## 5. ⚠️ Conflicto de puerto 80 (tu caso)
 
 Tu VPS **ya corre nginx en el host** (sirve delistars.com y jaralingua.com). El
-gateway de Docker también quiere el puerto 80 → **chocan**. No expongas el
-gateway directo en 80. En su lugar:
+gateway de Docker ya viene configurado para escuchar solo en `127.0.0.1:8090`
+(no en el 80 público), así que **no hay choque** y no necesitas editar el
+`docker-compose.yml`.
 
-**a)** Edita el mapeo del gateway en `docker-compose.yml` para que escuche solo en
-localhost en otro puerto:
-
-```yaml
-  gateway:
-    ports:
-      - "127.0.0.1:8090:80"   # en vez de "80:80"
-```
-
-**b)** Agrega un server block en el nginx del host para delistars.com:
+Solo tienes que agregar un server block en el nginx del host para delistars.com:
 
 ```nginx
 server {
@@ -231,4 +223,4 @@ docker compose down                # detener (conserva la BD)
 - [ ] `CORS_ORIGIN` incluye `https://delistars.com`
 - [ ] `JWT_SECRET` y `POSTGRES_PASSWORD` cambiados (no los de ejemplo)
 - [ ] Las 6 variables `VITE_FIREBASE_*` están en el `.env`
-- [ ] Gateway mapeado a `127.0.0.1:8090` y host nginx haciendo proxy
+- [ ] Host nginx configurado con proxy a `127.0.0.1:8090` (el gateway ya viene en ese puerto)
