@@ -1,6 +1,5 @@
-// Correos del equipo DeliStars (admins + empleados), espejo de src/services/roles.js
-// y de la lista de empleados de turnos. "Mis turnos" se muestra solo a estos correos
-// cuando inician sesión con Google.
+// Correos del equipo DeliStars. FUENTE DE VERDAD: delistars-menu-magic/admin/src/lib/team.ts
+// Sincronizar este archivo cuando entren o salgan personas del equipo.
 export const STAFF_EMAILS = [
   'thebesta4321@gmail.com',              // Andrés Elías Arango (admin)
   'cdavid.jaramillo@gmail.com',          // Carlos David Jaramillo (admin)

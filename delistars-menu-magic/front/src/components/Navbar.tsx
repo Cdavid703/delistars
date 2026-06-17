@@ -176,7 +176,7 @@ export const Navbar = () => {
             </button>
 
             <button
-              onClick={() => { setSede(""); setMobile(false); }}
+              onClick={() => { setSede(null); setMobile(false); }}
               className="flex items-center gap-2 mt-2 pt-4 border-t border-border text-sm font-medium text-muted-foreground hover:text-primary transition-smooth w-full text-left"
             >
               <MapPin className="w-4 h-4 text-primary" /> Cambiar de sede (Actual: {sedeName})

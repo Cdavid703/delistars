@@ -20,11 +20,4 @@ export const storage = getStorage(app)
 export const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
 
-// Allowlist de administradores — espejo de ADMIN_EMAILS en src/services/roles.js (domicilios).
-export const ADMIN_EMAILS = [
-  'thebesta4321@gmail.com',     // Andrés Elías Arango Monsalve
-  'cdavid.jaramillo@gmail.com', // Carlos David Jaramillo (dev)
-]
-
-export const isAdminEmail = (email?: string | null): boolean =>
-  !!email && ADMIN_EMAILS.includes(email.toLowerCase())
+export { ADMIN_EMAILS, isAdminEmail } from '@/lib/team'

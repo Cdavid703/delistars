@@ -3,18 +3,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
-
-// ─── Datos ──────────────────────────────────────────────────────────────────
-const EMPLOYEES = [
-  { id: 'joseluis',   name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular' },
-  { id: 'yency',      name: 'Yency Torres Parra',            short: 'Yency',       type: 'regular' },
-  { id: 'sara',       name: 'Sara Castaño Monsalve',         short: 'Sara',        type: 'regular' },
-  { id: 'valentina',  name: 'Valentina Villegas Mazo',       short: 'Valentina',   type: 'regular' },
-  { id: 'josemanuel', name: 'Jose Manuel Londoño Rivillas',  short: 'Jose Manuel', type: 'regular' },
-  { id: 'juandiego',  name: 'Juan Diego Rodríguez Martínez', short: 'Juan Diego',  type: 'regular' },
-  { id: 'gendelson',  name: 'Gendelson González Blanco',     short: 'Gendelson',   type: 'regular' },
-  { id: 'deisy',      name: 'Deisy Henao Grisales',          short: 'Deisy',       type: 'servicios' },
-] as const
+import { EMPLOYEES } from '@/lib/team'
 
 const DAYS = [
   { key: 'lun', label: 'Lunes' }, { key: 'mar', label: 'Martes' }, { key: 'mie', label: 'Miércoles' },

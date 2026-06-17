@@ -2,20 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { toast } from 'sonner'
-
-// Mirror de src/services/roles.js (domicilios) — equipos por defecto.
-const DEFAULT_CASHIERS: Record<string, string> = {
-  'lluis02martinez@gmail.com': 'Jose Luis Martinez Villegas',
-  'josemanuellondonorivillas@gmail.com': 'Jose Manuel Londoño Rivillas',
-  'vvillegasmazo@gmail.com': 'Valentina Villegas Mazo',
-  'yencytp@gmail.com': 'Yency Torres Parra',
-  'cdavid.jaramillo@gmail.com': 'Carlos David Jaramillo',
-  'thebesta4321@gmail.com': 'Andrés Elías Arango Monsalve',
-}
-const DEFAULT_DRIVERS: Record<string, string> = {
-  'cdavid.jaramillo@gmail.com': 'Carlos David Jaramillo',
-  'josemanuellondonorivillas@gmail.com': 'José Manuel Londoño',
-}
+import { DEFAULT_CASHIERS, DEFAULT_DRIVERS } from '@/lib/team'
 
 type Role = 'cashier' | 'driver'
 interface TeamMember { id: string; name: string; isDefault?: boolean }
