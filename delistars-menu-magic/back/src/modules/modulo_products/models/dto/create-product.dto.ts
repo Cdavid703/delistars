@@ -5,4 +5,5 @@ export interface CreateProductDto {
   id_categoria: number;
   image_url1?: string | null;
   image_url2?: string | null;
+  disponible?: boolean;
 }

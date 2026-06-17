@@ -249,6 +249,18 @@ const Productos = () => {
     }
   }
 
+  const handleToggleDisponible = async (producto: Producto) => {
+    const nuevo = !(producto.disponible ?? true)
+    // Optimista: refleja el cambio de inmediato y revierte si falla
+    setProductos(prev => prev.map(p => p.id_producto === producto.id_producto ? { ...p, disponible: nuevo } : p))
+    try {
+      await apiService.updateProducto(producto.id_producto, { disponible: nuevo })
+    } catch (err) {
+      setProductos(prev => prev.map(p => p.id_producto === producto.id_producto ? { ...p, disponible: !nuevo } : p))
+      setError(err instanceof Error ? err.message : 'Error al cambiar disponibilidad')
+    }
+  }
+
   const handleOpenCreateCategoriaModal = () => {
     setNewCategoriaName('')
     setIsCreateCategoriaModalOpen(true)
@@ -335,20 +347,27 @@ const Productos = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {productos.map((producto) => (
-            <div key={producto.id_producto} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow flex flex-col">
-              {producto.image_url1 ? (
-                <div className="h-48 bg-gray-200 overflow-hidden">
-                  <img 
-                    src={producto.image_url1} 
-                    alt={producto.nombre_producto}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="h-48 bg-gray-100 flex items-center justify-center">
-                  <span className="text-gray-400 text-4xl">🖼️</span>
-                </div>
-              )}
+            <div key={producto.id_producto} className={`bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow flex flex-col ${(producto.disponible ?? true) ? '' : 'opacity-60'}`}>
+              <div className="relative">
+                {producto.image_url1 ? (
+                  <div className="h-48 bg-gray-200 overflow-hidden">
+                    <img
+                      src={producto.image_url1}
+                      alt={producto.nombre_producto}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-48 bg-gray-100 flex items-center justify-center">
+                    <span className="text-gray-400 text-4xl">🖼️</span>
+                  </div>
+                )}
+                {!(producto.disponible ?? true) && (
+                  <span className="absolute top-2 left-2 bg-coal/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                    No disponible
+                  </span>
+                )}
+              </div>
               
               <div className="p-4 flex-grow flex flex-col">
                 <h3 className="font-semibold text-coal text-lg mb-2 line-clamp-2">{producto.nombre_producto}</h3>
@@ -362,8 +381,19 @@ const Productos = () => {
                   </span>
                 </div>
 
+                <button
+                  onClick={() => handleToggleDisponible(producto)}
+                  className={`mb-2 w-full flex items-center justify-center gap-2 font-medium py-2 px-3 rounded-lg border transition-colors ${
+                    (producto.disponible ?? true)
+                      ? 'border-mint/40 text-mint hover:bg-mint/10'
+                      : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {(producto.disponible ?? true) ? '🟢 Disponible' : '⚪ No disponible'}
+                </button>
+
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => handleOpenEditModal(producto)}
                     className="flex-1 flex items-center justify-center gap-2 text-primary hover:text-primary-dark font-medium py-2 px-3 border border-primary rounded-lg hover:bg-primary hover:text-white transition-colors"
                   >

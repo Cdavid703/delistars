@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.tbl_productos
     id_categoria integer,
     image_url1 text COLLATE pg_catalog."default",
     image_url2 text COLLATE pg_catalog."default",
+    disponible boolean NOT NULL DEFAULT true,
     CONSTRAINT tbl_productos_pkey PRIMARY KEY (id_producto)
 );
 

@@ -13,6 +13,7 @@ export interface Product {
   id_categoria: number;
   image_url1?: string;
   image_url2?: string;
+  disponible?: boolean;
 }
 
 export interface Addon {
@@ -63,7 +64,8 @@ export const apiService = {
       const response = await fetch(`${API_BASE_URL}/products`);
       if (!response.ok) throw new Error('Failed to fetch products');
       const data = await response.json();
-      return data.data || [];
+      // Ocultar del menú los productos marcados como no disponibles por el admin
+      return (data.data || []).filter((p: Product) => p.disponible !== false);
     } catch (error) {
       console.error('Error fetching products:', error);
       return [];

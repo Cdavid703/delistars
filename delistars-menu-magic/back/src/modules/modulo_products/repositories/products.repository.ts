@@ -7,7 +7,7 @@ export class ProductsRepository {
   async getAll(): Promise<IProduct[]> {
     const dataSource = getDataSource();
     const result = await dataSource.query(
-      'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2 FROM tbl_productos'
+      'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible FROM tbl_productos'
     );
     return result;
   }
@@ -15,7 +15,7 @@ export class ProductsRepository {
   async getById(id: number): Promise<IProduct | null> {
     const dataSource = getDataSource();
     const result = await dataSource.query(
-      'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2 FROM tbl_productos WHERE id_producto = $1',
+      'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible FROM tbl_productos WHERE id_producto = $1',
       [id]
     );
     return result.length > 0 ? result[0] : null;
@@ -23,13 +23,13 @@ export class ProductsRepository {
 
   async create(createProductDto: CreateProductDto): Promise<IProduct> {
     const dataSource = getDataSource();
-    const { nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2 } = createProductDto;
-    
+    const { nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible } = createProductDto;
+
     const result = await dataSource.query(
-      `INSERT INTO tbl_productos (nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2`,
-      [nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1 || null, image_url2 || null]
+      `INSERT INTO tbl_productos (nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible`,
+      [nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1 || null, image_url2 || null, disponible ?? true]
     );
     return result[0];
   }
@@ -71,13 +71,18 @@ export class ProductsRepository {
       values.push(updateProductDto.image_url2 || null);
       paramCount++;
     }
+    if (updateProductDto.disponible !== undefined) {
+      fields.push(`disponible = $${paramCount}`);
+      values.push(updateProductDto.disponible);
+      paramCount++;
+    }
 
     if (fields.length === 0) {
       return this.getById(id) as Promise<IProduct>;
     }
 
     values.push(id);
-    const query = `UPDATE tbl_productos SET ${fields.join(', ')} WHERE id_producto = $${paramCount} RETURNING id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2`;
+    const query = `UPDATE tbl_productos SET ${fields.join(', ')} WHERE id_producto = $${paramCount} RETURNING id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible`;
 
     const result = await dataSource.query(query, values);
     return result[0];

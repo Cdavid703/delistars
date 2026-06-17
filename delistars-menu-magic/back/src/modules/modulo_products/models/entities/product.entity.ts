@@ -6,4 +6,5 @@ export interface IProduct {
   id_categoria: number;
   image_url1?: string;
   image_url2?: string;
+  disponible: boolean;
 }
