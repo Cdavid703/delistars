@@ -145,6 +145,18 @@ Así jaralingua.com queda intacto y delistars.com pasa por el stack Docker.
 
 ## 6. Levantar el stack
 
+> ⚠️ **RAM del VPS.** El primer build compila 4 apps de Node (backend, menú,
+> admin y el contenedor domicilios que hace 3 builds: domicilios/turnos/vacantes).
+> Vite/rolldown consumen bastante memoria: con **1 GB el build puede fallar (OOM)**
+> o ir muy lento. Recomendado **2 GB+**. Si solo tienes 1 GB, agrega swap **antes**
+> del primer build:
+> ```bash
+> sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+> sudo mkswap /swapfile && sudo swapon /swapfile
+> echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # persistente
+> ```
+> Tiempos: primer build en frío ~5–15 min; despliegues siguientes ~1–3 min (cache).
+
 ```bash
 docker compose up --build -d
 ```
