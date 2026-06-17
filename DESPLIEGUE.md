@@ -92,15 +92,18 @@ CORS_ORIGIN=https://delistars.com,http://localhost
 VITE_API_URL=/api/v1
 
 # Firebase (mismo proyecto delistars-domicilios) — para construir "domicilios"
-VITE_FIREBASE_API_KEY=AIzaSyCLB7z7lDPeNDa0qEYFVWXyCLlzNsJzrww
+# Copia estos valores desde la consola de Firebase:
+# Configuración del proyecto → Tus apps → SDK de Firebase → Configuración
+VITE_FIREBASE_API_KEY=<tu_api_key>
 VITE_FIREBASE_AUTH_DOMAIN=delistars-domicilios.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=delistars-domicilios
 VITE_FIREBASE_STORAGE_BUCKET=delistars-domicilios.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=757400771350
-VITE_FIREBASE_APP_ID=1:757400771350:web:57cb5b1affd8e170850e37
+VITE_FIREBASE_MESSAGING_SENDER_ID=<tu_sender_id>
+VITE_FIREBASE_APP_ID=<tu_app_id>
 ```
 
 > El `.env` nunca se sube al repo (está en `.gitignore`). Lo creas solo en el servidor.
+> Las credenciales reales de Firebase están en la consola del proyecto, no en este repo.
 
 ---
 
