@@ -1,13 +1,13 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useCart, formatCOP } from "@/context/CartContext";
+import { SEDES } from "@/data/menu";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 
 export const CartSheet = () => {
   const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
 
   const handleOrder = () => {
-    const sedeMap: Record<number, string> = { 1: "santa_lucia", 2: "santa_teresita" };
     const handoff = {
       items: items.map((it) => ({
         name: it.product.nombre_producto,
@@ -17,7 +17,8 @@ export const CartSheet = () => {
         notes: it.notes,
       })),
       total,
-      sedeId: sede ? sedeMap[sede] || null : null,
+      // El slug de la sede es la única fuente de verdad (definido en data/menu.ts).
+      sedeId: SEDES.find((s) => s.id === sede)?.slug ?? null,
     };
     localStorage.setItem("ds_cart_handoff", JSON.stringify(handoff));
     window.location.href = "/domicilios/";

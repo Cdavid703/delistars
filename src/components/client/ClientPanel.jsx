@@ -229,7 +229,8 @@ export default function ClientPanel() {
         name:        data.name        || user.displayName || '',
         email:       user.email       || '',
         phone:       data.phone       || '',
-        addresses:   arrayUnion(data.fullAddress),
+        // Solo guardamos la dirección en pedidos a domicilio (en recoger viene vacía)
+        ...(data.fullAddress?.trim() ? { addresses: arrayUnion(data.fullAddress) } : {}),
         lastOrderAt: serverTimestamp(),
         orderCount:  increment(1),
       }, { merge: true }).catch(() => {})
@@ -492,6 +493,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     name:               user?.displayName || '',
     phone:              '',
+    deliveryMode:       'delivery',   // 'delivery' = domicilio · 'pickup' = recoger en sede
     fullAddress:        '',
     barrio:             '',
     reference:          '',
@@ -587,7 +589,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     const errs = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
-    if (!form.fullAddress.trim()) errs.push('La dirección es obligatoria')
+    if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
     if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
     if (form.payment === 'Mixto' && (!form.mixtoEfectivo || !form.mixtoTransferencia)) {
@@ -596,7 +598,9 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     try {
-      await onSubmit(form)
+      // Si el pedido viene del menú web, traslada el precio ya calculado a la
+      // cotización para que el cajero lo reciba pre-llenado (solo agrega el domicilio).
+      await onSubmit(fromMenu ? { ...form, quotedPrice: menuTotal, fromMenu: true } : form)
     } catch (err) {
       const msg = err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
@@ -614,6 +618,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
         <p className="font-body text-xs text-coal/60">
           Sede: <span className="font-semibold text-cherry">{sede?.name}</span>
         </p>
+      </div>
+
+      {/* Tipo de entrega: domicilio o recoger en sede */}
+      <div>
+        <label className="label-field">¿Cómo quieres recibir tu pedido? *</label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => set('deliveryMode', 'delivery')}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+              form.deliveryMode === 'delivery' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
+            }`}
+          >
+            🛵 Domicilio
+          </button>
+          <button
+            type="button"
+            onClick={() => set('deliveryMode', 'pickup')}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+              form.deliveryMode === 'pickup' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
+            }`}
+          >
+            🏪 Recoger en sede
+          </button>
+        </div>
       </div>
 
       {/* Notice about quote */}
@@ -646,6 +675,18 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
         </div>
       </div>
 
+      {form.deliveryMode === 'pickup' && (
+        <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-start gap-2">
+          <MapPin size={16} className="text-mint flex-shrink-0 mt-0.5" />
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Recoges tu pedido en <strong>{sede?.name}</strong>{sede?.address ? ` — ${sede.address}` : ''}.
+            Te avisaremos por este medio cuando esté listo para recoger.
+          </p>
+        </div>
+      )}
+
+      {form.deliveryMode === 'delivery' && (
+      <>
       <div>
         <label className="label-field">Dirección de entrega *</label>
         <div className="flex gap-2">
@@ -716,6 +757,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           <input className="input-field" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="Punto de referencia" />
         </div>
       </div>
+      </>
+      )}
 
       <div>
         <label className="label-field">¿Qué vas a pedir? *</label>
@@ -1138,6 +1181,8 @@ function ClientOrderDetail({ order, onClose }) {
           {/* Timeline */}
           <div className="flex flex-col gap-2">
             {STATUS_STEPS.filter((s, i, arr) => {
+              // En recoger en sede no hay domiciliario: ocultamos esos pasos
+              if (order.deliveryMode === 'pickup' && ['assigned','accepted','in_transit','arrived'].includes(s.key)) return false
               const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
               if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
               return true

@@ -170,6 +170,9 @@ export const SECTORES = [
 export const SEDES = [
   {
     id: 1,
+    // slug = llave de contrato con la app de domicilios (debe coincidir con SEDES en src/services/roles.js).
+    // Es la ÚNICA fuente de verdad para identificar la sede al pasar el pedido a domicilios.
+    slug: "santa_lucia",
     name: "Sede Santa Lucía",
     address: "Santa Lucía, Medellín",
     phone: "+57 300 123 4567",
@@ -179,6 +182,7 @@ export const SEDES = [
   },
   {
     id: 2,
+    slug: "santa_teresita",
     name: "Sede Santa Teresita",
     address: "Santa Teresita, Medellín",
     phone: "+57 300 765 4321",

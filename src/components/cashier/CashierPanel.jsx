@@ -245,9 +245,12 @@ export default function CashierPanel() {
     loadDrivers()
   }, [])
 
+  const isPickup = o => o.deliveryMode === 'pickup'
   const filteredOrders = orders.filter(o => {
-    if (tab === 'active')    return ACTIVE_STATUSES.includes(o.status) && isToday(o.createdAt)
-    if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && isToday(o.createdAt)
+    // Recoger en sede no pasa por asignación de domiciliario: el pedido cotizado
+    // se queda en "Activos" para que el cajero lo gestione hasta la entrega.
+    if (tab === 'active')    return (ACTIVE_STATUSES.includes(o.status) || (o.status === 'quoted' && isPickup(o))) && isToday(o.createdAt)
+    if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && !isPickup(o) && isToday(o.createdAt)
     if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status) && isToday(o.createdAt)
     if (tab === 'completed') {
       if (!COMPLETE_STATUSES.includes(o.status)) return false
@@ -259,7 +262,7 @@ export default function CashierPanel() {
   })
 
   const pendingCount  = orders.filter(o => o.status === 'pending'                    && isToday(o.createdAt)).length
-  const assignCount   = orders.filter(o => ASSIGN_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
+  const assignCount   = orders.filter(o => ASSIGN_STATUSES.includes(o.status)        && o.deliveryMode !== 'pickup' && isToday(o.createdAt)).length
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
