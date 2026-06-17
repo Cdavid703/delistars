@@ -1,13 +1,17 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, MapPin, Menu, X } from "lucide-react";
+import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.svg";
 import { useCart } from "@/context/CartContext";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/services/api";
+import { useStaffAuth } from "@/hooks/useStaffAuth";
+import { isStaff } from "@/lib/staff";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
+  const { user, login, logout } = useStaffAuth();
+  const staff = isStaff(user?.email);
   const [scrolled, setScrolled] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [popped, setPopped] = useState(false);
@@ -76,6 +80,16 @@ export const Navbar = () => {
               {l.label}
             </a>
           ))}
+          {/* Vacantes — público */}
+          <a href="/vacantes/" className="font-display font-medium text-foreground/80 hover:text-primary transition-smooth flex items-center gap-1.5">
+            <Briefcase className="w-4 h-4" /> Trabaja con nosotros
+          </a>
+          {/* Mis turnos — solo equipo autenticado */}
+          {staff && (
+            <a href="/turnos/" className="font-display font-medium text-primary hover:opacity-80 transition-smooth flex items-center gap-1.5">
+              <CalendarClock className="w-4 h-4" /> Mis turnos
+            </a>
+          )}
         </nav>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -101,6 +115,27 @@ export const Navbar = () => {
             )}
           </Button>
 
+          {/* Login del equipo (para "Mis turnos") */}
+          {user ? (
+            <button
+              onClick={logout}
+              title={`Cerrar sesión (${user.email})`}
+              className="p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-smooth"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={login}
+              title="Ingreso del equipo"
+              className="hidden sm:flex p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-smooth"
+              aria-label="Ingreso del equipo"
+            >
+              <LogIn className="w-4 h-4" />
+            </button>
+          )}
+
           <button onClick={() => setMobile(!mobile)} className="lg:hidden p-1.5 text-foreground" aria-label="Menú">
             {mobile ? <X /> : <Menu />}
           </button>
@@ -120,6 +155,26 @@ export const Navbar = () => {
                 {l.label}
               </a>
             ))}
+
+            {/* Vacantes — público */}
+            <a href="/vacantes/" onClick={() => setMobile(false)} className="font-display py-2 text-foreground hover:text-primary transition-smooth flex items-center gap-2">
+              <Briefcase className="w-4 h-4" /> Trabaja con nosotros
+            </a>
+            {/* Mis turnos — solo equipo */}
+            {staff && (
+              <a href="/turnos/" onClick={() => setMobile(false)} className="font-display py-2 text-primary hover:opacity-80 transition-smooth flex items-center gap-2">
+                <CalendarClock className="w-4 h-4" /> Mis turnos
+              </a>
+            )}
+
+            {/* Login del equipo */}
+            <button
+              onClick={() => { user ? logout() : login(); setMobile(false); }}
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-smooth w-full text-left py-2"
+            >
+              {user ? <><LogOut className="w-4 h-4" /> Cerrar sesión</> : <><LogIn className="w-4 h-4" /> Ingreso del equipo</>}
+            </button>
+
             <button
               onClick={() => { setSede(""); setMobile(false); }}
               className="flex items-center gap-2 mt-2 pt-4 border-t border-border text-sm font-medium text-muted-foreground hover:text-primary transition-smooth w-full text-left"
