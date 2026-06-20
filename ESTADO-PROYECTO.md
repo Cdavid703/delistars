@@ -154,9 +154,10 @@ escrituras (sedes, trabajadores, productos, categorías).
 Env backend (ya en `.env.example` de `back/` y de `delistars-menu-magic/`):
 `FIREBASE_PROJECT_ID=delistars-domicilios`, `ADMIN_EMAILS=thebesta4321@gmail.com,cdavid.jaramillo@gmail.com`.
 
-> Pendiente real: probar contra el proyecto Firebase real (necesita las credenciales
-> reales en `admin/.env.local` y que el backend tenga `FIREBASE_PROJECT_ID`/`ADMIN_EMAILS`
-> en su `.env`) — la lógica se validó con un token inválido (401) pero no con un login real.
+> ✅ **Verificado 2026-06-20:** login de admin probado end-to-end contra Firebase real
+> (Carlos autenticó con Google y funcionó). Firebase inicializa sin errores con las
+> credenciales en `admin/.env.local`; la lógica del backend ya se había validado con
+> token inválido (401).
 
 ## `.env` a recrear (no están en git — instrucciones)
 
