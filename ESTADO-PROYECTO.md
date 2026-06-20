@@ -56,12 +56,11 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
 
 ## Pendiente ⬜
 
-1. **Auditoría completa** (quedó a medias por el incidente de corrupción).
-2. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
+1. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
    domicilios/turnos/vacantes, login `tbl_trabajador`, tablas `tbl_ventas`/`tbl_detalle_venta`.
-3. **Migración `disponible`** en la BD de producción si ya existía. *(Probablemente
+2. **Migración `disponible`** en la BD de producción si ya existía. *(Probablemente
    N/A: el VPS aún no corre este stack, así que no hay BD vieja que migrar.)*
-4. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
+3. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
    Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo). Decisión
    2026-06-20: se deja para después, no es urgente.
 
@@ -74,22 +73,57 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
   `modulo_orders`, `modulo_venta`) + sus imports/rutas/logs en `app.ts`. Verificado:
   ningún frontend los llamaba y ningún módulo vivo los importaba. Backend compila y
   arranca. Quedan vivos: `products`, `categories`, `sedes`, `trabajador`.
+- ✅ **Auditoría de seguridad completa** + fixes aplicados (ver sección dedicada abajo).
 
-## Hallazgos de auditoría
+## Auditoría de seguridad (completa 2026-06-20)
 
-- ✅ **Backend sin autenticación → resuelto (2026-06-20):** middleware `requireAdmin`
+Revisión del backend (API, superficie real), frontends, Docker, nginx y dependencias.
+
+### Lo que estaba bien 🟢
+- **Sin inyección SQL:** todas las queries usan parámetros `$1,$2…`; los nombres de
+  columna son hardcoded, solo los valores van parametrizados.
+- **Contraseñas:** bcrypt 10 rounds; nunca se devuelven en listados ni en login.
+- **Login sin enumeración de usuarios:** mismo mensaje genérico en ambos casos.
+- **Sin secretos reales en repo ni historial:** el token de GitHub nunca se commiteó
+  (vivía solo en el remoto del VPS, ya rotado). El apiKey de Firebase es público por
+  diseño y, con las reglas de Firestore cerradas, no da acceso de escritura.
+- **Reglas de Firestore:** bien diseñadas (allowlist por rol, deny-all final).
+
+### Hallazgos y fixes aplicados ✅
+- ✅ **Backend sin autenticación → resuelto:** middleware `requireAdmin`
   (`back/src/middlewares/require-admin.ts`) protege POST/PUT/DELETE de products,
-  categories, sedes y trabajadores (excepto `/trabajadores/login`, que sigue público).
-  Verifica el ID token de Firebase y exige que el email esté en `ADMIN_EMAILS`. El
-  admin (`admin/src/services/api.ts`) ya envía `Authorization: Bearer <idToken>` en
-  cada escritura.
-- 🔴 **4 módulos backend muertos** (ver pendiente #2).
-- 🟢 Contraseñas de trabajador hasheadas con bcrypt. Sin secretos en el repo.
-- 🟢 Docker ya endurecido (5432 no expuesto, gateway en loopback). *(Verificar si
-  el puerto `3001` del backend sigue publicado; idealmente solo interno.)*
-- 🟡 Sede con data maestra en 3 lugares (PostgreSQL `tbl_sedes`, `data/menu.ts`,
-  `roles.js`) — el contrato ya se unificó por `slug`, pero la data sigue triplicada.
-- 🟡 Productos globales (no por sede); adiciones modeladas como productos (cat 5).
+  categories, sedes y trabajadores. El admin envía `Authorization: Bearer <idToken>`.
+- ✅ **Dependencias vulnerables sin usar eliminadas:** `mongoose` (crítica: NoSQL
+  injection), `axios` (alta: SSRF/DoS) y `jsonwebtoken` no se importaban en ningún
+  lado → removidas. Mata la crítica + las altas de raíz.
+- ✅ **`express` 4.18.2 → 4.21.x:** parchea DoS de body-parser/qs/path-to-regexp sin
+  el breaking change de v5. **Producción quedó en 0 críticas / 0 altas** (solo
+  moderadas transitivas de `uuid` dentro del SDK de Google, no parcheables por
+  nosotros; las críticas que reporta `npm audit` sin `--omit=dev` son de vitest/esbuild,
+  dev-only, no se despliegan).
+- ✅ **Puerto 3001 del backend → bind a `127.0.0.1`** en docker-compose (antes
+  publicado al host, saltándose el gateway).
+- ✅ **Swagger `/api-docs` y `/swagger.json` → solo si `NODE_ENV !== 'production'`**
+  (antes filtraban toda la API).
+- ✅ **Rate limit en `/trabajadores/login`** (`back/src/middlewares/rate-limit.ts`,
+  `express-rate-limit`): 10 intentos / IP / 15 min → frena fuerza bruta. Requiere
+  `trust proxy` (configurado en `app.ts` vía `TRUST_PROXY_HOPS`, default 1; en el VPS
+  usar 2 por host-nginx + gateway).
+- ✅ **Bug funcional de paso:** cambio de contraseña del admin estaba roto (el admin
+  enviaba `usuario_password`, el backend leía `newPassword`) → el controlador ahora
+  acepta ambos.
+
+### Pendientes/aceptados de la auditoría 🟡⚪
+- ⚪ `uuid` moderada transitiva en firebase-admin/google-cloud: no parcheable sin que
+  Google actualice upstream; impacto bajo en nuestro uso. Aceptada.
+- ⚪ `scripts/fix-driver.cjs`: desactiva verificación TLS y hardcodea el apiKey
+  (script local de diagnóstico, NO desplegado). Bajo riesgo; considerar borrarlo.
+- 🟡 Sin headers de seguridad en el gateway (X-Frame-Options, X-Content-Type-Options,
+  HSTS). Conviene añadirlos en el nginx del host al migrar el VPS.
+- 🟡 `CORS_ORIGIN` cae a `*` si no se define (aceptable con Bearer, no con cookies);
+  fijar el origin real en prod.
+- 🟡 Sede con data maestra en 3 lugares; productos globales (no por sede). Deuda de
+  modelo, no de seguridad.
 
 ## Backend con login de administrador — implementado (2026-06-20)
 

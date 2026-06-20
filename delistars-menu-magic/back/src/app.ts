@@ -29,6 +29,11 @@ import trabajadoresRoutes from './modules/modulo_trabajador/routes/trabajador.ro
 
 const app: Express = express();
 
+// Detrás del gateway nginx (y del nginx del host): confía en los proxies para
+// que req.ip y el rate-limit usen la IP real del cliente, no la del proxy.
+// Nº de saltos configurable (1 = solo gateway Docker; 2 = host nginx + gateway).
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+
 // Middleware
 app.use(cors({
   origin: process.env.CORS_ORIGIN?.split(',') || '*',
@@ -37,20 +42,21 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Swagger Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.topbar { display: none }',
-  customSiteTitle: 'Delistars Menu Magic - API Documentation',
-  swaggerOptions: {
-    url: '/swagger.json',
-  },
-}));
+// Swagger Documentation — solo fuera de producción (no filtrar la API en prod)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.topbar { display: none }',
+    customSiteTitle: 'Delistars Menu Magic - API Documentation',
+    swaggerOptions: {
+      url: '/swagger.json',
+    },
+  }));
 
-// Swagger JSON
-app.get('/swagger.json', (_req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+  app.get('/swagger.json', (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+}
 
 /**
  * @swagger

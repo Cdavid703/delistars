@@ -26,8 +26,10 @@ services:
       context: ./back
       dockerfile: Dockerfile
     container_name: delistars_backend
+    # Solo loopback del host: el gateway llega por la red interna de Docker.
+    # Evita exponer la API directamente saltándose el gateway.
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     env_file: .env
     environment:
       NODE_ENV: ${NODE_ENV}

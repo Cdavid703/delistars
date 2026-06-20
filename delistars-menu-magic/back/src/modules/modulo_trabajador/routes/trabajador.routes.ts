@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { TrabajadorController } from "../controllers/trabajador.controller";
 import { requireAdmin } from "../../../middlewares/require-admin";
+import { loginRateLimit } from "../../../middlewares/rate-limit";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ const router = Router();
  *       401:
  *         description: Usuario o contraseña incorrectos
  */
-router.post("/login", TrabajadorController.login);
+router.post("/login", loginRateLimit, TrabajadorController.login);
 
 /**
  * @swagger

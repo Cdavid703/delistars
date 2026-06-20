@@ -104,7 +104,8 @@ export class TrabajadorController {
   static async changePassword(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { newPassword } = req.body;
+      // El admin envía `usuario_password`; se acepta también `newPassword` por compat.
+      const newPassword = req.body.usuario_password ?? req.body.newPassword;
 
       await trabajadorService.changePassword(Number(id), newPassword);
 
