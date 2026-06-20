@@ -63,7 +63,8 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
    domicilios/turnos/vacantes, login `tbl_trabajador`, tablas `tbl_ventas`/`tbl_detalle_venta`.
 4. **Migración `disponible`** en la BD de producción si ya existía.
 5. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
-   Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo).
+   Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo). Decisión
+   2026-06-20: se deja para después, no es urgente.
 6. Llenar las 6 `VITE_FIREBASE_*` reales en los `.env`/`.env.local` locales (las
    plantillas ya están listas, ver abajo).
 
@@ -195,8 +196,7 @@ texto plano** en la URL (`https://Cdavid703:ghp_...@github.com/...`). Se reempla
 - Remoto del repo en el VPS cambiado a `git@github-delistars:Cdavid703/delistars.git`.
 - La clave pública se agregó como **Deploy Key** (solo lectura) en
   `https://github.com/Cdavid703/delistars/settings/keys`.
-- El token viejo (`ghp_oPA1...`) debía revocarse en
-  `https://github.com/settings/tokens` — **confirmar que se hizo**.
+- El token viejo (`ghp_oPA1...`) fue **revocado** (confirmado 2026-06-20).
 
 ## Nota: incidente de corrupción (2026-06-19)
 
