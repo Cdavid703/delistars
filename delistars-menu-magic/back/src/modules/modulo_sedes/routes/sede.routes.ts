@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { SedeController } from '../controllers/sede.controller';
+import { requireAdmin } from '../../../middlewares/require-admin';
 
 const router = Router();
 const sedeController = new SedeController();
@@ -72,7 +73,7 @@ router.get('/', sedeController.getAllSedes);
  *       500:
  *         description: Error en el servidor
  */
-router.post('/', sedeController.createSede);
+router.post('/', requireAdmin, sedeController.createSede);
 
 /**
  * @swagger
@@ -145,6 +146,6 @@ router.get('/:id', sedeController.getSedeById);
  *       500:
  *         description: Error en el servidor
  */
-router.put('/:id', sedeController.updateSede);
+router.put('/:id', requireAdmin, sedeController.updateSede);
 
 export default router;

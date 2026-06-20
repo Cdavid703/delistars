@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ProductsController } from '../controllers/products.controller';
+import { requireAdmin } from '../../../middlewares/require-admin';
 
 const router = Router();
 const controller = new ProductsController();
@@ -105,7 +106,7 @@ router.get('/', (req, res) => controller.getAll(req, res));
  *       500:
  *         description: Error del servidor
  */
-router.post('/', (req, res) => controller.create(req, res));
+router.post('/', requireAdmin, (req, res) => controller.create(req, res));
 
 /**
  * @swagger
@@ -169,7 +170,7 @@ router.post('/', (req, res) => controller.create(req, res));
  *       500:
  *         description: Error del servidor
  */
-router.put('/:id', (req, res) => controller.update(req, res));
+router.put('/:id', requireAdmin, (req, res) => controller.update(req, res));
 
 /**
  * @swagger
@@ -255,6 +256,6 @@ router.get('/:id', (req, res) => controller.getById(req, res));
  *       500:
  *         description: Error del servidor
  */
-router.delete('/:id', (req, res) => controller.delete(req, res));
+router.delete('/:id', requireAdmin, (req, res) => controller.delete(req, res));
 
 export default router;

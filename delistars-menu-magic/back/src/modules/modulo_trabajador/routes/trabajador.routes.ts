@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { TrabajadorController } from "../controllers/trabajador.controller";
+import { requireAdmin } from "../../../middlewares/require-admin";
 
 const router = Router();
 
@@ -108,7 +109,7 @@ router.post("/login", TrabajadorController.login);
  *       400:
  *         description: Error al crear el trabajador
  */
-router.post("/", TrabajadorController.createTrabajador);
+router.post("/", requireAdmin, TrabajadorController.createTrabajador);
 
 /**
  * @swagger
@@ -212,6 +213,6 @@ router.get("/:id", TrabajadorController.getTrabajadorById);
  *       400:
  *         description: Error al cambiar la contraseña
  */
-router.put("/:id/cambiar-contraseña", TrabajadorController.changePassword);
+router.put("/:id/cambiar-contraseña", requireAdmin, TrabajadorController.changePassword);
 
 export default router;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { CategoriesController } from '../controllers/categories.controller';
+import { requireAdmin } from '../../../middlewares/require-admin';
 
 const router = Router();
 const controller = new CategoriesController();
@@ -123,6 +124,6 @@ router.get('/:id', (req, res) => controller.getById(req, res));
  *       500:
  *         description: Error del servidor
  */
-router.post('/', (req, res) => controller.create(req, res));
+router.post('/', requireAdmin, (req, res) => controller.create(req, res));
 
 export default router;

@@ -1,4 +1,11 @@
+import { auth } from './firebase';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await auth.currentUser?.getIdToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export interface Sede {
   _id?: string;
@@ -55,6 +62,7 @@ export const apiService = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(sede),
       });
@@ -73,6 +81,7 @@ export const apiService = {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(sede),
       });
@@ -89,6 +98,7 @@ export const apiService = {
     try {
       const response = await fetch(`${API_BASE_URL}/sedes/${id}`, {
         method: 'DELETE',
+        headers: await authHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete sede');
     } catch (error) {
@@ -116,6 +126,7 @@ export const apiService = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(trabajador),
       });
@@ -134,6 +145,7 @@ export const apiService = {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(trabajador),
       });
@@ -150,6 +162,7 @@ export const apiService = {
     try {
       const response = await fetch(`${API_BASE_URL}/trabajadores/${id}`, {
         method: 'DELETE',
+        headers: await authHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete trabajador');
     } catch (error) {
@@ -164,6 +177,7 @@ export const apiService = {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify({ usuario_password: newPassword }),
       });
@@ -193,6 +207,7 @@ export const apiService = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(producto),
       });
@@ -211,6 +226,7 @@ export const apiService = {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify(producto),
       });
@@ -227,6 +243,7 @@ export const apiService = {
     try {
       const response = await fetch(`${API_BASE_URL}/products/${id}`, {
         method: 'DELETE',
+        headers: await authHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete producto');
     } catch (error) {
@@ -254,6 +271,7 @@ export const apiService = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await authHeaders()),
         },
         body: JSON.stringify({ nombre_categoria }),
       });

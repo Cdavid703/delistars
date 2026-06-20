@@ -2,7 +2,7 @@
 
 > Documento de contexto/handoff. Resume qué se hizo, qué falta y los hallazgos de
 > auditoría, para que cualquier sesión (o el colaborador) retome sin perder hilo.
-> Última actualización: 2026-06-19.
+> Última actualización: 2026-06-20.
 
 ## Dónde está el código
 
@@ -49,24 +49,33 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
   5432 expuesto, gateway en `127.0.0.1:8090`), `admin/src/lib/team.ts` como fuente
   única del equipo, queries de Firestore acotadas (`orderBy`+`limit(500)`),
   credenciales fuera de `DESPLIEGUE.md`.
+- **Backend con login de administrador** (ver sección dedicada abajo): middleware
+  `requireAdmin` protegiendo escrituras + admin enviando el ID token de Firebase.
+- **Deploy key SSH** en el VPS en vez de un token de GitHub expuesto en texto plano
+  (ver "Estado real del VPS" abajo).
 
 ## Pendiente ⬜
 
-1. **Backend con login de administrador** (CRÍTICO — ver diseño abajo). Hoy ningún
-   endpoint del backend pide auth.
-2. **Auditoría completa** (quedó a medias por el incidente de corrupción).
-3. **Eliminar módulos backend muertos:** `modulo_auth`, `modulo_cart`,
+1. **Auditoría completa** (quedó a medias por el incidente de corrupción).
+2. **Eliminar módulos backend muertos:** `modulo_auth`, `modulo_cart`,
    `modulo_orders`, `modulo_venta` (montados pero ningún frontend los usa).
-4. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
+3. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
    domicilios/turnos/vacantes, login `tbl_trabajador`, tablas `tbl_ventas`/`tbl_detalle_venta`.
-5. **Migración `disponible`** en la BD de producción si ya existía.
-6. Recrear `.env` locales (no están en git) — ver abajo.
+4. **Migración `disponible`** en la BD de producción si ya existía.
+5. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
+   Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo).
+6. Llenar las 6 `VITE_FIREBASE_*` reales en los `.env`/`.env.local` locales (las
+   plantillas ya están listas, ver abajo).
 
 ## Hallazgos de auditoría
 
-- 🔴 **Backend sin autenticación:** `/products`, `/sedes`, `/trabajadores`, etc.
-  (POST/PUT/DELETE) no piden auth → cualquiera modifica vía API directa. → Tarea #1.
-- 🔴 **4 módulos backend muertos** (ver pendiente #3).
+- ✅ **Backend sin autenticación → resuelto (2026-06-20):** middleware `requireAdmin`
+  (`back/src/middlewares/require-admin.ts`) protege POST/PUT/DELETE de products,
+  categories, sedes y trabajadores (excepto `/trabajadores/login`, que sigue público).
+  Verifica el ID token de Firebase y exige que el email esté en `ADMIN_EMAILS`. El
+  admin (`admin/src/services/api.ts`) ya envía `Authorization: Bearer <idToken>` en
+  cada escritura.
+- 🔴 **4 módulos backend muertos** (ver pendiente #2).
 - 🟢 Contraseñas de trabajador hasheadas con bcrypt. Sin secretos en el repo.
 - 🟢 Docker ya endurecido (5432 no expuesto, gateway en loopback). *(Verificar si
   el puerto `3001` del backend sigue publicado; idealmente solo interno.)*
@@ -74,25 +83,36 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
   `roles.js`) — el contrato ya se unificó por `slug`, pero la data sigue triplicada.
 - 🟡 Productos globales (no por sede); adiciones modeladas como productos (cat 5).
 
-## Diseño: backend con login de administrador (Tarea #1)
+## Backend con login de administrador — implementado (2026-06-20)
 
-**Idea:** el backend verifica el **ID token de Firebase** que envía el admin y exige
-que el correo esté en la allowlist. No requiere service-account (verificar token
-solo necesita el `projectId`).
+El backend verifica el **ID token de Firebase** que envía el admin y exige que el
+correo esté en la allowlist. No requiere service-account (verificar token solo
+necesita el `projectId`).
 
-- **Protege escritura** (POST/PUT/DELETE de products, categories, sedes, trabajadores).
-- **Lectura pública** (GET products/categories/sedes — el menú las necesita).
+- **Protege escritura:** POST/PUT/DELETE de products, categories, sedes,
+  trabajadores (`createTrabajador`, `cambiar-contraseña`).
+- **Lectura pública:** GET products/categories/sedes/trabajadores y
+  `POST /trabajadores/login` (el menú y el login de trabajador los necesitan sin auth).
 
-Backend:
-1. Dependencia `firebase-admin`.
-2. `admin.initializeApp({ projectId: 'delistars-domicilios' })`.
+Backend (`back/src/middlewares/require-admin.ts`):
+1. Dependencia `firebase-admin` (instalada).
+2. `initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID })`.
 3. Middleware `requireAdmin`: lee `Authorization: Bearer <idToken>`, `verifyIdToken`,
-   valida `email ∈ ADMIN_EMAILS` (env), si no → 403.
-4. Aplicar `requireAdmin` solo a rutas de escritura.
+   valida `email ∈ ADMIN_EMAILS` (env) → 401 sin token/token inválido, 403 si no está
+   en la allowlist.
+4. Aplicado en las rutas de escritura de `products`, `categories`, `sedes` y
+   `trabajador` (routes files).
 
-Admin (frontend): en `api.ts`, adjuntar `Authorization: Bearer ${await auth.currentUser.getIdToken()}` en escrituras.
+Admin (`admin/src/services/api.ts`): helper `authHeaders()` adjunta
+`Authorization: Bearer ${await auth.currentUser.getIdToken()}` en todas las
+escrituras (sedes, trabajadores, productos, categorías).
 
-Env backend: `FIREBASE_PROJECT_ID=delistars-domicilios`, `ADMIN_EMAILS=thebesta4321@gmail.com,cdavid.jaramillo@gmail.com`.
+Env backend (ya en `.env.example` de `back/` y de `delistars-menu-magic/`):
+`FIREBASE_PROJECT_ID=delistars-domicilios`, `ADMIN_EMAILS=thebesta4321@gmail.com,cdavid.jaramillo@gmail.com`.
+
+> Pendiente real: probar contra el proyecto Firebase real (necesita las credenciales
+> reales en `admin/.env.local` y que el backend tenga `FIREBASE_PROJECT_ID`/`ADMIN_EMAILS`
+> en su `.env`) — la lógica se validó con un token inválido (401) pero no con un login real.
 
 ## `.env` a recrear (no están en git — instrucciones)
 
@@ -151,6 +171,32 @@ VITE_FIREBASE_APP_ID=
 Ver `DESPLIEGUE.md`. Clave: `.env` en el servidor, gateway en `127.0.0.1:8090` con
 nginx del host haciendo proxy, `docker compose up --build -d`, y la migración
 `disponible` si la BD ya existía. Ojo con la RAM del VPS (2 GB+ o swap).
+
+## Estado real del VPS (verificado 2026-06-20)
+
+El servidor (177.7.52.161, Debian 13, 3.8 GB RAM) **todavía no tiene el stack
+integrado**. Sigue corriendo la versión vieja:
+
+- Repo clonado en `/var/www/delistars.com`, rama **`main`** (no `integracion-admin`).
+- **Sin Docker instalado.** Nginx del host sirve directo los `dist-*` (domicilios,
+  turnos, vacantes, landing) — no hay menú, ni admin unificado, ni backend, ni
+  PostgreSQL en el servidor.
+- Por lo tanto: migrar a Docker (`DESPLIEGUE.md` completo) sigue pendiente
+  (pendiente #5).
+
+### Seguridad: deploy key en vez de token (resuelto 2026-06-20)
+
+El remoto de git en el VPS tenía un **Personal Access Token de GitHub expuesto en
+texto plano** en la URL (`https://Cdavid703:ghp_...@github.com/...`). Se reemplazó por:
+
+- Clave SSH dedicada de **solo lectura** en el VPS: `~/.ssh/delistars_deploy_key`.
+- Alias en `~/.ssh/config` del VPS: `Host github-delistars` → `github.com` con esa
+  identity.
+- Remoto del repo en el VPS cambiado a `git@github-delistars:Cdavid703/delistars.git`.
+- La clave pública se agregó como **Deploy Key** (solo lectura) en
+  `https://github.com/Cdavid703/delistars/settings/keys`.
+- El token viejo (`ghp_oPA1...`) debía revocarse en
+  `https://github.com/settings/tokens` — **confirmar que se hizo**.
 
 ## Nota: incidente de corrupción (2026-06-19)
 
