@@ -62,7 +62,9 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
    N/A: el VPS aún no corre este stack, así que no hay BD vieja que migrar.)*
 3. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
    Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo). Decisión
-   2026-06-20: se deja para después, no es urgente.
+   2026-06-20: se deja para después, no es urgente. **Plan paso a paso ya escrito en
+   [`PLAN-MIGRACION-VPS.md`](PLAN-MIGRACION-VPS.md)** — incluye una decisión obligatoria
+   sobre la ruta `/` (la landing de marketing actual vs el menú del stack Docker).
 
 ## Hecho recientemente (2026-06-20)
 
