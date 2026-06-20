@@ -22,13 +22,9 @@ import { connectDB } from './config/database';
 import { swaggerSpec } from './config/swagger';
 
 // Import routes
-import authRoutes from './modules/modulo_auth/routes/auth.routes';
 import productsRoutes from './modules/modulo_products/routes/products.routes';
-import cartRoutes from './modules/modulo_cart/routes/cart.routes';
-import ordersRoutes from './modules/modulo_orders/routes/orders.routes';
 import categoriesRoutes from './modules/modulo_categories/routes/categories.routes';
 import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
-import ventasRoutes from './modules/modulo_venta/routes/venta.routes';
 import trabajadoresRoutes from './modules/modulo_trabajador/routes/trabajador.routes';
 
 const app: Express = express();
@@ -86,13 +82,9 @@ app.get('/health', (_req: Request, res: Response) => {
 // API Routes
 const apiPrefix = process.env.API_PREFIX || '/api/v1';
 
-app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/products`, productsRoutes);
-app.use(`${apiPrefix}/cart`, cartRoutes);
-app.use(`${apiPrefix}/orders`, ordersRoutes);
 app.use(`${apiPrefix}/categories`, categoriesRoutes);
 app.use(`${apiPrefix}/sedes`, sedesRoutes);
-app.use(`${apiPrefix}/ventas`, ventasRoutes);
 app.use(`${apiPrefix}/trabajadores`, trabajadoresRoutes);
 
 // 404 Handler
@@ -132,10 +124,10 @@ async function startServer() {
       
       console.log('📚 Endpoints disponibles:');
       console.log(`   • ${apiPrefix}/health - Health check`);
-      console.log(`   • ${apiPrefix}/auth - Autenticación`);
       console.log(`   • ${apiPrefix}/products - Productos`);
-      console.log(`   • ${apiPrefix}/cart - Carrito`);
-      console.log(`   • ${apiPrefix}/orders - Pedidos\n`);
+      console.log(`   • ${apiPrefix}/categories - Categorías`);
+      console.log(`   • ${apiPrefix}/sedes - Sedes`);
+      console.log(`   • ${apiPrefix}/trabajadores - Trabajadores\n`);
     });
   } catch (error) {
     console.error('\n❌ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

@@ -57,16 +57,23 @@ DeliStars son apps bajo un dominio, servidas por un stack Docker (`delistars-men
 ## Pendiente ⬜
 
 1. **Auditoría completa** (quedó a medias por el incidente de corrupción).
-2. **Eliminar módulos backend muertos:** `modulo_auth`, `modulo_cart`,
-   `modulo_orders`, `modulo_venta` (montados pero ningún frontend los usa).
-3. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
+2. **Limpieza destructiva** (tras verificar en producción): admin viejo embebido en
    domicilios/turnos/vacantes, login `tbl_trabajador`, tablas `tbl_ventas`/`tbl_detalle_venta`.
-4. **Migración `disponible`** en la BD de producción si ya existía.
-5. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
+3. **Migración `disponible`** en la BD de producción si ya existía. *(Probablemente
+   N/A: el VPS aún no corre este stack, así que no hay BD vieja que migrar.)*
+4. **Migrar el VPS al stack Docker integrado** (hoy corre la versión vieja sin
    Docker, sin menú/admin/backend — ver sección "Estado del VPS" abajo). Decisión
    2026-06-20: se deja para después, no es urgente.
-6. Llenar las 6 `VITE_FIREBASE_*` reales en los `.env`/`.env.local` locales (las
-   plantillas ya están listas, ver abajo).
+
+## Hecho recientemente (2026-06-20)
+
+- ✅ **Backend con login de administrador** (ver sección dedicada).
+- ✅ **Deploy key SSH** en el VPS, token expuesto revocado.
+- ✅ **Credenciales Firebase** llenas en los 3 `.env.local` (admin, front, raíz).
+- ✅ **Eliminados 4 módulos backend muertos** (`modulo_auth`, `modulo_cart`,
+  `modulo_orders`, `modulo_venta`) + sus imports/rutas/logs en `app.ts`. Verificado:
+  ningún frontend los llamaba y ningún módulo vivo los importaba. Backend compila y
+  arranca. Quedan vivos: `products`, `categories`, `sedes`, `trabajador`.
 
 ## Hallazgos de auditoría
 
