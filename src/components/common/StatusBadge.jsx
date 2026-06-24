@@ -1,4 +1,4 @@
-const STATUS_MAP = {
+export const STATUS_MAP = {
   pending:   { label: 'Pendiente',             cls: 'badge-pending' },
   quoted:    { label: 'Cotizado',              cls: 'badge-quoted' },
   assigned:  { label: 'Asignado',              cls: 'badge-assigned' },

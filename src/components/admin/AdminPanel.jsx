@@ -8,7 +8,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS, DEFAULT_CASHIER_NAMES } from '../../services/roles'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
-import StatusBadge from '../common/StatusBadge'
+import StatusBadge, { STATUS_MAP } from '../common/StatusBadge'
+import ExcelJS from 'exceljs'
 import { format, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -507,6 +508,12 @@ function ReportsTab({ sede }) {
   const [range,       setRange]       = useState('today')
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
+  // Filtros adicionales del reporte
+  const [fStatus,  setFStatus]  = useState('all')
+  const [fDriver,  setFDriver]  = useState('all')
+  const [fCashier, setFCashier] = useState('all')
+  const [fPayment, setFPayment] = useState('all')
+  const [fSearch,  setFSearch]  = useState('')
 
   useEffect(() => {
     if (!sede) return
@@ -528,7 +535,8 @@ function ReportsTab({ sede }) {
     return null
   }
 
-  const filtered = orders.filter(o => {
+  // 1) Filtro por rango de fecha → base para las opciones de los desplegables
+  const dateFiltered = orders.filter(o => {
     if (!o.createdAt?.toDate) return false
     const d = o.createdAt.toDate()
     const start = getRangeStart()
@@ -537,6 +545,36 @@ function ReportsTab({ sede }) {
     if (d > end) return false
     return true
   })
+
+  // Opciones de los desplegables (derivadas de lo que hay en el rango de fecha)
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b))
+  const statusOptions  = uniq(dateFiltered.map(o => o.status))
+  const driverOptions  = uniq(dateFiltered.map(o => o.driverName))
+  const cashierOptions = uniq(dateFiltered.map(o => o.cashierName))
+  const paymentOptions = uniq(dateFiltered.map(o => o.payment))
+
+  // 2) Filtros adicionales → conjunto final que alimenta tarjetas y exportación
+  const filtered = dateFiltered.filter(o => {
+    if (fStatus  !== 'all' && o.status      !== fStatus)  return false
+    if (fDriver  !== 'all' && (o.driverName  || '') !== fDriver)  return false
+    if (fCashier !== 'all' && (o.cashierName || '') !== fCashier) return false
+    if (fPayment !== 'all' && (o.payment     || '') !== fPayment) return false
+    if (fSearch.trim()) {
+      const q = fSearch.toLowerCase().trim()
+      const hay = [o.orderNumber, o.name, o.clientName, o.fullAddress, o.driverName, o.cashierName]
+        .map(v => String(v || '').toLowerCase())
+      if (!hay.some(v => v.includes(q))) return false
+    }
+    return true
+  })
+
+  const activeFilterCount =
+    (fStatus !== 'all' ? 1 : 0) + (fDriver !== 'all' ? 1 : 0) +
+    (fCashier !== 'all' ? 1 : 0) + (fPayment !== 'all' ? 1 : 0) +
+    (fSearch.trim() ? 1 : 0)
+  const clearFilters = () => {
+    setFStatus('all'); setFDriver('all'); setFCashier('all'); setFPayment('all'); setFSearch('')
+  }
 
   const completed     = filtered.filter(o => COMPLETED_STATUSES_R.includes(o.status))
   const cashOrders    = completed.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
@@ -563,28 +601,137 @@ function ReportsTab({ sede }) {
 
   const fmt2 = v => `$${Number(v || 0).toLocaleString('es-CO')}`
 
-  const exportCSV = () => {
-    const headers = ['Número','Fecha','Cliente','Dirección','Método pago','Domicilio','Total','Estado','Domiciliario','Cajero']
-    const rows = filtered.map(o => [
-      o.orderNumber || '',
-      o.createdAt?.toDate ? format(o.createdAt.toDate(), 'dd/MM/yyyy HH:mm') : '',
-      o.name || '',
-      o.fullAddress || '',
-      o.payment || '',
-      o.deliveryPrice || 0,
-      o.totalPrice || 0,
-      o.status || '',
-      o.driverName || '',
-      o.cashierName || '',
-    ])
-    const csv = [headers, ...rows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  // Resume el array de items como "2x Hamburguesa, 1x Perro" (defensivo ante formatos)
+  const fmtItems = (items) => {
+    if (!Array.isArray(items)) return ''
+    return items.map(it => {
+      if (it == null) return ''
+      if (typeof it === 'string') return it
+      const qty  = it.qty ?? it.quantity ?? it.cantidad ?? it.count ?? 1
+      const name = it.name ?? it.nombre ?? it.nombre_producto ?? it.title ?? it.producto ?? ''
+      return name ? `${qty}x ${name}` : ''
+    }).filter(Boolean).join(', ')
+  }
+
+  const statusLabel = (s) => STATUS_MAP[s]?.label || s || ''
+  const deliveryLabel = (m) => ({ pickup: 'Recoge en sede', delivery: 'Domicilio' }[m] || m || 'Domicilio')
+
+  const exportExcel = async () => {
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'DeliStars'
+    wb.created = new Date()
+
+    // ── Hoja 1: Pedidos ────────────────────────────────────────────────
+    const ws = wb.addWorksheet('Pedidos', {
+      views: [{ state: 'frozen', ySplit: 1 }],   // congela el encabezado
+    })
+    ws.columns = [
+      { header: 'Número',       key: 'num',      width: 10 },
+      { header: 'Fecha',        key: 'fecha',    width: 12 },
+      { header: 'Hora',         key: 'hora',     width: 8  },
+      { header: 'Cliente',      key: 'cliente',  width: 22 },
+      { header: 'Dirección',    key: 'dir',      width: 38 },
+      { header: 'Entrega',      key: 'entrega',  width: 16 },
+      { header: 'Método pago',  key: 'pago',     width: 14 },
+      { header: 'Domicilio',    key: 'domi',     width: 12, style: { numFmt: '"$"#,##0' } },
+      { header: 'Total',        key: 'total',    width: 14, style: { numFmt: '"$"#,##0' } },
+      { header: 'Estado',       key: 'estado',   width: 18 },
+      { header: 'Domiciliario', key: 'driver',   width: 20 },
+      { header: 'Cajero',       key: 'cajero',   width: 20 },
+      { header: 'Productos',    key: 'items',    width: 50 },
+    ]
+
+    filtered.forEach(o => {
+      const d = o.createdAt?.toDate ? o.createdAt.toDate() : null
+      ws.addRow({
+        num:     o.orderNumber || '',
+        fecha:   d ? format(d, 'dd/MM/yyyy') : '',
+        hora:    d ? format(d, 'HH:mm') : '',
+        cliente: o.name || o.clientName || '',
+        dir:     o.fullAddress || '',
+        entrega: deliveryLabel(o.deliveryMode),
+        pago:    o.payment || '',
+        domi:    o.deliveryPrice || 0,
+        total:   o.totalPrice || 0,
+        estado:  statusLabel(o.status),
+        driver:  o.driverName || '',
+        cajero:  o.cashierName || '',
+        items:   fmtItems(o.items),
+      })
+    })
+
+    // Encabezado en negrita con fondo oscuro y texto claro
+    const header = ws.getRow(1)
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A1A1A' } }
+    header.alignment = { vertical: 'middle' }
+    header.height = 20
+
+    // Autofiltro en TODAS las columnas (desplegables de filtro de Excel)
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } }
+
+    // Fila de totales al final
+    const totalDomi  = filtered.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+    const totalVenta = filtered.reduce((s, o) => s + (o.totalPrice || 0), 0)
+    const totalRow = ws.addRow({ cliente: `TOTAL (${filtered.length} pedidos)`, domi: totalDomi, total: totalVenta })
+    totalRow.font = { bold: true }
+    totalRow.getCell('domi').numFmt = '"$"#,##0'
+    totalRow.getCell('total').numFmt = '"$"#,##0'
+
+    // ── Hoja 2: Resumen ────────────────────────────────────────────────
+    const rs = wb.addWorksheet('Resumen')
+    rs.addRow(['Resumen del reporte']).font = { bold: true, size: 14 }
+    rs.addRow([])
+    rs.addRow(['Sede', sede?.name || ''])
+    rs.addRow(['Rango', range])
+    rs.addRow(['Filtros activos', activeFilterCount])
+    rs.addRow(['Pedidos (filtrados)', filtered.length])
+    rs.addRow(['Total domicilios', totalDomi]).getCell(2).numFmt = '"$"#,##0'
+    rs.addRow(['Total ventas', totalVenta]).getCell(2).numFmt = '"$"#,##0'
+    rs.addRow([])
+
+    const byDriverRows = Object.entries(
+      filtered.reduce((acc, o) => {
+        const k = o.driverName || 'Sin asignar'
+        acc[k] = acc[k] || { count: 0, fees: 0, total: 0 }
+        acc[k].count++; acc[k].fees += (o.deliveryPrice || 0); acc[k].total += (o.totalPrice || 0)
+        return acc
+      }, {})
+    )
+    const dh = rs.addRow(['Por domiciliario', 'Pedidos', 'Domicilios', 'Total'])
+    dh.font = { bold: true }
+    byDriverRows.forEach(([name, v]) => {
+      const r = rs.addRow([name, v.count, v.fees, v.total])
+      r.getCell(3).numFmt = '"$"#,##0'; r.getCell(4).numFmt = '"$"#,##0'
+    })
+    rs.addRow([])
+
+    const byPayRows = Object.entries(
+      filtered.reduce((acc, o) => {
+        const k = o.payment || 'Sin especificar'
+        acc[k] = acc[k] || { count: 0, total: 0 }
+        acc[k].count++; acc[k].total += (o.totalPrice || 0)
+        return acc
+      }, {})
+    )
+    const ph = rs.addRow(['Por método de pago', 'Pedidos', 'Total'])
+    ph.font = { bold: true }
+    byPayRows.forEach(([name, v]) => {
+      const r = rs.addRow([name, v.count, v.total])
+      r.getCell(3).numFmt = '"$"#,##0'
+    })
+    rs.getColumn(1).width = 26
+    rs.getColumn(2).width = 12
+    rs.getColumn(3).width = 14
+    rs.getColumn(4).width = 14
+
+    // Descargar
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    a.download = `delistars-reporte-${format(new Date(), 'yyyy-MM-dd')}.csv`
+    a.download = `delistars-reporte-${sede?.name ? sede.name.replace(/\s+/g, '-') + '-' : ''}${format(new Date(), 'yyyy-MM-dd')}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -625,6 +772,59 @@ function ReportsTab({ sede }) {
         </div>
       )}
 
+      {/* Filtros del reporte */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-2">
+          <p className="section-title flex items-center gap-1.5">
+            <Search size={14} /> Filtros
+            {activeFilterCount > 0 && (
+              <span className="bg-cherry text-cream text-[10px] font-bold rounded-full px-1.5 py-0.5">{activeFilterCount}</span>
+            )}
+          </p>
+          {activeFilterCount > 0 && (
+            <button onClick={clearFilters}
+              className="text-xs font-body text-cherry hover:underline flex items-center gap-1">
+              <X size={12} /> Limpiar
+            </button>
+          )}
+        </div>
+
+        <input type="text" className="input-field py-2 text-sm mb-2"
+          placeholder="Buscar por número, cliente, dirección, domiciliario o cajero…"
+          value={fSearch} onChange={e => setFSearch(e.target.value)} />
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="label-field">Estado</label>
+            <select className="input-field py-2 text-sm" value={fStatus} onChange={e => setFStatus(e.target.value)}>
+              <option value="all">Todos</option>
+              {statusOptions.map(s => <option key={s} value={s}>{STATUS_MAP[s]?.label || s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-field">Método de pago</label>
+            <select className="input-field py-2 text-sm" value={fPayment} onChange={e => setFPayment(e.target.value)}>
+              <option value="all">Todos</option>
+              {paymentOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-field">Domiciliario</label>
+            <select className="input-field py-2 text-sm" value={fDriver} onChange={e => setFDriver(e.target.value)}>
+              <option value="all">Todos</option>
+              {driverOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-field">Cajero</label>
+            <select className="input-field py-2 text-sm" value={fCashier} onChange={e => setFCashier(e.target.value)}>
+              <option value="all">Todos</option>
+              {cashierOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Revenue summary card */}
       <div className="card bg-coal text-cream">
         <div className="flex items-center justify-between mb-3">
@@ -632,7 +832,7 @@ function ReportsTab({ sede }) {
             <p className="font-display text-3xl tracking-wide">{fmt2(totalRevenue)}</p>
             <p className="font-body text-sm opacity-60">Total recaudado · {sede?.name}</p>
           </div>
-          <button onClick={exportCSV}
+          <button onClick={exportExcel}
             className="flex items-center gap-1.5 bg-cream/10 hover:bg-cream/20 px-3 py-2 rounded-xl text-xs font-semibold font-body transition-colors">
             <Download size={14} /> Excel
           </button>
