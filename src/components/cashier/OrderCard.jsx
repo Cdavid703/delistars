@@ -81,7 +81,7 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
 
           {/* Footer */}
           <div className="flex items-center justify-between">
-            <span className="font-body text-xs text-coal/40">{order.payment}</span>
+            <span className="font-body text-xs text-coal/40">{order.payment || 'Pago: pendiente'}</span>
             {order.driverName && (
               <span className="flex items-center gap-1 font-body text-xs text-mint">
                 <Bike size={12} /> {order.driverName}

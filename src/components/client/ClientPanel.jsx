@@ -217,7 +217,9 @@ export default function ClientPanel() {
       sedeId:      sede?.id     || '',
       sedeName:    sede?.name   || '',
       status:      'pending',
-      cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
+      // El pago se elige tras la cotización de la caja; aún sin definir.
+      payment:        '',
+      cashOnDelivery: false,
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
@@ -591,10 +593,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
-    if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
-    if (form.payment === 'Mixto' && (!form.mixtoEfectivo || !form.mixtoTransferencia)) {
-      errs.push('Indica cuánto pagarás en efectivo y cuánto en transferencia')
-    }
+    // El método de pago ya NO se elige aquí: el cliente lo escoge después de que
+    // la caja cotice el domicilio (ver flujo de cotización en ClientOrderDetail).
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     try {
@@ -786,65 +786,18 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           placeholder="Sin cebolla, extra salsa, timbre 2B…" />
       </div>
 
-      <div>
-        <label className="label-field">Forma de pago *</label>
-        <select
-          className={`input-field ${!form.payment ? 'text-coal/40' : ''}`}
-          value={form.payment}
-          onChange={e => set('payment', e.target.value)}
-        >
-          <option value="" disabled>— Selecciona cómo vas a pagar —</option>
-          <option>Efectivo</option>
-          <option>Transferencia</option>
-          <option>Nequi</option>
-          <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
-        </select>
-
-        {/* QR para pago digital */}
-        {['Transferencia', 'Nequi', 'Mixto'].includes(form.payment) && (
-          <div className="mt-3 flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
-            <p className="font-body text-xs text-coal/60 text-center font-semibold">
-              Escanea para pagar con transferencia
-            </p>
-            <img
-              src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
-              alt="QR Bancolombia DELISTARS"
-              className="w-52 h-52 object-contain"
-            />
-            <p className="font-body text-xs text-coal/70 text-center font-semibold">
-              Bancolombia Ahorros
-            </p>
-            <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
-              420 679 938 91
-            </p>
-            <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
-          </div>
-        )}
-
-        {/* Campos de monto para pago mixto */}
-        {form.payment === 'Mixto' && (
-          <div className="mt-3 bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
-            <p className="font-body text-xs text-coal/70 font-semibold">
-              ¿Cuánto pagarás en cada forma? (el cajero confirma el total exacto)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label-field">💵 En efectivo</label>
-                <input className="input-field" type="number" min="0"
-                  value={form.mixtoEfectivo}
-                  onChange={e => set('mixtoEfectivo', e.target.value)}
-                  placeholder="$0" />
-              </div>
-              <div>
-                <label className="label-field">📲 En transferencia</label>
-                <input className="input-field" type="number" min="0"
-                  value={form.mixtoTransferencia}
-                  onChange={e => set('mixtoTransferencia', e.target.value)}
-                  placeholder="$0" />
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Aviso: el domicilio se cotiza después; el pago se elige luego */}
+      <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex items-start gap-3">
+        <span className="text-2xl leading-none">⏳</span>
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-base tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Al enviar tu pedido, la caja revisará si puede entregarlo y te enviará el
+            <strong> valor del domicilio</strong>. El método de pago lo eliges
+            <strong> después de la cotización</strong> — así evitas pagar por un pedido
+            que luego no podamos entregar.
+          </p>
+        </div>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -875,10 +828,17 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
       </div>
 
       {/* Quote highlight */}
-      {hasQuote && (
+      {hasQuote ? (
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
-          <span className="font-body text-xs font-semibold text-tangelo">💰 Total cotizado</span>
+          <span className="font-body text-xs font-semibold text-tangelo">
+            {order.payment ? '💰 Total cotizado' : '💰 Elige cómo pagar'}
+          </span>
           <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
+        </div>
+      ) : !CLOSED_STATUSES.includes(order.status) && (
+        <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center gap-1.5">
+          <span className="text-sm">⏳</span>
+          <span className="font-body text-xs font-semibold text-tangelo">Domicilio por cotizar — aún no pagues</span>
         </div>
       )}
 
@@ -914,6 +874,33 @@ function ClientOrderDetail({ order, onClose }) {
   const [clientMsgText,    setClientMsgText]   = useState('')
   const [sendingClientMsg, setSendingClientMsg] = useState(false)
   const [billAmount,       setBillAmount]       = useState(null)
+  // Selección de método de pago (después de la cotización de la caja)
+  const [payMethod,    setPayMethod]    = useState('')
+  const [payMixtoEf,   setPayMixtoEf]   = useState('')
+  const [payMixtoTr,   setPayMixtoTr]   = useState('')
+  const [payError,     setPayError]     = useState('')
+  const [savingPay,    setSavingPay]    = useState(false)
+
+  const confirmPaymentMethod = async () => {
+    if (!payMethod) { setPayError('Selecciona cómo vas a pagar'); return }
+    if (payMethod === 'Mixto' && (!payMixtoEf || !payMixtoTr)) {
+      setPayError('Indica cuánto pagarás en efectivo y cuánto en transferencia'); return
+    }
+    setPayError('')
+    setSavingPay(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        payment:        payMethod,
+        cashOnDelivery: payMethod === 'Efectivo' || payMethod === 'Mixto',
+        ...(payMethod === 'Mixto'
+          ? { mixtoEfectivo: payMixtoEf, mixtoTransferencia: payMixtoTr }
+          : {}),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      setPayError('No se pudo guardar el método de pago. Intenta de nuevo.')
+    } finally { setSavingPay(false) }
+  }
 
   const sendClientMessage = async () => {
     if (!clientMsgText.trim()) return
@@ -1003,6 +990,40 @@ function ClientOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Aviso grande: falta cotizar el domicilio (antes de la cotización) */}
+          {!hasQuote && !CLOSED_STATUSES.includes(order.status) && (
+            <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl leading-none">⏳</span>
+                <p className="font-display text-xl tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+              </div>
+              <p className="font-body text-sm text-coal/80 leading-relaxed">
+                La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te
+                enviará el <strong>valor del domicilio</strong>.
+              </p>
+              <div className="bg-cream/60 rounded-xl px-4 py-3 flex items-center gap-2">
+                <span className="text-lg">🔒</span>
+                <p className="font-body text-xs text-coal/70 leading-relaxed">
+                  Aún <strong>no puedes pagar</strong>: el método de pago se habilita cuando
+                  recibas la cotización. Así evitas pagar por un pedido que luego no podamos entregar.
+                </p>
+              </div>
+              {/* Resumen parcial: productos estimado + domicilio por cotizar */}
+              {order.quotedPrice > 0 && (
+                <div className="border-t border-tangelo/20 pt-3 flex flex-col gap-1.5">
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Productos (estimado):</span>
+                    <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Domicilio:</span>
+                    <span className="font-semibold text-tangelo">Por cotizar</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quote section */}
           {hasQuote && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
@@ -1021,8 +1042,51 @@ function ClientOrderDetail({ order, onClose }) {
               </div>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-coal/60">Forma de pago:</span>
-                <span className="font-semibold">{order.payment}</span>
+                <span className="font-semibold">{order.payment || 'Por elegir 👇'}</span>
               </div>
+            </div>
+          )}
+
+          {/* Selector de método de pago — aparece tras la cotización de la caja */}
+          {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
+            <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-base tracking-wide text-cherry">✅ ¡Domicilio cotizado! Elige cómo pagar</p>
+              <p className="font-body text-xs text-coal/60">
+                Total a pagar: <span className="font-bold text-tangelo">{fmt(order.totalPrice)}</span>
+              </p>
+              <select className={`input-field ${!payMethod ? 'text-coal/40' : ''}`}
+                value={payMethod} onChange={e => setPayMethod(e.target.value)}>
+                <option value="" disabled>— Selecciona cómo vas a pagar —</option>
+                <option>Efectivo</option>
+                <option>Transferencia</option>
+                <option>Nequi</option>
+                <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
+              </select>
+
+              {payMethod === 'Mixto' && (
+                <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
+                  <p className="font-body text-xs text-coal/70 font-semibold">
+                    ¿Cuánto pagarás en cada forma? (el cajero confirma el total exacto)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">💵 En efectivo</label>
+                      <input className="input-field" type="number" min="0"
+                        value={payMixtoEf} onChange={e => setPayMixtoEf(e.target.value)} placeholder="$0" />
+                    </div>
+                    <div>
+                      <label className="label-field">📲 En transferencia</label>
+                      <input className="input-field" type="number" min="0"
+                        value={payMixtoTr} onChange={e => setPayMixtoTr(e.target.value)} placeholder="$0" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {payError && <p className="font-body text-xs text-pepper">{payError}</p>}
+              <button onClick={confirmPaymentMethod} disabled={savingPay} className="btn-primary w-full">
+                {savingPay ? 'Guardando…' : 'Confirmar método de pago'}
+              </button>
             </div>
           )}
 

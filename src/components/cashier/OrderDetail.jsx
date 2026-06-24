@@ -575,7 +575,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
           {/* Payment */}
           <Section title="Pago">
-            <Row icon={CreditCard} label="Forma de pago" value={order.payment} />
+            <Row icon={CreditCard} label="Forma de pago"
+              value={order.payment || 'El cliente lo elegirá tras la cotización'} />
             {order.payment === 'Mixto' && (
               <div className="mt-2 bg-smoked/50 rounded-xl p-3 flex flex-col gap-1">
                 {order.mixtoEfectivo > 0 && (
