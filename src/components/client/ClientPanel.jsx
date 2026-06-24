@@ -873,7 +873,11 @@ function ClientOrderDetail({ order, onClose }) {
   const [uploadError,      setUploadError]     = useState('')
   const [clientMsgText,    setClientMsgText]   = useState('')
   const [sendingClientMsg, setSendingClientMsg] = useState(false)
-  const [billAmount,       setBillAmount]       = useState(null)
+  const [chatError,        setChatError]        = useState('')
+  // Billete con el que paga el cliente (se envía a la caja)
+  const [billAmount,  setBillAmount]  = useState(order.cashBillAmount ?? null)
+  const [sendingBill, setSendingBill] = useState(false)
+  const [billError,   setBillError]   = useState('')
   // Selección de método de pago (después de la cotización de la caja)
   const [payMethod,    setPayMethod]    = useState('')
   const [payMixtoEf,   setPayMixtoEf]   = useState('')
@@ -902,8 +906,28 @@ function ClientOrderDetail({ order, onClose }) {
     } finally { setSavingPay(false) }
   }
 
+  // Envía a la caja el billete con el que pagará el cliente (y su cambio)
+  const sendBill = async () => {
+    if (billAmount === null || billAmount < order.totalPrice) {
+      setBillError('Selecciona un billete que cubra el total'); return
+    }
+    setBillError('')
+    setSendingBill(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        cashBillAmount: billAmount,
+        cashChange:     billAmount - order.totalPrice,
+        billSentAt:     serverTimestamp(),
+        updatedAt:      serverTimestamp(),
+      })
+    } catch (err) {
+      setBillError('No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
+    } finally { setSendingBill(false) }
+  }
+
   const sendClientMessage = async () => {
     if (!clientMsgText.trim()) return
+    setChatError('')
     setSendingClientMsg(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -916,6 +940,9 @@ function ClientOrderDetail({ order, onClose }) {
         updatedAt: serverTimestamp(),
       })
       setClientMsgText('')
+    } catch (err) {
+      console.error('Error al enviar mensaje:', err)
+      setChatError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSendingClientMsg(false) }
   }
 
@@ -1159,6 +1186,29 @@ function ClientOrderDetail({ order, onClose }) {
                   </div>
                 )
               )}
+
+              {/* Enviar el billete a la caja */}
+              {billAmount !== null && billAmount >= order.totalPrice && (
+                order.cashBillAmount === billAmount ? (
+                  <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <span className="text-lg">✅</span>
+                    <p className="font-body text-sm text-mint font-semibold">
+                      Enviado al cajero — tu pedido está en gestión. Sigue su avance aquí abajo.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <button onClick={sendBill} disabled={sendingBill} className="btn-primary w-full">
+                      {sendingBill ? 'Enviando…' :
+                        (order.cashBillAmount != null ? 'Actualizar billete y reenviar' : '📨 Enviar al cajero')}
+                    </button>
+                    {billError && <p className="font-body text-xs text-pepper">{billError}</p>}
+                    <p className="font-body text-[11px] text-coal/50 text-center">
+                      Avísale a la caja con qué billete pagarás para que preparen tu cambio.
+                    </p>
+                  </div>
+                )
+              )}
             </div>
           )}
 
@@ -1397,17 +1447,20 @@ function ClientOrderDetail({ order, onClose }) {
               )}
 
               {!isDelivered && (
-                <div className="flex gap-2">
-                  <textarea
-                    className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                    placeholder="Escríbele al cajero…"
-                    value={clientMsgText}
-                    onChange={e => setClientMsgText(e.target.value)}
-                  />
-                  <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
-                    className="btn-primary px-3 self-end">
-                    <Send size={16} />
-                  </button>
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-2">
+                    <textarea
+                      className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                      placeholder="Escríbele al cajero…"
+                      value={clientMsgText}
+                      onChange={e => setClientMsgText(e.target.value)}
+                    />
+                    <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
+                      className="btn-primary px-3 self-end">
+                      <Send size={16} />
+                    </button>
+                  </div>
+                  {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
                 </div>
               )}
             </div>

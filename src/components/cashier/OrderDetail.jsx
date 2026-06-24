@@ -46,6 +46,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [editDeliveryPrice, setEditDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
   const [clientMsgText,     setClientMsgText]     = useState('')
   const [sendingClientMsg,  setSendingClientMsg]  = useState(false)
+  const [chatError,         setChatError]         = useState('')
 
   // Quote form state (for pending orders)
   const [localOrderNumber,   setLocalOrderNumber]   = useState(order.orderNumber   || '')
@@ -342,6 +343,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
   const sendClientMessage = async () => {
     if (!clientMsgText.trim()) return
+    setChatError('')
     setSendingClientMsg(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -354,6 +356,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         updatedAt: serverTimestamp(),
       })
       setClientMsgText('')
+    } catch (err) {
+      console.error('Error al enviar mensaje:', err)
+      setChatError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSendingClientMsg(false) }
   }
 
@@ -591,6 +596,21 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     <span className="font-semibold text-coal">{fmt(order.mixtoTransferencia)}</span>
                   </div>
                 )}
+              </div>
+            )}
+            {/* Billete con el que pagará el cliente (lo envía desde su panel) */}
+            {(order.payment === 'Efectivo' || order.payment === 'Mixto') && order.cashBillAmount != null && (
+              <div className="mt-2 bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1">
+                <div className="flex justify-between text-sm font-body">
+                  <span className="text-coal/60">💵 Paga con billete de:</span>
+                  <span className="font-semibold text-coal">{fmt(order.cashBillAmount)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-body">
+                  <span className="text-coal/60">🔁 Cambio a llevar:</span>
+                  <span className="font-display text-base text-tangelo">
+                    {order.cashChange > 0 ? fmt(order.cashChange) : 'Paga exacto'}
+                  </span>
+                </div>
               </div>
             )}
           </Section>
@@ -847,16 +867,25 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </div>
           )}
 
-          {/* Marcar en preparación — cajero puede activarlo cuando accepted */}
-          {order.status === 'accepted' && (
+          {/* Gestión del pedido a domicilio: el cajero marca preparación y/o asigna domiciliario */}
+          {!pickup && ['quoted','assigned','accepted','preparing'].includes(order.status) && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">🍳 En preparación</p>
+              <p className="font-display text-lg text-coal tracking-wide">🚦 Gestión del pedido</p>
               <p className="font-body text-sm text-coal/70">
-                Avisa al cliente que el pedido está siendo preparado.
+                Configura el avance del domicilio. El cliente lo verá al instante.
               </p>
-              <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
-                {loading ? 'Procesando…' : 'Marcar en preparación'}
-              </button>
+              {order.status === 'preparing'
+                ? <p className="font-body text-sm text-mustard font-semibold">🍳 Actualmente en preparación</p>
+                : (
+                  <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
+                    {loading ? 'Procesando…' : '🍳 Marcar en preparación'}
+                  </button>
+                )}
+              {['quoted','preparing'].includes(order.status) && onReassign && (
+                <button onClick={() => { onClose(); onReassign(order) }} className="btn-primary w-full">
+                  <Bike size={16} /> Asignar domiciliario
+                </button>
+              )}
             </div>
           )}
 
@@ -966,17 +995,20 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             )}
 
             {!['rejected','cancelled','completed'].includes(order.status) && (
-              <div className="flex gap-2">
-                <textarea
-                  className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                  placeholder="Mensaje para el cliente (ej: tu pedido está casi listo…)"
-                  value={clientMsgText}
-                  onChange={e => setClientMsgText(e.target.value)}
-                />
-                <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
-                  className="btn-primary px-3 self-end">
-                  <Send size={16} />
-                </button>
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-2">
+                  <textarea
+                    className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                    placeholder="Mensaje para el cliente (ej: tu pedido está casi listo…)"
+                    value={clientMsgText}
+                    onChange={e => setClientMsgText(e.target.value)}
+                  />
+                  <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
+                    className="btn-primary px-3 self-end">
+                    <Send size={16} />
+                  </button>
+                </div>
+                {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
               </div>
             )}
           </div>
