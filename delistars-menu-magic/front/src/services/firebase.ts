@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
 
-// Mismo proyecto Firebase que el resto de DeliStars (login del equipo para "Mis turnos").
+// Mismo proyecto Firebase que el resto de DeliStars. La sesión iniciada aquí
+// (en el menú raíz) es válida en /domicilios/ por compartir proyecto y dominio.
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -15,3 +16,6 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
+
+// Login de cliente sin cuenta (invitado)
+export const loginAnon = () => signInAnonymously(auth)

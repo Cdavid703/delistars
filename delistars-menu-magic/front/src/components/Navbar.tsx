@@ -10,11 +10,21 @@ import { isStaff } from "@/lib/staff";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
-  const { user, login, logout } = useStaffAuth();
+  const { user, login, loginGuest, logout, isGuest } = useStaffAuth();
   const staff = isStaff(user?.email);
   const [scrolled, setScrolled] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [popped, setPopped] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+
+  const doLogin = async () => {
+    try { await login(); setLoginOpen(false); setMobile(false); }
+    catch { /* popup cerrado: sin acción */ }
+  };
+  const doGuest = async () => {
+    try { await loginGuest(); setLoginOpen(false); setMobile(false); }
+    catch { /* sin acción */ }
+  };
 
   // Obtener sedes directo del backend para mostrar el nombre correcto
   const { data: sedes = [] } = useQuery({
@@ -115,25 +125,41 @@ export const Navbar = () => {
             )}
           </Button>
 
-          {/* Login del equipo (para "Mis turnos") */}
+          {/* Login del cliente / equipo — la sesión vale también en /domicilios/ */}
           {user ? (
             <button
               onClick={logout}
-              title={`Cerrar sesión (${user.email})`}
-              className="p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-smooth"
-              aria-label="Cerrar sesión"
+              title={`Cerrar sesión${user.email ? ` (${user.email})` : ' (invitado)'}`}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-smooth"
             >
               <LogOut className="w-4 h-4" />
+              <span className="hidden md:inline">{isGuest ? 'Invitado' : 'Salir'}</span>
             </button>
           ) : (
-            <button
-              onClick={login}
-              title="Ingreso del equipo"
-              className="hidden sm:flex p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-smooth"
-              aria-label="Ingreso del equipo"
-            >
-              <LogIn className="w-4 h-4" />
-            </button>
+            <div className="hidden sm:block relative">
+              <Button
+                onClick={() => setLoginOpen((v) => !v)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+              >
+                <LogIn className="w-4 h-4" /> Iniciar sesión
+              </Button>
+              {loginOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setLoginOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-60 z-50 bg-background border border-border rounded-xl shadow-card p-2 flex flex-col gap-1 animate-fade-in">
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">Inicia para hacer tu pedido</p>
+                    <button onClick={doLogin} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
+                      <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                    </button>
+                    <button onClick={doGuest} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
+                      <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           <button onClick={() => setMobile(!mobile)} className="lg:hidden p-1.5 text-foreground" aria-label="Menú">
@@ -167,13 +193,25 @@ export const Navbar = () => {
               </a>
             )}
 
-            {/* Login del equipo */}
-            <button
-              onClick={() => { user ? logout() : login(); setMobile(false); }}
-              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-smooth w-full text-left py-2"
-            >
-              {user ? <><LogOut className="w-4 h-4" /> Cerrar sesión</> : <><LogIn className="w-4 h-4" /> Ingreso del equipo</>}
-            </button>
+            {/* Login del cliente / equipo */}
+            {user ? (
+              <button
+                onClick={() => { logout(); setMobile(false); }}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-smooth w-full text-left py-2"
+              >
+                <LogOut className="w-4 h-4" /> {isGuest ? 'Salir (invitado)' : 'Cerrar sesión'}
+              </button>
+            ) : (
+              <div className="flex flex-col gap-1 py-1">
+                <p className="text-xs text-muted-foreground">Inicia para hacer tu pedido</p>
+                <button onClick={doLogin} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
+                  <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                </button>
+                <button onClick={doGuest} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
+                  <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta
+                </button>
+              </div>
+            )}
 
             <button
               onClick={() => { setSede(null); setMobile(false); }}

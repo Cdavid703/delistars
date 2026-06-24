@@ -1,13 +1,20 @@
+import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useCart, formatCOP } from "@/context/CartContext";
 import { SEDES } from "@/data/menu";
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, LogIn, UserX } from "lucide-react";
+import { useStaffAuth } from "@/hooks/useStaffAuth";
 
 export const CartSheet = () => {
   const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
+  const { user, login, loginGuest } = useStaffAuth();
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const handleOrder = () => {
+  // Guarda el carrito y continúa al formulario de pedido (en /domicilios/,
+  // ya autenticado porque la sesión se comparte entre el menú y domicilios).
+  const proceed = () => {
     const handoff = {
       items: items.map((it) => ({
         name: it.product.nombre_producto,
@@ -22,6 +29,24 @@ export const CartSheet = () => {
     };
     localStorage.setItem("ds_cart_handoff", JSON.stringify(handoff));
     window.location.href = "/domicilios/";
+  };
+
+  const handleOrder = () => {
+    if (!user) { setNeedsLogin(true); return; }
+    proceed();
+  };
+
+  const loginThen = async (method: "google" | "guest") => {
+    setBusy(true);
+    try {
+      if (method === "google") await login();
+      else await loginGuest();
+      proceed();
+    } catch {
+      // popup cerrado o error: el cliente puede reintentar
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -82,9 +107,25 @@ export const CartSheet = () => {
                   <span className="font-display text-lg">Total</span>
                   <span className="font-display text-2xl text-primary">{formatCOP(total)}</span>
                 </div>
-                <Button onClick={handleOrder} size="lg" className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth">
-                  Hacer pedido
-                </Button>
+
+                {needsLogin && !user ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground text-center">
+                      Inicia sesión para continuar con tu pedido
+                    </p>
+                    <Button onClick={() => loginThen("google")} disabled={busy} size="lg"
+                      className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth">
+                      <LogIn className="w-4 h-4" /> {busy ? "Conectando…" : "Entrar con Google"}
+                    </Button>
+                    <Button onClick={() => loginThen("guest")} disabled={busy} variant="outline" size="lg" className="w-full">
+                      <UserX className="w-4 h-4" /> Continuar sin cuenta
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={handleOrder} size="lg" className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth">
+                    Hacer pedido
+                  </Button>
+                )}
               </div>
             </>
           )}
