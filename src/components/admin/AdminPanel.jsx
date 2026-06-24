@@ -9,7 +9,6 @@ import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS, DEFAULT_CASHIE
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge, { STATUS_MAP } from '../common/StatusBadge'
-import ExcelJS from 'exceljs'
 import { format, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -617,6 +616,9 @@ function ReportsTab({ sede }) {
   const deliveryLabel = (m) => ({ pickup: 'Recoge en sede', delivery: 'Domicilio' }[m] || m || 'Domicilio')
 
   const exportExcel = async () => {
+    // Carga diferida: exceljs (~900 KB) solo se descarga al exportar, no en el
+    // bundle principal que ven todos los clientes de /domicilios/.
+    const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
     wb.creator = 'DeliStars'
     wb.created = new Date()
