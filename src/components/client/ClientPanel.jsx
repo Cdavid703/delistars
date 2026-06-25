@@ -16,7 +16,7 @@ import {
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
   HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, Download
 } from 'lucide-react'
-import { SEDES, ROLES } from '../../services/roles'
+import { SEDES } from '../../services/roles'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const STATUS_STEPS = [
@@ -117,16 +117,18 @@ export default function ClientPanel() {
     }, err => { console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message); setOrdersLoaded(true) })
   }, [user?.uid])
 
-  // El cliente solo accede al panel si pasó por la raíz (carrito) o tiene pedidos
-  // que rastrear. Si entra directo a /domicilios/ sin contexto → al menú.
-  // El equipo (cajero/admin/domiciliario), aunque "vea como cliente", NO se redirige.
+  // Al panel de domicilios solo se entra pasando por la raíz (carrito) o con
+  // pedidos que rastrear. Si se entra directo sin contexto → al menú a escoger
+  // productos. Aplica también al equipo que elige "ver como cliente".
   useEffect(() => {
-    if (role !== ROLES.CLIENT) return
     if (enteredWithCart.current || showForm) return
     if (ordersLoaded && orders.length === 0) {
+      // Resetea "ver como cliente" para que el equipo no quede atrapado: al
+      // volver a /domicilios/ recupera su panel en vez de re-redirigirse.
+      if (effectiveRole !== role) { try { setViewingAs(null) } catch {} }
       window.location.replace('/')
     }
-  }, [role, ordersLoaded, orders.length, showForm])
+  }, [ordersLoaded, orders.length, showForm, effectiveRole, role])
 
   // Sonido al recibir mensaje nuevo del cajero en el chat
   useEffect(() => {
@@ -1265,24 +1267,26 @@ function ClientOrderDetail({ order, onClose }) {
                 </div>
               )}
 
-              {/* QR de pago */}
+              {/* QR + cuenta/llave para transferir */}
               {!order.transferValidated && (
                 <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
                   <p className="font-body text-xs text-coal/60 text-center font-semibold">
-                    {order.payment === 'Mixto' ? 'Escanea para transferir tu parte' : 'Escanea para pagar'}
+                    Escanea el QR o transfiere a la cuenta
                   </p>
                   <img
                     src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
                     alt="QR Bancolombia DELISTARS"
                     className="w-52 h-52 object-contain"
                   />
-                  <p className="font-body text-xs text-coal/70 text-center font-semibold">
-                    Bancolombia Ahorros
-                  </p>
-                  <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
-                    420 679 938 91
-                  </p>
-                  <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
+                  {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
+                  <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
+                    <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
+                    <p className="font-body text-xs text-coal/70 font-semibold">Bancolombia Ahorros</p>
+                    <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
+                      420 679 938 91
+                    </p>
+                    <p className="font-body text-[11px] text-coal/50">DELISTARS</p>
+                  </div>
                 </div>
               )}
 
