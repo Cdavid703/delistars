@@ -16,7 +16,7 @@ import {
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
   HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, Download
 } from 'lucide-react'
-import { SEDES } from '../../services/roles'
+import { SEDES, ROLES } from '../../services/roles'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const STATUS_STEPS = [
@@ -77,8 +77,12 @@ export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
   const { canInstall, install } = usePWAInstall()
   const [orders,         setOrders]         = useState([])
+  const [ordersLoaded,   setOrdersLoaded]   = useState(false)
   const [selectedId,     setSelectedId]     = useState(null)
   const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff'))
+  // ¿El cliente entró pasando por la raíz (eligió productos)? Si no, no debe
+  // quedarse en el panel de domicilios: se le envía al menú a escoger productos.
+  const enteredWithCart = useRef(!!localStorage.getItem('ds_cart_handoff'))
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
@@ -109,8 +113,20 @@ export default function ClientPanel() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
       setOrders(docs)
-    }, err => console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message))
+      setOrdersLoaded(true)
+    }, err => { console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message); setOrdersLoaded(true) })
   }, [user?.uid])
+
+  // El cliente solo accede al panel si pasó por la raíz (carrito) o tiene pedidos
+  // que rastrear. Si entra directo a /domicilios/ sin contexto → al menú.
+  // El equipo (cajero/admin/domiciliario), aunque "vea como cliente", NO se redirige.
+  useEffect(() => {
+    if (role !== ROLES.CLIENT) return
+    if (enteredWithCart.current || showForm) return
+    if (ordersLoaded && orders.length === 0) {
+      window.location.replace('/')
+    }
+  }, [role, ordersLoaded, orders.length, showForm])
 
   // Sonido al recibir mensaje nuevo del cajero en el chat
   useEffect(() => {
@@ -1224,18 +1240,36 @@ function ClientOrderDetail({ order, onClose }) {
           )}
 
           {/* Transfer / Nequi receipt upload */}
-          {['Transferencia', 'Nequi'].includes(order.payment) &&
+          {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) &&
            !['completed', 'rejected', 'cancelled'].includes(order.status) && (
             <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
               <p className="font-display text-sm tracking-wide text-coal">
-                📎 Comprobante de {order.payment}
+                {order.payment === 'Mixto' ? '📎 Comprobante de tu parte por transferencia' : `📎 Comprobante de ${order.payment}`}
               </p>
+
+              {/* Desglose del pago mixto: efectivo + transferencia */}
+              {order.payment === 'Mixto' && (
+                <div className="bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1.5">
+                  <p className="font-body text-xs text-coal/70 font-semibold">Tu pago se divide así:</p>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">💵 En efectivo (al recibir):</span>
+                    <span className="font-semibold">{fmt(Number(order.mixtoEfectivo) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">📲 Por transferencia / QR:</span>
+                    <span className="font-semibold text-tangelo">{fmt(Number(order.mixtoTransferencia) || 0)}</span>
+                  </div>
+                  <p className="font-body text-[11px] text-coal/50">
+                    Transfiere la parte digital con el QR de abajo y sube el comprobante. El resto lo pagas en efectivo al domiciliario.
+                  </p>
+                </div>
+              )}
 
               {/* QR de pago */}
               {!order.transferValidated && (
                 <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
                   <p className="font-body text-xs text-coal/60 text-center font-semibold">
-                    Escanea para pagar
+                    {order.payment === 'Mixto' ? 'Escanea para transferir tu parte' : 'Escanea para pagar'}
                   </p>
                   <img
                     src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
