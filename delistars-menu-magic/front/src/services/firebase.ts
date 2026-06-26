@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
+import { getFirestore } from 'firebase/firestore'
 
 // Mismo proyecto Firebase que el resto de DeliStars. La sesión iniciada aquí
 // (en el menú raíz) es válida en /domicilios/ por compartir proyecto y dominio.
@@ -14,6 +15,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
+export const db = getFirestore(app)
 export const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
 
