@@ -83,6 +83,17 @@ CREATE TABLE IF NOT EXISTS public.tbl_ventas
     CONSTRAINT tbl_ventas_pkey PRIMARY KEY (id_venta)
 );
 
+CREATE TABLE IF NOT EXISTS public.presentacion_producto
+(
+    id_presentacion serial NOT NULL,
+    id_producto integer NOT NULL,
+    tamano character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    base character varying(50) COLLATE pg_catalog."default",
+    sabor character varying(100) COLLATE pg_catalog."default",
+    precio_venta numeric(12, 2) NOT NULL,
+    CONSTRAINT presentacion_producto_pkey PRIMARY KEY (id_presentacion)
+);
+
 ALTER TABLE IF EXISTS public.tbl_detalle_venta
     ADD CONSTRAINT tbl_detalle_venta_id_producto_fkey FOREIGN KEY (id_producto)
     REFERENCES public.tbl_productos (id_producto) MATCH SIMPLE
@@ -128,6 +139,13 @@ ALTER TABLE IF EXISTS public.tbl_ventas
 ALTER TABLE IF EXISTS public.tbl_ventas
     ADD CONSTRAINT tbl_ventas_id_trabajador_fkey FOREIGN KEY (id_trabajador)
     REFERENCES public.tbl_trabajador (id_trabajador) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.presentacion_producto
+    ADD CONSTRAINT presentacion_producto_id_producto_fkey FOREIGN KEY (id_producto)
+    REFERENCES public.tbl_productos (id_producto) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE NO ACTION;
 -- Seeds moved to seeds.sql. Run that file manually when needed.

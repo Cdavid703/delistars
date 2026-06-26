@@ -1,3 +1,12 @@
+export interface IProductPresentation {
+  id_presentacion: number;
+  id_producto: number;
+  tamano: string;
+  base: string | null;
+  sabor: string | null;
+  precio_venta: number;
+}
+
 export interface IProduct {
   id_producto: number;
   nombre_producto: string;
@@ -7,4 +16,5 @@ export interface IProduct {
   image_url1?: string;
   image_url2?: string;
   disponible: boolean;
+  presentations?: IProductPresentation[];
 }

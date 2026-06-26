@@ -17,9 +17,15 @@ interface HeroSlide {
 
 export const Hero = () => {
   const autoplay = useRef(Autoplay({ delay: 3000, stopOnInteraction: false, stopOnMouseEnter: true }));
+  
+  // Filtrar de los productos locales iniciales los que no sean hamburguesas de pollo
+  const initialProducts = PRODUCTS.filter(
+    (p) => !(p.name.toLowerCase().includes("hamburguesa") && p.name.toLowerCase().includes("pollo"))
+  );
+
   const [slides, setSlides] = useState<HeroSlide[]>([
     { image: heroFood, name: "Perro DeliStar", tag: "El favorito de la casa" },
-    ...PRODUCTS.slice(0, 5).map((p) => ({ image: p.image, name: p.name, tag: p.description, price: `$${p.price.toLocaleString()}` })),
+    ...initialProducts.slice(0, 5).map((p) => ({ image: p.image, name: p.name, tag: p.description, price: `$${p.price.toLocaleString()}` })),
   ]);
 
   useEffect(() => {
@@ -27,8 +33,16 @@ export const Hero = () => {
       try {
         const products = await apiService.getProducts();
         // Filtrar solo productos que NO sean adiciones (id_categoria != 5)
-        // y seleccionar de categorías principales
-        const filteredProducts = products.filter((p: ApiProduct) => p.id_categoria !== 5);
+        // y que NO sean hamburguesas de pollo
+        const filteredProducts = products.filter((p: ApiProduct) => {
+          if (p.id_categoria === 5) return false;
+          
+          const isHamburguesaDePollo = 
+            p.nombre_producto.toLowerCase().includes("hamburguesa") && 
+            p.nombre_producto.toLowerCase().includes("pollo");
+            
+          return !isHamburguesaDePollo;
+        });
         
         if (filteredProducts.length > 0) {
           // Tomar los primeros 6 productos principales

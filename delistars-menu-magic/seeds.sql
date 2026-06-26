@@ -11,6 +11,8 @@ INSERT INTO public.categoria (id_categoria, nombre_categoria) VALUES (3, 'Salchi
 INSERT INTO public.categoria (id_categoria, nombre_categoria) VALUES (4, 'Combos');
 INSERT INTO public.categoria (id_categoria, nombre_categoria) VALUES (5, 'Adiciones');
 INSERT INTO public.categoria (id_categoria, nombre_categoria) VALUES (6, 'Deli antojos');
+INSERT INTO public.categoria (id_categoria, nombre_categoria) VALUES (7, 'Bebidas');
+
 
 INSERT INTO public.tbl_sedes (id_sede, nombre_sede, telefono_sede, direccion_sede, horario_lunes_jueves, horario_viernes, horario_domingo, horario_sabado) VALUES (1, 'Santa Lucia, Medellin', '+57 313 506 5720', 'Cra. 87 #48e-3, Santa Rosa De Lima, Medellín, San Javier, Medellín, Antioquia', '4:30pm - 11:30pm', '4:30pm - 12:00pm', '4:00pm - 11:30 pm', '4:00pm - 12:00pm');
 INSERT INTO public.tbl_sedes (id_sede, nombre_sede, telefono_sede, direccion_sede, horario_lunes_jueves, horario_viernes, horario_domingo, horario_sabado) VALUES (2, 'Santa Teresita, Medellin', '+57 315 063 4084', 'Cl 35B #87A-165, Laureles - Estadio, Medellín, La América, Medellín, Antioquia', '4:30pm - 11:30pm', '4:30pm - 12:00pm', '4:00pm - 11:30 pm', '4:00pm-12:00pm');
@@ -64,8 +66,68 @@ INSERT INTO public.tbl_productos (id_producto, nombre_producto, descripcion_prod
 INSERT INTO public.tbl_productos (id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2) VALUES (46, 'Salchicha grande', 'Aumenta la satisfacción de tu perro caliente con una salchicha extra de gran tamaño y calidad superior', 3000, 5, NULL, NULL);
 INSERT INTO public.tbl_productos (id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2) VALUES (47, 'Salchicha Americana', 'Dale un giro gourmet a tu pedido con el sabor intenso y la textura única de nuestra salchicha americana', 3500, 5, NULL, NULL);
 
+-- 1. Producto contenedor para Jugos de la Casa (id_categoria = 7 - Bebidas)
+INSERT INTO public.tbl_productos (id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2) 
+VALUES (48, 'Jugos de la Casa', 'Deliciosos jugos naturales preparados al instante. Elige tu sabor, tamaño y base favorita.', 0.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782487997/WhatsApp_Image_2026-06-25_at_8.33.14_PM_fux53y.jpg', 'https://res.cloudinary.com/dfx530yml/image/upload/v1782487987/WhatsApp_Image_2026-06-25_at_8.33.53_PM_qlal5g.jpg');
+
+-- 2. Variantes de Jugos de la Casa (id_producto = 48)
+INSERT INTO public.presentacion_producto (id_producto, sabor, tamano, base, precio_venta) 
+VALUES
+(48, 'Limonada de Coco', '14 oz', 'Leche', 7500.00),
+(48, 'Limonada de Coco', '1 Litro', 'Leche', 13500.00),
+(48, 'Limonada Natural', '14 oz', 'Agua', 6500.00),
+(48, 'Limonada Natural', '1 Litro', 'Agua', 11500.00),
+(48, 'Guanábana', '14 oz', 'Agua', 6500.00),
+(48, 'Guanábana', '14 oz', 'Leche', 7500.00),
+(48, 'Guanábana', '1 Litro', 'Agua', 11500.00),
+(48, 'Guanábana', '1 Litro', 'Leche', 13500.00),
+(48, 'Fresa', '14 oz', 'Agua', 6500.00),
+(48, 'Fresa', '14 oz', 'Leche', 7500.00),
+(48, 'Fresa', '1 Litro', 'Agua', 11500.00),
+(48, 'Fresa', '1 Litro', 'Leche', 13500.00),
+(48, 'Mora', '14 oz', 'Agua', 6500.00),
+(48, 'Mora', '14 oz', 'Leche', 7500.00),
+(48, 'Mora', '1 Litro', 'Agua', 11500.00),
+(48, 'Mora', '1 Litro', 'Leche', 13500.00),
+(48, 'Piña', '14 oz', 'Agua', 6500.00),
+(48, 'Piña', '1 Litro', 'Agua', 11500.00),
+(48, 'Maracuyá', '14 oz', 'Agua', 6500.00),
+(48, 'Maracuyá', '14 oz', 'Leche', 7500.00),
+(48, 'Maracuyá', '1 Litro', 'Agua', 11500.00),
+(48, 'Maracuyá', '1 Litro', 'Leche', 13500.00),
+(48, 'Tomate de Árbol', '14 oz', 'Agua', 6500.00),
+(48, 'Tomate de Árbol', '14 oz', 'Leche', 7500.00),
+(48, 'Tomate de Árbol', '1 Litro', 'Agua', 11500.00),
+(48, 'Tomate de Árbol', '1 Litro', 'Leche', 13500.00),
+(48, 'Guayaba', '14 oz', 'Agua', 6500.00),
+(48, 'Guayaba', '14 oz', 'Leche', 7500.00),
+(48, 'Guayaba', '1 Litro', 'Agua', 11500.00),
+(48, 'Guayaba', '1 Litro', 'Leche', 13500.00),
+(48, 'Uva', '14 oz', 'Agua', 6500.00),
+(48, 'Uva', '1 Litro', 'Agua', 11500.00);
+
+-- 3. PRODUCTOS SIMPLES (Gaseosas/Bebidas con precio directo, id_categoria = 7)
+INSERT INTO public.tbl_productos (id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2) 
+VALUES
+(49, 'Coca Cola Zero 1.5 Litros', 'Bebida embotellada', 7500.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505169/Gemini_Generated_Image_kfhqynkfhqynkfhq_snfl4h.png', ''),
+(50, 'Coca Cola Sabor Original 1.5 Litros', 'Bebida embotellada', 8000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505166/Gemini_Generated_Image_pa60rmpa60rmpa60_xvmuo7.png', ''),
+(51, 'Premio 1.5 Litros', 'Bebida embotellada', 8000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505158/Gemini_Generated_Image_616csw616csw616c_dju9mz.png', ''),
+(52, 'Quatro 1.5 Litros', 'Bebida embotellada', 8000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505172/Gemini_Generated_Image_77yqcb77yqcb77yq_rmog3x.png', ''),
+(53, 'Manzana Postobón Pet 400 ml', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505173/Gemini_Generated_Image_8f9vgn8f9vgn8f9v_mqhefh.png', ''),
+(54, 'Uva Postobón Pet 400 ml', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505170/Gemini_Generated_Image_6fbalb6fbalb6fba_qrvmlh.png', ''),
+(55, 'Naranjada Postobón Pet 400 ml', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505163/Gemini_Generated_Image_30ro0q30ro0q30ro_aibjvq.png', ''),
+(56, 'Colombiana Pet 400 ml', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505162/Gemini_Generated_Image_7ebf8s7ebf8s7ebf_ww00k3.png', ''),
+(57, 'Coca Cola Sabor Original Pet 400 ml', 'Bebida embotellada', 4500.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782506224/Gemini_Generated_Image_9uir949uir949uir_1_ihiwt9.png', ''),
+(58, 'Coca Cola Zero Pet 400 ml', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505162/Gemini_Generated_Image_oilg3xoilg3xoilg_dzsn1e.png', ''),
+(59, 'Coca Cola Mini 250 ml', 'Bebida embotellada', 3500.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505163/Gemini_Generated_Image_bh26rcbh26rcbh26_jonmhl.png', ''),
+(60, 'Agua saborizada manzana', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505588/Gemini_Generated_Image_7rbsuz7rbsuz7rbs_1_q6xtp4.png', ''),
+(61, 'Agua saborizada limon', 'Bebida embotellada', 4000.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505636/Gemini_Generated_Image_lnmboslnmboslnmb_1_pisudi.png', ''),
+(62, 'Jugo Hit Tropical Personal', 'Bebida embotellada', 3800.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505580/Gemini_Generated_Image_hgopiehgopiehgop_1_ncirgr.png', ''),
+(63, 'Jugo Hit Mora Personal', 'Bebida embotellada', 3800.00, 7, 'https://res.cloudinary.com/dfx530yml/image/upload/v1782505729/Gemini_Generated_Image_ng5423ng5423ng54_1_uparkl.png', '');
+
 SELECT setval(pg_get_serial_sequence('public.categoria', 'id_categoria'), (SELECT MAX(id_categoria) FROM public.categoria));
 SELECT setval(pg_get_serial_sequence('public.tbl_sedes', 'id_sede'), (SELECT MAX(id_sede) FROM public.tbl_sedes));
 SELECT setval(pg_get_serial_sequence('public.tbl_productos', 'id_producto'), (SELECT MAX(id_producto) FROM public.tbl_productos));
+SELECT setval(pg_get_serial_sequence('public.presentacion_producto', 'id_presentacion'), (SELECT MAX(id_presentacion) FROM public.presentacion_producto));
 
 END;

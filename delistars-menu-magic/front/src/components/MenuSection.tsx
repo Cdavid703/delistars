@@ -4,6 +4,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductDialog } from "@/components/ProductDialog";
 import { apiService, type Category, type Product as ApiProduct } from "@/services/api";
 import { SearchBar } from "@/components/SearchBar";
+import { useCart } from "@/context/CartContext";
 
 // Emojis para cada categoría
 const EMOJI_MAP: Record<string, string> = {
@@ -16,6 +17,7 @@ const EMOJI_MAP: Record<string, string> = {
 };
 
 export const MenuSection = () => {
+  const { sede } = useCart();
   const [selected, setSelected] = useState<ApiProduct | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -48,6 +50,10 @@ export const MenuSection = () => {
   const filteredProducts = products.filter((p) => {
     // Excluir adiciones (categoría 5)
     if (p.id_categoria === 5) return false;
+
+    // Los jugos solo aparecen en la sede de Santa Teresita (sede === 2)
+    const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
+    if (isJugo && Number(sede) !== 2) return false;
 
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
@@ -103,9 +109,12 @@ export const MenuSection = () => {
         categories
           .filter((cat) => cat.id_categoria !== 5) // Excluir categoría 5 (Adiciones)
           .map((cat) => {
-            const categoryProducts = products.filter(
-              (p) => p.id_categoria === cat.id_categoria && p.id_categoria !== 5 // Excluir adiciones
-            );
+            const categoryProducts = products.filter((p) => {
+              if (p.id_categoria !== cat.id_categoria || p.id_categoria === 5) return false;
+              const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
+              if (isJugo && Number(sede) !== 2) return false;
+              return true;
+            });
 
             const emoji = EMOJI_MAP[cat.nombre_categoria] || "🍽️";
             const categoryId = cat.nombre_categoria.toLowerCase().replace(/\s+/g, "-");

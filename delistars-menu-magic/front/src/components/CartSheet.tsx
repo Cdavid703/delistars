@@ -5,6 +5,7 @@ import { useCart, formatCOP } from "@/context/CartContext";
 import { SEDES } from "@/data/menu";
 import { Minus, Plus, Trash2, ShoppingBag, LogIn, UserX } from "lucide-react";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
+import { optimizeImage } from "@/lib/utils";
 
 export const CartSheet = () => {
   const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
@@ -17,7 +18,11 @@ export const CartSheet = () => {
   const proceed = () => {
     const handoff = {
       items: items.map((it) => ({
-        name: it.product.nombre_producto,
+        name: it.presentation 
+          ? `${it.product.nombre_producto} (${it.presentation.sabor}, ${it.presentation.tamano}${it.presentation.base ? `, ${it.presentation.base}` : ''})`
+          : it.selectedDrink
+            ? `${it.product.nombre_producto} + ${it.selectedDrink}`
+            : it.product.nombre_producto,
         quantity: it.quantity,
         unitPrice: it.unitPrice,
         addons: it.addons.map((a) => a.name),
@@ -71,10 +76,31 @@ export const CartSheet = () => {
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {items.map((it) => (
                   <div key={it.uid} className="bg-card rounded-2xl p-3 flex gap-3 shadow-card animate-scale-in">
-                    <img src={it.product.image_url1 || ""} alt={it.product.nombre_producto} className="w-20 h-20 rounded-xl object-cover" />
+                    <img
+                      src={optimizeImage(
+                        it.product.image_url1 || "",
+                        150,
+                        150,
+                        it.product.id_producto === 48 ? "g_south" : "g_auto"
+                      )}
+                      alt={it.product.nombre_producto}
+                      className="w-20 h-20 rounded-xl object-cover"
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-display text-sm leading-tight">{it.product.nombre_producto}</h4>
+                        <h4 className="font-display text-sm leading-tight">
+                          {it.product.nombre_producto}
+                          {it.presentation && (
+                            <span className="block text-xs font-sans text-primary font-semibold mt-1">
+                              {it.presentation.sabor} · {it.presentation.tamano} {it.presentation.base ? `(${it.presentation.base})` : ''}
+                            </span>
+                          )}
+                          {it.selectedDrink && (
+                            <span className="block text-xs font-sans text-primary font-semibold mt-1 animate-fade-in">
+                              Bebida: {it.selectedDrink}
+                            </span>
+                          )}
+                        </h4>
                         <button onClick={() => removeItem(it.uid)} className="text-muted-foreground hover:text-destructive transition-smooth">
                           <Trash2 className="w-4 h-4" />
                         </button>

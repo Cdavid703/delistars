@@ -6,10 +6,28 @@ import { UpdateProductDto } from '../models/dto/update-product.dto';
 export class ProductsRepository {
   async getAll(): Promise<IProduct[]> {
     const dataSource = getDataSource();
-    const result = await dataSource.query(
+    const products: IProduct[] = await dataSource.query(
       'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible FROM tbl_productos'
     );
-    return result;
+
+    const presentations = await dataSource.query(
+      'SELECT id_presentacion, id_producto, tamano, base, sabor, precio_venta FROM presentacion_producto'
+    );
+
+    const presentationsByProduct: Record<number, any[]> = {};
+    for (const pres of presentations) {
+      pres.precio_venta = parseFloat(pres.precio_venta);
+      if (!presentationsByProduct[pres.id_producto]) {
+        presentationsByProduct[pres.id_producto] = [];
+      }
+      presentationsByProduct[pres.id_producto].push(pres);
+    }
+
+    for (const product of products) {
+      product.presentations = presentationsByProduct[product.id_producto] || [];
+    }
+
+    return products;
   }
 
   async getById(id: number): Promise<IProduct | null> {
@@ -18,7 +36,20 @@ export class ProductsRepository {
       'SELECT id_producto, nombre_producto, descripcion_producto, precio_venta, id_categoria, image_url1, image_url2, disponible FROM tbl_productos WHERE id_producto = $1',
       [id]
     );
-    return result.length > 0 ? result[0] : null;
+    if (result.length === 0) return null;
+    const product = result[0];
+
+    const presentations = await dataSource.query(
+      'SELECT id_presentacion, id_producto, tamano, base, sabor, precio_venta FROM presentacion_producto WHERE id_producto = $1',
+      [id]
+    );
+
+    for (const pres of presentations) {
+      pres.precio_venta = parseFloat(pres.precio_venta);
+    }
+    product.presentations = presentations;
+
+    return product;
   }
 
   async create(createProductDto: CreateProductDto): Promise<IProduct> {

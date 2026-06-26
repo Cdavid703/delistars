@@ -8,6 +8,14 @@ export type CartItem = {
   addons: Addon[];
   notes: string;
   unitPrice: number; // includes addons
+  presentation?: {
+    id_presentacion: number;
+    sabor: string;
+    tamano: string;
+    base: string | null;
+    precio_venta: number;
+  };
+  selectedDrink?: string;
 };
 
 type CartCtx = {
@@ -36,8 +44,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addItem: CartCtx["addItem"] = (i) => {
-    const productPrice = parseFloat(i.product.precio_venta);
-    const unitPrice = productPrice + i.addons.reduce((s, a) => s + a.price, 0);
+    const basePrice = i.presentation ? i.presentation.precio_venta : parseFloat(i.product.precio_venta);
+    const unitPrice = basePrice + i.addons.reduce((s, a) => s + a.price, 0);
     const uid = `${i.product.id_producto}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setItems((prev) => [...prev, { ...i, uid, unitPrice }]);
     setOpen(true);
