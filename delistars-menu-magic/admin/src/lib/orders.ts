@@ -19,6 +19,7 @@ export interface Order {
   deliveryPrice?: number
   totalPrice?: number
   driverName?: string
+  cashierName?: string
   createdAt?: Timestamp
 }
 
@@ -44,6 +45,9 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 
 export const statusInfo = (status: string) =>
   STATUS_MAP[status] || { label: status, cls: 'bg-gray-100 text-gray-700' }
+
+export const statusLabel = (status?: string) =>
+  (status && STATUS_MAP[status]?.label) || status || ''
 
 export const fmtCOP = (v?: number): string =>
   `$${Number(v || 0).toLocaleString('es-CO')}`

@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
-import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInfo } from '@/lib/orders'
+import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInfo, statusLabel } from '@/lib/orders'
+
+const uniq = (arr: (string | undefined)[]) =>
+  Array.from(new Set(arr.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b))
+
+const deliveryLabel = (m?: string) =>
+  m === 'pickup' ? 'Recoge en sede' : 'Domicilio'
 
 export default function Domicilios() {
   const [orders, setOrders] = useState<Order[]>([])
   const [soloHoy, setSoloHoy] = useState(true)
-  const [sede, setSede] = useState<string>('')
+  const [sede, setSede] = useState('')
+  const [fStatus, setFStatus] = useState('all')
+  const [fDriver, setFDriver] = useState('all')
+  const [fPayment, setFPayment] = useState('all')
+  const [fSearch, setFSearch] = useState('')
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
@@ -15,24 +26,154 @@ export default function Domicilios() {
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])
 
-  const sedes = useMemo(
-    () => Array.from(new Set(orders.map((o) => o.sedeName).filter(Boolean))) as string[],
-    [orders]
-  )
-
-  const filtered = orders.filter((o) => {
+  // Base por fecha/sede → alimenta las opciones de los desplegables
+  const base = useMemo(() => orders.filter((o) => {
     if (soloHoy && !isToday(o.createdAt)) return false
     if (sede && o.sedeName !== sede) return false
     return true
+  }), [orders, soloHoy, sede])
+
+  const sedes = useMemo(() => uniq(orders.map((o) => o.sedeName)), [orders])
+  const statusOptions = useMemo(() => uniq(base.map((o) => o.status)), [base])
+  const driverOptions = useMemo(() => uniq(base.map((o) => o.driverName)), [base])
+  const paymentOptions = useMemo(() => uniq(base.map((o) => o.payment)), [base])
+
+  const filtered = base.filter((o) => {
+    if (fStatus !== 'all' && o.status !== fStatus) return false
+    if (fDriver !== 'all' && (o.driverName || '') !== fDriver) return false
+    if (fPayment !== 'all' && (o.payment || '') !== fPayment) return false
+    if (fSearch.trim()) {
+      const q = fSearch.toLowerCase().trim()
+      const hay = [o.orderNumber, o.name, o.clientName, o.fullAddress, o.driverName, o.cashierName]
+        .map((v) => String(v || '').toLowerCase())
+      if (!hay.some((v) => v.includes(q))) return false
+    }
+    return true
   })
+
+  const activeFilters =
+    (fStatus !== 'all' ? 1 : 0) + (fDriver !== 'all' ? 1 : 0) +
+    (fPayment !== 'all' ? 1 : 0) + (fSearch.trim() ? 1 : 0)
+  const clearFilters = () => { setFStatus('all'); setFDriver('all'); setFPayment('all'); setFSearch('') }
 
   const entregados = filtered.filter((o) => DELIVERED_STATUSES.includes(o.status))
   const ingresos = entregados.reduce((s, o) => s + (o.totalPrice || 0), 0)
   const domicilios = entregados.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
 
+  const exportExcel = async () => {
+    setExporting(true)
+    try {
+      const ExcelJS = (await import('exceljs')).default
+      const wb = new ExcelJS.Workbook()
+      wb.creator = 'DeliStars'
+      wb.created = new Date()
+
+      const ws = wb.addWorksheet('Pedidos', { views: [{ state: 'frozen', ySplit: 1 }] })
+      ws.columns = [
+        { header: 'Número', key: 'num', width: 10 },
+        { header: 'Fecha', key: 'fecha', width: 12 },
+        { header: 'Hora', key: 'hora', width: 8 },
+        { header: 'Sede', key: 'sede', width: 20 },
+        { header: 'Cliente', key: 'cliente', width: 22 },
+        { header: 'Dirección', key: 'dir', width: 38 },
+        { header: 'Entrega', key: 'entrega', width: 16 },
+        { header: 'Método pago', key: 'pago', width: 14 },
+        { header: 'Domicilio', key: 'domi', width: 12, style: { numFmt: '"$"#,##0' } },
+        { header: 'Total', key: 'total', width: 14, style: { numFmt: '"$"#,##0' } },
+        { header: 'Estado', key: 'estado', width: 18 },
+        { header: 'Domiciliario', key: 'driver', width: 20 },
+        { header: 'Cajero', key: 'cajero', width: 20 },
+        { header: 'Productos', key: 'items', width: 50 },
+      ]
+
+      filtered.forEach((o) => {
+        const d = o.createdAt?.toDate ? o.createdAt.toDate() : null
+        ws.addRow({
+          num: o.orderNumber || '',
+          fecha: d ? d.toLocaleDateString('es-CO') : '',
+          hora: d ? d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
+          sede: o.sedeName || '',
+          cliente: o.name || o.clientName || '',
+          dir: o.deliveryMode === 'pickup' ? 'Recoge en sede' : (o.fullAddress || ''),
+          entrega: deliveryLabel(o.deliveryMode),
+          pago: o.payment || '',
+          domi: o.deliveryPrice || 0,
+          total: o.totalPrice || 0,
+          estado: statusLabel(o.status),
+          driver: o.driverName || '',
+          cajero: o.cashierName || '',
+          items: o.items || '',
+        })
+      })
+
+      const header = ws.getRow(1)
+      header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A1A1A' } }
+      header.alignment = { vertical: 'middle' }
+      header.height = 20
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } }
+
+      const totalDomi = filtered.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+      const totalVenta = filtered.reduce((s, o) => s + (o.totalPrice || 0), 0)
+      const totalRow = ws.addRow({ cliente: `TOTAL (${filtered.length} pedidos)`, domi: totalDomi, total: totalVenta })
+      totalRow.font = { bold: true }
+      totalRow.getCell('domi').numFmt = '"$"#,##0'
+      totalRow.getCell('total').numFmt = '"$"#,##0'
+
+      // Hoja Resumen: por domiciliario y por método de pago
+      const rs = wb.addWorksheet('Resumen')
+      rs.addRow(['Resumen del reporte']).font = { bold: true, size: 14 }
+      rs.addRow([])
+      rs.addRow(['Sede', sede || 'Todas'])
+      rs.addRow(['Rango', soloHoy ? 'Hoy' : 'Todo (últimos 500)'])
+      rs.addRow(['Filtros activos', activeFilters])
+      rs.addRow(['Pedidos (filtrados)', filtered.length])
+      rs.addRow(['Total domicilios', totalDomi]).getCell(2).numFmt = '"$"#,##0'
+      rs.addRow(['Total ventas', totalVenta]).getCell(2).numFmt = '"$"#,##0'
+      rs.addRow([])
+
+      const byDriver = Object.entries(filtered.reduce((acc, o) => {
+        const k = o.driverName || 'Sin asignar'
+        acc[k] = acc[k] || { count: 0, fees: 0, total: 0 }
+        acc[k].count++; acc[k].fees += (o.deliveryPrice || 0); acc[k].total += (o.totalPrice || 0)
+        return acc
+      }, {} as Record<string, { count: number; fees: number; total: number }>))
+      rs.addRow(['Por domiciliario', 'Pedidos', 'Domicilios', 'Total']).font = { bold: true }
+      byDriver.forEach(([name, v]) => {
+        const r = rs.addRow([name, v.count, v.fees, v.total])
+        r.getCell(3).numFmt = '"$"#,##0'; r.getCell(4).numFmt = '"$"#,##0'
+      })
+      rs.addRow([])
+
+      const byPay = Object.entries(filtered.reduce((acc, o) => {
+        const k = o.payment || 'Sin especificar'
+        acc[k] = acc[k] || { count: 0, total: 0 }
+        acc[k].count++; acc[k].total += (o.totalPrice || 0)
+        return acc
+      }, {} as Record<string, { count: number; total: number }>))
+      rs.addRow(['Por método de pago', 'Pedidos', 'Total']).font = { bold: true }
+      byPay.forEach(([name, v]) => {
+        const r = rs.addRow([name, v.count, v.total])
+        r.getCell(3).numFmt = '"$"#,##0'
+      })
+      rs.getColumn(1).width = 26; rs.getColumn(2).width = 12; rs.getColumn(3).width = 14; rs.getColumn(4).width = 14
+
+      const buf = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `delistars-reporte-${sede ? sede.replace(/\s+/g, '-') + '-' : ''}${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-4xl font-display font-bold text-coal">Domicilios</h1>
           <p className="text-muted-fg mt-1">Pedidos y reportes</p>
@@ -48,10 +189,50 @@ export default function Domicilios() {
           >
             {soloHoy ? 'Hoy' : 'Todo'}
           </button>
+          <button
+            onClick={exportExcel}
+            disabled={exporting || filtered.length === 0}
+            className="px-3 py-1 rounded text-sm font-semibold bg-mint text-white disabled:opacity-50"
+          >
+            {exporting ? 'Generando…' : '⬇️ Excel'}
+          </button>
         </div>
       </div>
 
-      {/* Reportes */}
+      {/* Filtros */}
+      <div className="bg-white border border-gray-200 rounded-lg p-3 mb-6 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-coal">
+            Filtros {activeFilters > 0 && <span className="bg-cherry text-white text-xs rounded-full px-1.5 py-0.5 ml-1">{activeFilters}</span>}
+          </p>
+          {activeFilters > 0 && (
+            <button onClick={clearFilters} className="text-xs text-cherry hover:underline">Limpiar</button>
+          )}
+        </div>
+        <input
+          type="text"
+          placeholder="Buscar por número, cliente, dirección, domiciliario o cajero…"
+          value={fSearch}
+          onChange={(e) => setFSearch(e.target.value)}
+          className="border rounded px-3 py-2 text-sm w-full"
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+            <option value="all">Todos los estados</option>
+            {statusOptions.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+          </select>
+          <select value={fPayment} onChange={(e) => setFPayment(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+            <option value="all">Todos los pagos</option>
+            {paymentOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={fDriver} onChange={(e) => setFDriver(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+            <option value="all">Todos los domiciliarios</option>
+            {driverOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <p className="text-sm text-muted-fg">Pedidos</p>
@@ -86,7 +267,10 @@ export default function Domicilios() {
                     <p className="text-sm text-muted-fg truncate">
                       {o.deliveryMode === 'pickup' ? '🏪 Recoge en sede' : (o.fullAddress || '—')}
                     </p>
-                    <p className="text-xs text-muted-fg mt-0.5">{fmtDateTime(o.createdAt)} · {o.payment || '—'}</p>
+                    <p className="text-xs text-muted-fg mt-0.5">
+                      {fmtDateTime(o.createdAt)} · {o.payment || '—'}
+                      {o.driverName && <span> · 🛵 {o.driverName}</span>}
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${s.cls}`}>{s.label}</span>
