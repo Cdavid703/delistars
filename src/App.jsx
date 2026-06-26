@@ -6,7 +6,6 @@ import RoleChoicePage       from './pages/RoleChoicePage'
 import CashierPanel         from './components/cashier/CashierPanel'
 import DeliveryPanel        from './components/delivery/DeliveryPanel'
 import ClientPanel          from './components/client/ClientPanel'
-import AdminPanel           from './components/admin/AdminPanel'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
 import { ROLES, SEDES } from './services/roles'
 
@@ -19,6 +18,13 @@ function LoadingScreen() {
       </div>
     </div>
   )
+}
+
+// El admin viejo embebido se retiró: el rol admin va siempre al admin nuevo
+// (/admin/). La sesión se comparte (mismo proyecto Firebase y dominio).
+function AdminRedirect() {
+  useEffect(() => { window.location.replace('/admin/') }, [])
+  return <LoadingScreen />
 }
 
 function OfflineBanner() {
@@ -63,7 +69,7 @@ export default function App() {
     <>
       <OfflineBanner />
       <InstallPromptBanner />
-      {view === ROLES.ADMIN   && <AdminPanel />}
+      {view === ROLES.ADMIN   && <AdminRedirect />}
       {view === ROLES.CASHIER && <CashierPanel />}
       {view === ROLES.DRIVER  && <DeliveryPanel />}
       {view !== ROLES.ADMIN && view !== ROLES.CASHIER && view !== ROLES.DRIVER && <ClientPanel />}

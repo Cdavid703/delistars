@@ -32,7 +32,12 @@ export default function RoleChoicePage() {
             return (
               <button
                 key={r}
-                onClick={() => setViewingAs(r === allRoles[0] ? null : r)}
+                onClick={() => {
+                  // El admin va al panel nuevo (/admin/); no fijamos viewingAs
+                  // para no quedar atrapados redirigiendo en cada visita.
+                  if (r === ROLES.ADMIN) { window.location.replace('/admin/'); return }
+                  setViewingAs(r === allRoles[0] ? null : r)
+                }}
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl ${info.color} shadow-card hover:-translate-y-0.5 transition-all duration-200 active:scale-95`}
               >
                 <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
