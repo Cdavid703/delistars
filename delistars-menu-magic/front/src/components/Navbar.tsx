@@ -1,17 +1,21 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase } from "lucide-react";
+import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.svg";
 import { useCart } from "@/context/CartContext";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/services/api";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
-import { isStaff } from "@/lib/staff";
+import { isStaff, isCashier } from "@/lib/staff";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
   const { user, login, loginGuest, logout, isGuest } = useStaffAuth();
   const staff = isStaff(user?.email);
+  const cashier = isCashier(user?.email);
+  // Entrada al panel del equipo (cajero/domiciliario/admin) en /domicilios/.
+  // La sesión se comparte, así que llega autenticado.
+  const goToStaffPanel = () => { window.location.href = "/domicilios/"; };
   const [scrolled, setScrolled] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [popped, setPopped] = useState(false);
@@ -103,6 +107,19 @@ export const Navbar = () => {
         </nav>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Entrada al panel del equipo (cajero/domiciliario/admin) */}
+          {staff && (
+            <Button
+              onClick={goToStaffPanel}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-cherry/40 text-cherry hover:bg-cherry/10"
+            >
+              <Receipt className="w-4 h-4" />
+              <span className="hidden sm:inline">{cashier ? "Panel de cajero" : "Panel del equipo"}</span>
+            </Button>
+          )}
+
           <button
             onClick={() => setSede(null)}
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-smooth px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-secondary/60 max-w-[120px] sm:max-w-none"
@@ -186,6 +203,12 @@ export const Navbar = () => {
             <a href="/vacantes/" onClick={() => setMobile(false)} className="font-display py-2 text-foreground hover:text-primary transition-smooth flex items-center gap-2">
               <Briefcase className="w-4 h-4" /> Trabaja con nosotros
             </a>
+            {/* Panel del equipo (cajero/domiciliario/admin) */}
+            {staff && (
+              <button onClick={() => { goToStaffPanel(); setMobile(false); }} className="font-display py-2 text-cherry hover:opacity-80 transition-smooth flex items-center gap-2 w-full text-left">
+                <Receipt className="w-4 h-4" /> {cashier ? 'Ir al panel de cajero' : 'Ir al panel del equipo'}
+              </button>
+            )}
             {/* Mis turnos — solo equipo */}
             {staff && (
               <a href="/turnos/" onClick={() => setMobile(false)} className="font-display py-2 text-primary hover:opacity-80 transition-smooth flex items-center gap-2">

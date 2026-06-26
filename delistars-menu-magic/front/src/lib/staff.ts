@@ -15,3 +15,18 @@ export const STAFF_EMAILS = [
 
 export const isStaff = (email?: string | null): boolean =>
   !!email && STAFF_EMAILS.includes(email.toLowerCase())
+
+// Cajeros (espejo de DEFAULT_CASHIERS en src/services/roles.js / admin team.ts).
+// Sincronizar al entrar/salir cajeros. Los cajeros dinámicos (agregados desde el
+// admin a roles_cashiers) igual entran por "Ir al panel del equipo".
+export const CASHIER_EMAILS = [
+  'lluis02martinez@gmail.com',
+  'josemanuellondonorivillas@gmail.com',
+  'vvillegasmazo@gmail.com',
+  'yencytp@gmail.com',
+  'cdavid.jaramillo@gmail.com',
+  'thebesta4321@gmail.com',
+]
+
+export const isCashier = (email?: string | null): boolean =>
+  !!email && CASHIER_EMAILS.includes(email.toLowerCase())
