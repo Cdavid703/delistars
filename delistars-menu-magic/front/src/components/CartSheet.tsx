@@ -19,17 +19,23 @@ export const CartSheet = () => {
   // ya autenticado porque la sesión se comparte entre el menú y domicilios).
   const proceed = () => {
     const handoff = {
-      items: items.map((it) => ({
-        name: it.presentation 
-          ? `${it.product.nombre_producto} (${it.presentation.sabor}, ${it.presentation.tamano}${it.presentation.base ? `, ${it.presentation.base}` : ''})`
-          : it.selectedDrink
-            ? `${it.product.nombre_producto} + ${it.selectedDrink}`
-            : it.product.nombre_producto,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        addons: it.addons.map((a) => a.name),
-        notes: it.notes,
-      })),
+      items: items.map((it) => {
+        let name = it.product.nombre_producto;
+        if (it.presentation) {
+          name = `${it.product.nombre_producto} (${it.presentation.sabor}, ${it.presentation.tamano}${it.presentation.base ? `, ${it.presentation.base}` : ''})`;
+        } else if (it.selectedDrink) {
+          name = `${it.product.nombre_producto} + ${it.selectedDrink}`;
+        } else if (it.selectedOption) {
+          name = `${it.product.nombre_producto} (${it.selectedOption})`;
+        }
+        return {
+          name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          addons: it.addons.map((a) => a.name),
+          notes: it.notes,
+        };
+      }),
       total,
       // El slug de la sede es la única fuente de verdad (definido en data/menu.ts).
       sedeId: SEDES.find((s) => s.id === sede)?.slug ?? null,
@@ -105,6 +111,11 @@ export const CartSheet = () => {
                           {it.selectedDrink && (
                             <span className="block text-xs font-sans text-primary font-semibold mt-1 animate-fade-in">
                               Bebida: {it.selectedDrink}
+                            </span>
+                          )}
+                          {it.selectedOption && (
+                            <span className="block text-xs font-sans text-primary font-semibold mt-1 animate-fade-in">
+                              Opción: {it.selectedOption}
                             </span>
                           )}
                         </h4>
