@@ -5,6 +5,7 @@
 export const ADMIN_EMAILS = [
   'thebesta4321@gmail.com',     // Andrés Elías Arango Monsalve
   'cdavid.jaramillo@gmail.com', // Carlos David Jaramillo (dev)
+  'josemigeul44@gmail.com',
 ]
 
 export const isAdminEmail = (email?: string | null): boolean =>

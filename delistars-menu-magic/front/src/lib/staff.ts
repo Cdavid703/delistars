@@ -11,6 +11,7 @@ export const STAFF_EMAILS = [
   'jotade.rodmar@gmail.com',             // Juan Diego Rodríguez
   'tikdash17@gmail.com',                 // Gendelson González
   'deisyhenao670@gmail.com',             // Deisy Henao
+  'josemigeul44@gmail.com',              // Admin
 ]
 
 export const isStaff = (email?: string | null): boolean =>
@@ -26,6 +27,7 @@ export type RoleName = typeof ROLES[keyof typeof ROLES]
 export const ADMIN_EMAILS = [
   'thebesta4321@gmail.com',
   'cdavid.jaramillo@gmail.com',
+  'josemigeul44@gmail.com',
 ]
 
 export const CASHIER_EMAILS = [
