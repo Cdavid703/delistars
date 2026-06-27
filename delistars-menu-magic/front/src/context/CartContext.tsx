@@ -16,6 +16,7 @@ export type CartItem = {
     precio_venta: number;
   };
   selectedDrink?: string;
+  selectedOption?: string;
 };
 
 type CartCtx = {

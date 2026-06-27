@@ -20,6 +20,44 @@ const COMBO_DRINKS = [
   "Agua Saborizada Limón 400 ml"
 ];
 
+const PRODUCT_OPTIONS = {
+  hamburguesa_pollo: {
+    title: "Elige un ingrediente",
+    subtitle: "Selecciona una opción para tu hamburguesa (sin costo adicional)",
+    items: ["Queso", "Tocineta"],
+  },
+  papastars: {
+    title: "Elige tu proteína",
+    subtitle: "Selecciona cómo deseas tu Papastars (sin costo adicional)",
+    items: ["Chicharron", "Pollo"],
+  }
+};
+
+const getProductCustomOptions = (product: ApiProduct | null) => {
+  if (!product) return null;
+  const name = product.nombre_producto.toLowerCase();
+  
+  const isHamburguesaPollo = 
+    product.id_producto === 3 || 
+    name === "hamburguesa de pollo" || 
+    name === "hamburguesa de pollo con queso o tocineta" ||
+    name === "hamburguesa de pollo con queso y tocineta";
+    
+  if (isHamburguesaPollo) {
+    return PRODUCT_OPTIONS.hamburguesa_pollo;
+  }
+  
+  const isPapastars = 
+    product.id_producto === 20 || 
+    name === "papastars";
+    
+  if (isPapastars) {
+    return PRODUCT_OPTIONS.papastars;
+  }
+  
+  return null;
+};
+
 export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null; onClose: () => void }) => {
   const { addItem } = useCart();
   const [qty, setQty] = useState(1);
@@ -35,6 +73,9 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
 
   // States for combo drink selection
   const [selectedDrink, setSelectedDrink] = useState<string>("");
+
+  // States for custom options (e.g. queso/tocineta or chicharron/pollo)
+  const [selectedOption, setSelectedOption] = useState<string>("");
 
   const hasPresentations = !!(product?.presentations && product.presentations.length > 0);
 
@@ -79,6 +120,14 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
         setSelectedDrink(COMBO_DRINKS[0]);
       } else {
         setSelectedDrink("");
+      }
+
+      // Initialize selectedOption
+      const customOptions = getProductCustomOptions(product);
+      if (customOptions) {
+        setSelectedOption(customOptions.items[0]);
+      } else {
+        setSelectedOption("");
       }
     }
   }, [product, hasPresentations]);
@@ -201,7 +250,8 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       addons: selectedAddons,
       notes: notes.trim(),
       presentation: selectedPresentation || undefined,
-      selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined
+      selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined,
+      selectedOption: getProductCustomOptions(product) ? selectedOption : undefined
     });
     toast.success(`${product.nombre_producto} agregado al carrito 🎉`);
     onClose();
@@ -369,6 +419,35 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                           }`}
                       >
                         {drink}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN OPCIONES PERSONALIZABLES (Hamburguesa de pollo o Papastars) */}
+            {getProductCustomOptions(product) && (
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <div>
+                  <p className="font-display text-base tracking-wide mb-1">
+                    {getProductCustomOptions(product)?.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {getProductCustomOptions(product)?.subtitle}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {getProductCustomOptions(product)?.items.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setSelectedOption(opt)}
+                        className={`px-3 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center leading-normal min-h-[48px] flex items-center justify-center ${selectedOption === opt
+                          ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                          : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                          }`}
+                      >
+                        {opt}
                       </button>
                     ))}
                   </div>
