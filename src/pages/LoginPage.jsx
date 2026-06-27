@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/common/Logo'
-import { Globe, Star, UserX } from 'lucide-react'
+import { Globe, Star, UserX, ShoppingBag } from 'lucide-react'
 
 export default function LoginPage() {
   const { login, loginGuest } = useAuth()
@@ -66,41 +66,46 @@ export default function LoginPage() {
           <div className="text-center">
             <p className="font-script text-2xl text-cherry">¡Bienvenido!</p>
             <p className="font-body text-sm text-coal/60 mt-1">
-              Plataforma de domicilios
+              ¿Vas a pedir? Empieza desde el menú
             </p>
           </div>
 
-          {/* Divider */}
-          <div className="w-full h-px bg-coal/10" />
+          {/* CTA principal: ir al menú (entrada del cliente) */}
+          <a href="/" className="btn-primary btn-lg w-full">
+            <ShoppingBag size={20} />
+            Ir al menú a pedir
+          </a>
 
-          {/* Sign in button */}
+          {/* Divider */}
+          <div className="w-full flex items-center gap-3">
+            <div className="flex-1 h-px bg-coal/10" />
+            <span className="font-body text-[11px] text-coal/40 uppercase tracking-wider">o</span>
+            <div className="flex-1 h-px bg-coal/10" />
+          </div>
+
+          {/* Login del equipo / acceso directo */}
           <button
             onClick={handleLogin}
             disabled={busy}
-            className="btn-primary btn-lg w-full"
+            className="btn-secondary btn-lg w-full"
           >
             <Globe size={20} />
-            {loading ? 'Conectando…' : 'Entrar con Google'}
+            {loading ? 'Conectando…' : 'Soy del equipo · Entrar con Google'}
           </button>
 
           {/* Guest button */}
           <button
             onClick={handleGuest}
             disabled={busy}
-            className="btn-secondary btn-lg w-full"
+            className="font-body text-xs text-coal/50 underline underline-offset-2 hover:text-coal"
           >
-            <UserX size={20} />
+            <UserX size={13} className="inline mr-1" />
             {loadingGuest ? 'Entrando…' : 'Continuar sin cuenta'}
           </button>
 
           {error && (
             <p className="text-sm text-pepper font-body text-center">{error}</p>
           )}
-
-          <p className="font-body text-xs text-coal/40 text-center">
-            Personal DeliStars: inicia con tu cuenta de Google.<br />
-            Clientes: puedes entrar sin cuenta.
-          </p>
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 export const ADMIN_EMAILS = [
   'thebesta4321@gmail.com',   // Andrés Elías Arango Monsalve
   'cdavid.jaramillo@gmail.com', // Carlos David Jaramillo Gallego (dev)
+  'josemigeul44@gmail.com',
 ]
 
 // Mantener compatibilidad con código que use ADMIN_EMAIL singular

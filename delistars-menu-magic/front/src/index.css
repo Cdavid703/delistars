@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DeliStars Design System — Cherry, Cream, Coal, Tangelo, Mustard, Pepper, Mint */
+
+@layer base {
+  :root {
+    /* Base — Cream #F4E7D0 / Coal #262626 */
+    --background: 36 60% 88%;
+    --foreground: 0 0% 15%;
+
+    --card: 36 60% 94%;
+    --card-foreground: 0 0% 15%;
+
+    --popover: 36 60% 94%;
+    --popover-foreground: 0 0% 15%;
+
+    /* Cherry #EA3329 */
+    --primary: 3 82% 54%;
+    --primary-foreground: 36 60% 94%;
+    --primary-glow: 9 84% 59%;          /* Tangelo #ED5B3E */
+
+    /* Smoked #EDEAE6 */
+    --secondary: 36 16% 92%;
+    --secondary-foreground: 0 0% 15%;
+
+    --muted: 36 30% 90%;
+    --muted-foreground: 0 0% 30%;
+
+    /* Mustard #E88F00 acento cálido */
+    --accent: 37 100% 46%;
+    --accent-foreground: 0 0% 15%;
+
+    --cream: 36 60% 88%;                /* Cream */
+    --cream-deep: 36 16% 92%;           /* Smoked */
+
+    /* Pepper #CC3300 (rojo profundo) */
+    --destructive: 12 100% 40%;
+    --destructive-foreground: 36 60% 94%;
+
+    --border: 36 20% 80%;
+    --input: 36 25% 86%;
+    --ring: 3 82% 54%;
+
+    /* Marca extra */
+    --cherry: 3 82% 54%;                /* #EA3329 */
+    --tangelo: 9 84% 59%;               /* #ED5B3E */
+    --mustard: 37 100% 46%;             /* #E88F00 */
+    --pepper: 12 100% 40%;              /* #CC3300 */
+    --mint: 173 72% 34%;                /* #189386 */
+    --coal: 0 0% 15%;                   /* #262626 */
+
+    --radius: 1rem;
+
+    --gradient-hero: linear-gradient(135deg, hsl(3 82% 54%), hsl(9 84% 59%));
+    --gradient-warm: linear-gradient(180deg, hsl(36 60% 92%), hsl(36 60% 84%));
+    --gradient-soft: linear-gradient(135deg, hsl(36 60% 94%), hsl(36 16% 92%));
+
+    /* Gradiente de 3 colores de marca: Cream → Smoked → Tangelo */
+    --gradient-page: linear-gradient(180deg, #F4E7D0 0%, #EDEAE6 52%, #ED5B3E 100%);
+
+    --shadow-soft: 0 10px 30px -10px hsl(3 82% 54% / 0.30);
+    --shadow-card: 0 8px 24px -12px hsl(0 0% 15% / 0.18);
+    --shadow-glow: 0 0 40px hsl(9 84% 59% / 0.40);
+
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply text-foreground;
+    background: var(--gradient-page);
+    min-height: 100vh;
+    font-family: 'DM Sans', 'Inter', system-ui, sans-serif; /* Geometría-like */
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Oswald', 'Bebas Neue', sans-serif;
+    @apply tracking-wide uppercase font-bold;
+  }
+  .font-script { font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 0.05em; }
+  .font-display-alt { font-family: 'DM Sans', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+}
+
+@layer utilities {
+  .bg-gradient-hero { background: var(--gradient-hero); }
+  .bg-gradient-warm { background: var(--gradient-warm); }
+  .bg-gradient-soft { background: var(--gradient-soft); }
+  .bg-gradient-page { background: var(--gradient-page); }
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .transition-smooth { transition: var(--transition-smooth); }
+  .transition-bounce { transition: var(--transition-bounce); }
+
+  .hover-lift {
+    @apply transition-smooth hover:-translate-y-1 hover:shadow-soft;
+  }
+  .hover-scale {
+    @apply transition-bounce hover:scale-105;
+  }
+
+  /* Hand-drawn dashed border vibe */
+  .doodle-border {
+    border: 2px dashed hsl(var(--primary) / 0.4);
+  }
+}

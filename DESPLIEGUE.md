@@ -1,0 +1,229 @@
+# 🚀 Despliegue completo DeliStars (menú + domicilios + base de datos)
+
+Guía para que **Carlos** despliegue todo el stack en el VPS. El colaborador solo
+sube código a GitHub; el deploy lo haces tú.
+
+> Esta guía reemplaza a `delistars-menu-magic/RUN_ON_SERVER.md` para el despliegue
+> **integrado** (ese documento del colaborador asume el menú como repo aparte y
+> tiene puertos desactualizados). El `DEPLOY.md` de la raíz era solo del domicilios
+> estático y queda obsoleto cuando migras a Docker.
+
+---
+
+## 1. Qué se levanta
+
+Un solo `docker compose` levanta 6 contenedores en red interna:
+
+| Contenedor | Qué es | Puerto |
+|------------|--------|--------|
+| `postgres` | Base de datos del menú (productos, categorías, sedes) | 5432 (solo interno/servidor) |
+| `backend` | API del menú (Node/TS) | 3001 → 3000 (interno) |
+| `frontend` | Menú web (clientes) | vía gateway |
+| `admin` | Panel admin del menú | vía gateway |
+| `domicilios` | Sirve 3 apps del repo: domicilios + turnos + vacantes | vía gateway |
+| `gateway` | Nginx que enruta todo | **80** |
+
+El gateway enruta:
+
+```
+/            → frontend (menú)
+/domicilios/ → domicilios
+/turnos/     → domicilios (mismo contenedor)
+/vacantes/   → domicilios (mismo contenedor)
+/admin/      → admin
+/api/        → backend
+```
+
+> El contenedor `domicilios` compila y sirve las tres apps del mismo repo
+> (`build`, `build:turnos`, `build:vacantes`) bajo sus rutas. Así el deploy es
+> autocontenido: no hace falta que el nginx del host sirva turnos/vacantes aparte.
+
+**Dónde vive la base de datos:** en el contenedor `postgres`, en TU servidor.
+No está en GitHub ni en Firebase. Los 47 productos vienen de `seeds.sql` y se
+cargan **solo en el primer arranque** (ver paso 5).
+
+---
+
+## 2. Estructura del repo (importante)
+
+El menú es una **subcarpeta** del repo de domicilios, no un repo aparte. El
+`docker-compose.yml` está dentro de `delistars-menu-magic/` y construye el
+servicio `domicilios` desde la carpeta padre (`context: ../`). Por eso:
+
+```bash
+git clone git@github.com:Cdavid703/delistars.git
+cd delistars
+git checkout main          # o la rama que hayas mergeado
+cd delistars-menu-magic    # aquí está el docker-compose.yml
+```
+
+---
+
+## 3. Requisitos en el servidor
+
+```bash
+docker --version          # v20+
+docker compose version    # v2+
+```
+
+Si no está Docker: `curl -fsSL https://get.docker.com | sh`
+
+---
+
+## 4. Crear el `.env` (en `delistars-menu-magic/`)
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Llena estos valores **obligatorios**:
+
+```env
+# Postgres — pon una contraseña fuerte
+POSTGRES_PASSWORD=<contraseña_segura>
+
+# Backend
+NODE_ENV=production
+JWT_SECRET=<secreto_largo_y_aleatorio>     # genera con: openssl rand -hex 32
+CORS_ORIGIN=https://delistars.com,http://localhost
+
+# Frontends — ruta RELATIVA (no localhost)
+VITE_API_URL=/api/v1
+
+# Firebase (mismo proyecto delistars-domicilios) — para construir "domicilios"
+# Copia estos valores desde la consola de Firebase:
+# Configuración del proyecto → Tus apps → SDK de Firebase → Configuración
+VITE_FIREBASE_API_KEY=<tu_api_key>
+VITE_FIREBASE_AUTH_DOMAIN=delistars-domicilios.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=delistars-domicilios
+VITE_FIREBASE_STORAGE_BUCKET=delistars-domicilios.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=<tu_sender_id>
+VITE_FIREBASE_APP_ID=<tu_app_id>
+```
+
+> El `.env` nunca se sube al repo (está en `.gitignore`). Lo creas solo en el servidor.
+> Las credenciales reales de Firebase están en la consola del proyecto, no en este repo.
+
+---
+
+## 5. ⚠️ Conflicto de puerto 80 (tu caso)
+
+Tu VPS **ya corre nginx en el host** (sirve delistars.com y jaralingua.com). El
+gateway de Docker ya viene configurado para escuchar solo en `127.0.0.1:8090`
+(no en el 80 público), así que **no hay choque** y no necesitas editar el
+`docker-compose.yml`.
+
+Solo tienes que agregar un server block en el nginx del host para delistars.com:
+
+```nginx
+server {
+    server_name delistars.com www.delistars.com;
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d delistars.com -d www.delistars.com   # HTTPS
+```
+
+Así jaralingua.com queda intacto y delistars.com pasa por el stack Docker.
+
+---
+
+## 6. Levantar el stack
+
+> ⚠️ **RAM del VPS.** El primer build compila 4 apps de Node (backend, menú,
+> admin y el contenedor domicilios que hace 3 builds: domicilios/turnos/vacantes).
+> Vite/rolldown consumen bastante memoria: con **1 GB el build puede fallar (OOM)**
+> o ir muy lento. Recomendado **2 GB+**. Si solo tienes 1 GB, agrega swap **antes**
+> del primer build:
+> ```bash
+> sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+> sudo mkswap /swapfile && sudo swapon /swapfile
+> echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # persistente
+> ```
+> Tiempos: primer build en frío ~5–15 min; despliegues siguientes ~1–3 min (cache).
+
+```bash
+docker compose up --build -d
+```
+
+Esto construye las imágenes, descarga PostgreSQL, **crea la BD y carga init.sql +
+seeds.sql (47 productos)**, y levanta los 6 contenedores.
+
+---
+
+## 7. Verificar
+
+```bash
+docker compose ps                          # todos "Up (healthy)"
+curl http://localhost:3001/api/v1/categories   # debe devolver las categorías
+curl http://127.0.0.1:8090/                # debe devolver el HTML del menú
+```
+
+Luego en el navegador:
+- `https://delistars.com/` → menú (selección de productos)
+- `https://delistars.com/domicilios/` → app de pedidos
+- `https://delistars.com/turnos/` → turnos del equipo
+- `https://delistars.com/vacantes/` → portal de vacantes
+- `https://delistars.com/admin/` → panel de administración unificado
+
+---
+
+## 8. Re-cargar productos (el seed solo corre la 1ª vez)
+
+`init.sql` y `seeds.sql` se ejecutan **solo cuando el volumen está vacío**. Si ya
+desplegaste antes y necesitas recargar:
+
+```bash
+# OJO: borra TODA la base de datos del menú y vuelve a sembrar
+docker compose down -v
+docker compose up --build -d
+```
+
+O re-ejecutar solo el seed sin borrar (usa el nombre real de tu DB, POSTGRES_DB):
+
+```bash
+docker cp seeds.sql delistars_postgres:/seeds.sql
+docker exec -it delistars_postgres psql -U postgres -d delistars1 -f /seeds.sql
+```
+
+---
+
+## 9. Actualizar tras un nuevo push del colaborador
+
+```bash
+cd delistars && git pull && cd delistars-menu-magic
+docker compose up --build -d
+```
+
+Los productos NO se borran (el volumen persiste). Para cambios de menú, el
+colaborador los gestiona desde el panel admin o actualizando la BD.
+
+---
+
+## 10. Comandos útiles
+
+```bash
+docker compose logs -f backend     # logs de un servicio
+docker compose restart             # reiniciar
+docker compose down                # detener (conserva la BD)
+```
+
+---
+
+## Checklist antes de desplegar
+
+- [ ] El colaborador corrigió `VITE_API_URL=/api/v1` (relativo) en su `.env.example`
+- [ ] `CORS_ORIGIN` incluye `https://delistars.com`
+- [ ] `JWT_SECRET` y `POSTGRES_PASSWORD` cambiados (no los de ejemplo)
+- [ ] Las 6 variables `VITE_FIREBASE_*` están en el `.env`
+- [ ] Host nginx configurado con proxy a `127.0.0.1:8090` (el gateway ya viene en ese puerto)

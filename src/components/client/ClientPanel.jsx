@@ -77,8 +77,12 @@ export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
   const { canInstall, install } = usePWAInstall()
   const [orders,         setOrders]         = useState([])
+  const [ordersLoaded,   setOrdersLoaded]   = useState(false)
   const [selectedId,     setSelectedId]     = useState(null)
-  const [showForm,       setShowForm]       = useState(false)
+  const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff'))
+  // ¿El cliente entró pasando por la raíz (eligió productos)? Si no, no debe
+  // quedarse en el panel de domicilios: se le envía al menú a escoger productos.
+  const enteredWithCart = useRef(!!localStorage.getItem('ds_cart_handoff'))
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
@@ -109,8 +113,22 @@ export default function ClientPanel() {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
       setOrders(docs)
-    }, err => console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message))
+      setOrdersLoaded(true)
+    }, err => { console.error('[ClientPanel] Error al leer pedidos:', err.code, err.message); setOrdersLoaded(true) })
   }, [user?.uid])
+
+  // Al panel de domicilios solo se entra pasando por la raíz (carrito) o con
+  // pedidos que rastrear. Si se entra directo sin contexto → al menú a escoger
+  // productos. Aplica también al equipo que elige "ver como cliente".
+  useEffect(() => {
+    if (enteredWithCart.current || showForm) return
+    if (ordersLoaded && orders.length === 0) {
+      // Resetea "ver como cliente" para que el equipo no quede atrapado: al
+      // volver a /domicilios/ recupera su panel en vez de re-redirigirse.
+      if (effectiveRole !== role) { try { setViewingAs(null) } catch {} }
+      window.location.replace('/')
+    }
+  }, [ordersLoaded, orders.length, showForm, effectiveRole, role])
 
   // Sonido al recibir mensaje nuevo del cajero en el chat
   useEffect(() => {
@@ -217,7 +235,9 @@ export default function ClientPanel() {
       sedeId:      sede?.id     || '',
       sedeName:    sede?.name   || '',
       status:      'pending',
-      cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
+      // El pago se elige tras la cotización de la caja; aún sin definir.
+      payment:        '',
+      cashOnDelivery: false,
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
@@ -229,7 +249,8 @@ export default function ClientPanel() {
         name:        data.name        || user.displayName || '',
         email:       user.email       || '',
         phone:       data.phone       || '',
-        addresses:   arrayUnion(data.fullAddress),
+        // Solo guardamos la dirección en pedidos a domicilio (en recoger viene vacía)
+        ...(data.fullAddress?.trim() ? { addresses: arrayUnion(data.fullAddress) } : {}),
         lastOrderAt: serverTimestamp(),
         orderCount:  increment(1),
       }, { merge: true }).catch(() => {})
@@ -492,6 +513,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     name:               user?.displayName || '',
     phone:              '',
+    deliveryMode:       'delivery',   // 'delivery' = domicilio · 'pickup' = recoger en sede
     fullAddress:        '',
     barrio:             '',
     reference:          '',
@@ -506,7 +528,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
   const [errors,            setErrors]            = useState([])
   const [addrSuggestions,   setAddrSuggestions]   = useState([])
   const [detectingLocation, setDetectingLocation] = useState(false)
+  const [fromMenu,          setFromMenu]          = useState(false)
+  const [menuTotal,         setMenuTotal]         = useState(0)
   const errorsRef = useRef(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ds_cart_handoff')
+      if (!raw) return
+      const { items: cartItems, total } = JSON.parse(raw)
+      if (!Array.isArray(cartItems) || cartItems.length === 0) return
+      const lines = cartItems.map(it => {
+        let line = `${it.quantity}x ${it.name}`
+        if (it.addons?.length) line += ` (+ ${it.addons.join(', ')})`
+        if (it.notes) line += ` — "${it.notes}"`
+        return line
+      })
+      setForm(f => ({
+        ...f,
+        items: lines.join('\n'),
+      }))
+      setFromMenu(true)
+      setMenuTotal(total || 0)
+      localStorage.removeItem('ds_cart_handoff')
+    } catch (_) {}
+  }, [])
 
   useEffect(() => {
     if (errors.length > 0) {
@@ -563,16 +609,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     const errs = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
-    if (!form.fullAddress.trim()) errs.push('La dirección es obligatoria')
+    if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
-    if (!form.payment)            errs.push('Debes seleccionar una forma de pago')
-    if (form.payment === 'Mixto' && (!form.mixtoEfectivo || !form.mixtoTransferencia)) {
-      errs.push('Indica cuánto pagarás en efectivo y cuánto en transferencia')
-    }
+    // El método de pago ya NO se elige aquí: el cliente lo escoge después de que
+    // la caja cotice el domicilio (ver flujo de cotización en ClientOrderDetail).
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     try {
-      await onSubmit(form)
+      // Si el pedido viene del menú web, traslada el precio ya calculado a la
+      // cotización para que el cajero lo reciba pre-llenado (solo agrega el domicilio).
+      await onSubmit(fromMenu ? { ...form, quotedPrice: menuTotal, fromMenu: true } : form)
     } catch (err) {
       const msg = err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
@@ -590,6 +636,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
         <p className="font-body text-xs text-coal/60">
           Sede: <span className="font-semibold text-cherry">{sede?.name}</span>
         </p>
+      </div>
+
+      {/* Tipo de entrega: domicilio o recoger en sede */}
+      <div>
+        <label className="label-field">¿Cómo quieres recibir tu pedido? *</label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => set('deliveryMode', 'delivery')}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+              form.deliveryMode === 'delivery' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
+            }`}
+          >
+            🛵 Domicilio
+          </button>
+          <button
+            type="button"
+            onClick={() => set('deliveryMode', 'pickup')}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+              form.deliveryMode === 'pickup' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
+            }`}
+          >
+            🏪 Recoger en sede
+          </button>
+        </div>
       </div>
 
       {/* Notice about quote */}
@@ -622,6 +693,18 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
         </div>
       </div>
 
+      {form.deliveryMode === 'pickup' && (
+        <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-start gap-2">
+          <MapPin size={16} className="text-mint flex-shrink-0 mt-0.5" />
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Recoges tu pedido en <strong>{sede?.name}</strong>{sede?.address ? ` — ${sede.address}` : ''}.
+            Te avisaremos por este medio cuando esté listo para recoger.
+          </p>
+        </div>
+      )}
+
+      {form.deliveryMode === 'delivery' && (
+      <>
       <div>
         <label className="label-field">Dirección de entrega *</label>
         <div className="flex gap-2">
@@ -692,12 +775,26 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           <input className="input-field" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="Punto de referencia" />
         </div>
       </div>
+      </>
+      )}
 
       <div>
         <label className="label-field">¿Qué vas a pedir? *</label>
-        <textarea className="textarea-field h-28 scroll-custom" value={form.items}
-          onChange={e => set('items', e.target.value)}
-          placeholder="Ej: 1 hamburguesa clásica, 1 papas medianas, 1 gaseosa…" />
+        <textarea
+          className={`textarea-field h-28 scroll-custom ${fromMenu ? 'bg-coal/5 text-coal/70' : ''}`}
+          value={form.items}
+          onChange={e => !fromMenu && set('items', e.target.value)}
+          readOnly={fromMenu}
+          placeholder="Ej: 1 hamburguesa clásica, 1 papas medianas, 1 gaseosa…"
+        />
+        {fromMenu && menuTotal > 0 && (
+          <div className="mt-2 flex items-center justify-between bg-cherry/10 border border-cherry/20 rounded-xl px-4 py-2.5">
+            <span className="font-body text-sm text-coal/70">Total del pedido</span>
+            <span className="font-display text-lg text-cherry">
+              ${menuTotal.toLocaleString('es-CO')}
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
@@ -707,65 +804,18 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           placeholder="Sin cebolla, extra salsa, timbre 2B…" />
       </div>
 
-      <div>
-        <label className="label-field">Forma de pago *</label>
-        <select
-          className={`input-field ${!form.payment ? 'text-coal/40' : ''}`}
-          value={form.payment}
-          onChange={e => set('payment', e.target.value)}
-        >
-          <option value="" disabled>— Selecciona cómo vas a pagar —</option>
-          <option>Efectivo</option>
-          <option>Transferencia</option>
-          <option>Nequi</option>
-          <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
-        </select>
-
-        {/* QR para pago digital */}
-        {['Transferencia', 'Nequi', 'Mixto'].includes(form.payment) && (
-          <div className="mt-3 flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
-            <p className="font-body text-xs text-coal/60 text-center font-semibold">
-              Escanea para pagar con transferencia
-            </p>
-            <img
-              src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
-              alt="QR Bancolombia DELISTARS"
-              className="w-52 h-52 object-contain"
-            />
-            <p className="font-body text-xs text-coal/70 text-center font-semibold">
-              Bancolombia Ahorros
-            </p>
-            <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
-              420 679 938 91
-            </p>
-            <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
-          </div>
-        )}
-
-        {/* Campos de monto para pago mixto */}
-        {form.payment === 'Mixto' && (
-          <div className="mt-3 bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
-            <p className="font-body text-xs text-coal/70 font-semibold">
-              ¿Cuánto pagarás en cada forma? (el cajero confirma el total exacto)
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label-field">💵 En efectivo</label>
-                <input className="input-field" type="number" min="0"
-                  value={form.mixtoEfectivo}
-                  onChange={e => set('mixtoEfectivo', e.target.value)}
-                  placeholder="$0" />
-              </div>
-              <div>
-                <label className="label-field">📲 En transferencia</label>
-                <input className="input-field" type="number" min="0"
-                  value={form.mixtoTransferencia}
-                  onChange={e => set('mixtoTransferencia', e.target.value)}
-                  placeholder="$0" />
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Aviso: el domicilio se cotiza después; el pago se elige luego */}
+      <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex items-start gap-3">
+        <span className="text-2xl leading-none">⏳</span>
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-base tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Al enviar tu pedido, la caja revisará si puede entregarlo y te enviará el
+            <strong> valor del domicilio</strong>. El método de pago lo eliges
+            <strong> después de la cotización</strong> — así evitas pagar por un pedido
+            que luego no podamos entregar.
+          </p>
+        </div>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -796,10 +846,17 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
       </div>
 
       {/* Quote highlight */}
-      {hasQuote && (
+      {hasQuote ? (
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
-          <span className="font-body text-xs font-semibold text-tangelo">💰 Total cotizado</span>
+          <span className="font-body text-xs font-semibold text-tangelo">
+            {order.payment ? '💰 Total cotizado' : '💰 Elige cómo pagar'}
+          </span>
           <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
+        </div>
+      ) : !CLOSED_STATUSES.includes(order.status) && (
+        <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center gap-1.5">
+          <span className="text-sm">⏳</span>
+          <span className="font-body text-xs font-semibold text-tangelo">Domicilio por cotizar — aún no pagues</span>
         </div>
       )}
 
@@ -834,10 +891,61 @@ function ClientOrderDetail({ order, onClose }) {
   const [uploadError,      setUploadError]     = useState('')
   const [clientMsgText,    setClientMsgText]   = useState('')
   const [sendingClientMsg, setSendingClientMsg] = useState(false)
-  const [billAmount,       setBillAmount]       = useState(null)
+  const [chatError,        setChatError]        = useState('')
+  // Billete con el que paga el cliente (se envía a la caja)
+  const [billAmount,  setBillAmount]  = useState(order.cashBillAmount ?? null)
+  const [sendingBill, setSendingBill] = useState(false)
+  const [billError,   setBillError]   = useState('')
+  // Selección de método de pago (después de la cotización de la caja)
+  const [payMethod,    setPayMethod]    = useState('')
+  const [payMixtoEf,   setPayMixtoEf]   = useState('')
+  const [payMixtoTr,   setPayMixtoTr]   = useState('')
+  const [payError,     setPayError]     = useState('')
+  const [savingPay,    setSavingPay]    = useState(false)
+
+  const confirmPaymentMethod = async () => {
+    if (!payMethod) { setPayError('Selecciona cómo vas a pagar'); return }
+    if (payMethod === 'Mixto' && (!payMixtoEf || !payMixtoTr)) {
+      setPayError('Indica cuánto pagarás en efectivo y cuánto en transferencia'); return
+    }
+    setPayError('')
+    setSavingPay(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        payment:        payMethod,
+        cashOnDelivery: payMethod === 'Efectivo' || payMethod === 'Mixto',
+        ...(payMethod === 'Mixto'
+          ? { mixtoEfectivo: payMixtoEf, mixtoTransferencia: payMixtoTr }
+          : {}),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      setPayError('No se pudo guardar el método de pago. Intenta de nuevo.')
+    } finally { setSavingPay(false) }
+  }
+
+  // Envía a la caja el billete con el que pagará el cliente (y su cambio)
+  const sendBill = async () => {
+    if (billAmount === null || billAmount < order.totalPrice) {
+      setBillError('Selecciona un billete que cubra el total'); return
+    }
+    setBillError('')
+    setSendingBill(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        cashBillAmount: billAmount,
+        cashChange:     billAmount - order.totalPrice,
+        billSentAt:     serverTimestamp(),
+        updatedAt:      serverTimestamp(),
+      })
+    } catch (err) {
+      setBillError('No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
+    } finally { setSendingBill(false) }
+  }
 
   const sendClientMessage = async () => {
     if (!clientMsgText.trim()) return
+    setChatError('')
     setSendingClientMsg(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -850,6 +958,9 @@ function ClientOrderDetail({ order, onClose }) {
         updatedAt: serverTimestamp(),
       })
       setClientMsgText('')
+    } catch (err) {
+      console.error('Error al enviar mensaje:', err)
+      setChatError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSendingClientMsg(false) }
   }
 
@@ -924,6 +1035,40 @@ function ClientOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Aviso grande: falta cotizar el domicilio (antes de la cotización) */}
+          {!hasQuote && !CLOSED_STATUSES.includes(order.status) && (
+            <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl leading-none">⏳</span>
+                <p className="font-display text-xl tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+              </div>
+              <p className="font-body text-sm text-coal/80 leading-relaxed">
+                La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te
+                enviará el <strong>valor del domicilio</strong>.
+              </p>
+              <div className="bg-cream/60 rounded-xl px-4 py-3 flex items-center gap-2">
+                <span className="text-lg">🔒</span>
+                <p className="font-body text-xs text-coal/70 leading-relaxed">
+                  Aún <strong>no puedes pagar</strong>: el método de pago se habilita cuando
+                  recibas la cotización. Así evitas pagar por un pedido que luego no podamos entregar.
+                </p>
+              </div>
+              {/* Resumen parcial: productos estimado + domicilio por cotizar */}
+              {order.quotedPrice > 0 && (
+                <div className="border-t border-tangelo/20 pt-3 flex flex-col gap-1.5">
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Productos (estimado):</span>
+                    <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Domicilio:</span>
+                    <span className="font-semibold text-tangelo">Por cotizar</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quote section */}
           {hasQuote && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
@@ -942,8 +1087,51 @@ function ClientOrderDetail({ order, onClose }) {
               </div>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-coal/60">Forma de pago:</span>
-                <span className="font-semibold">{order.payment}</span>
+                <span className="font-semibold">{order.payment || 'Por elegir 👇'}</span>
               </div>
+            </div>
+          )}
+
+          {/* Selector de método de pago — aparece tras la cotización de la caja */}
+          {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
+            <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-base tracking-wide text-cherry">✅ ¡Domicilio cotizado! Elige cómo pagar</p>
+              <p className="font-body text-xs text-coal/60">
+                Total a pagar: <span className="font-bold text-tangelo">{fmt(order.totalPrice)}</span>
+              </p>
+              <select className={`input-field ${!payMethod ? 'text-coal/40' : ''}`}
+                value={payMethod} onChange={e => setPayMethod(e.target.value)}>
+                <option value="" disabled>— Selecciona cómo vas a pagar —</option>
+                <option>Efectivo</option>
+                <option>Transferencia</option>
+                <option>Nequi</option>
+                <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
+              </select>
+
+              {payMethod === 'Mixto' && (
+                <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
+                  <p className="font-body text-xs text-coal/70 font-semibold">
+                    ¿Cuánto pagarás en cada forma? (el cajero confirma el total exacto)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label-field">💵 En efectivo</label>
+                      <input className="input-field" type="number" min="0"
+                        value={payMixtoEf} onChange={e => setPayMixtoEf(e.target.value)} placeholder="$0" />
+                    </div>
+                    <div>
+                      <label className="label-field">📲 En transferencia</label>
+                      <input className="input-field" type="number" min="0"
+                        value={payMixtoTr} onChange={e => setPayMixtoTr(e.target.value)} placeholder="$0" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {payError && <p className="font-body text-xs text-pepper">{payError}</p>}
+              <button onClick={confirmPaymentMethod} disabled={savingPay} className="btn-primary w-full">
+                {savingPay ? 'Guardando…' : 'Confirmar método de pago'}
+              </button>
             </div>
           )}
 
@@ -1016,6 +1204,29 @@ function ClientOrderDetail({ order, onClose }) {
                   </div>
                 )
               )}
+
+              {/* Enviar el billete a la caja */}
+              {billAmount !== null && billAmount >= order.totalPrice && (
+                order.cashBillAmount === billAmount ? (
+                  <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <span className="text-lg">✅</span>
+                    <p className="font-body text-sm text-mint font-semibold">
+                      Enviado al cajero — tu pedido está en gestión. Sigue su avance aquí abajo.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <button onClick={sendBill} disabled={sendingBill} className="btn-primary w-full">
+                      {sendingBill ? 'Enviando…' :
+                        (order.cashBillAmount != null ? 'Actualizar billete y reenviar' : '📨 Enviar al cajero')}
+                    </button>
+                    {billError && <p className="font-body text-xs text-pepper">{billError}</p>}
+                    <p className="font-body text-[11px] text-coal/50 text-center">
+                      Avísale a la caja con qué billete pagarás para que preparen tu cambio.
+                    </p>
+                  </div>
+                )
+              )}
             </div>
           )}
 
@@ -1031,31 +1242,51 @@ function ClientOrderDetail({ order, onClose }) {
           )}
 
           {/* Transfer / Nequi receipt upload */}
-          {['Transferencia', 'Nequi'].includes(order.payment) &&
+          {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) &&
            !['completed', 'rejected', 'cancelled'].includes(order.status) && (
             <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
               <p className="font-display text-sm tracking-wide text-coal">
-                📎 Comprobante de {order.payment}
+                {order.payment === 'Mixto' ? '📎 Comprobante de tu parte por transferencia' : `📎 Comprobante de ${order.payment}`}
               </p>
 
-              {/* QR de pago */}
+              {/* Desglose del pago mixto: efectivo + transferencia */}
+              {order.payment === 'Mixto' && (
+                <div className="bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1.5">
+                  <p className="font-body text-xs text-coal/70 font-semibold">Tu pago se divide así:</p>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">💵 En efectivo (al recibir):</span>
+                    <span className="font-semibold">{fmt(Number(order.mixtoEfectivo) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">📲 Por transferencia / QR:</span>
+                    <span className="font-semibold text-tangelo">{fmt(Number(order.mixtoTransferencia) || 0)}</span>
+                  </div>
+                  <p className="font-body text-[11px] text-coal/50">
+                    Transfiere la parte digital con el QR de abajo y sube el comprobante. El resto lo pagas en efectivo al domiciliario.
+                  </p>
+                </div>
+              )}
+
+              {/* QR + cuenta/llave para transferir */}
               {!order.transferValidated && (
                 <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
                   <p className="font-body text-xs text-coal/60 text-center font-semibold">
-                    Escanea para pagar
+                    Escanea el QR o transfiere a la cuenta
                   </p>
                   <img
                     src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
                     alt="QR Bancolombia DELISTARS"
                     className="w-52 h-52 object-contain"
                   />
-                  <p className="font-body text-xs text-coal/70 text-center font-semibold">
-                    Bancolombia Ahorros
-                  </p>
-                  <p className="font-body text-lg font-bold text-coal tracking-widest text-center">
-                    420 679 938 91
-                  </p>
-                  <p className="font-body text-[11px] text-coal/50 text-center">DELISTARS</p>
+                  {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
+                  <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
+                    <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
+                    <p className="font-body text-xs text-coal/70 font-semibold">Bancolombia Ahorros</p>
+                    <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
+                      420 679 938 91
+                    </p>
+                    <p className="font-body text-[11px] text-coal/50">DELISTARS</p>
+                  </div>
                 </div>
               )}
 
@@ -1102,6 +1333,8 @@ function ClientOrderDetail({ order, onClose }) {
           {/* Timeline */}
           <div className="flex flex-col gap-2">
             {STATUS_STEPS.filter((s, i, arr) => {
+              // En recoger en sede no hay domiciliario: ocultamos esos pasos
+              if (order.deliveryMode === 'pickup' && ['assigned','accepted','in_transit','arrived'].includes(s.key)) return false
               const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
               if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
               return true
@@ -1252,17 +1485,20 @@ function ClientOrderDetail({ order, onClose }) {
               )}
 
               {!isDelivered && (
-                <div className="flex gap-2">
-                  <textarea
-                    className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                    placeholder="Escríbele al cajero…"
-                    value={clientMsgText}
-                    onChange={e => setClientMsgText(e.target.value)}
-                  />
-                  <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
-                    className="btn-primary px-3 self-end">
-                    <Send size={16} />
-                  </button>
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-2">
+                    <textarea
+                      className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                      placeholder="Escríbele al cajero…"
+                      value={clientMsgText}
+                      onChange={e => setClientMsgText(e.target.value)}
+                    />
+                    <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
+                      className="btn-primary px-3 self-end">
+                      <Send size={16} />
+                    </button>
+                  </div>
+                  {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
                 </div>
               )}
             </div>
