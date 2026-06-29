@@ -16,6 +16,7 @@ const Layout = () => {
     { label: 'Trabajadores', path: '/trabajadores', icon: '👥' },
     { label: 'Domicilios', path: '/domicilios', icon: '🛵' },
     { label: 'Usuarios', path: '/usuarios', icon: '🧑‍🍳' },
+    { label: 'Fidelización', path: '/fidelizacion', icon: '🎁' },
     { label: 'Turnos', path: '/turnos', icon: '🗓️' },
     { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]

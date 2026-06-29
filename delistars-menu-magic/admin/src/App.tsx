@@ -9,6 +9,7 @@ import Trabajadores from '@/pages/Trabajadores'
 import Sedes from '@/pages/Sedes'
 import Domicilios from '@/pages/Domicilios'
 import Usuarios from '@/pages/Usuarios'
+import Fidelizacion from '@/pages/Fidelizacion'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
 import Layout from '@/components/Layout'
@@ -46,6 +47,7 @@ function App() {
               <Route path="trabajadores" element={<Trabajadores />} />
               <Route path="domicilios" element={<Domicilios />} />
               <Route path="usuarios" element={<Usuarios />} />
+              <Route path="fidelizacion" element={<Fidelizacion />} />
               <Route path="turnos" element={<Turnos />} />
               <Route path="vacantes" element={<Vacantes />} />
             </Route>
