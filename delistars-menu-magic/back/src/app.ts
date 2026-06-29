@@ -35,8 +35,25 @@ const app: Express = express();
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
 // Middleware
+// CORS: usar la lista de CORS_ORIGIN si está definida. Las apps se sirven
+// same-origin tras el gateway (/api/ en el mismo dominio), así que no dependen
+// de CORS; por eso en producción NO hacemos fallback a '*' (evita exponer la
+// API a orígenes de terceros). En desarrollo sí se permite '*' por comodidad.
+const corsOrigins = process.env.CORS_ORIGIN
+  ?.split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+if (process.env.NODE_ENV === 'production' && !corsOrigins?.length) {
+  console.warn('⚠️ CORS_ORIGIN no está definido en producción: se bloquean los orígenes cruzados.');
+}
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',') || '*',
+  origin: corsOrigins?.length
+    ? corsOrigins
+    : process.env.NODE_ENV === 'production'
+      ? false
+      : '*',
 }));
 
 app.use(express.json());

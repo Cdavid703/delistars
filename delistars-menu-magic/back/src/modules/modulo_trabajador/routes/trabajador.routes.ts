@@ -148,7 +148,7 @@ router.post("/", requireAdmin, TrabajadorController.createTrabajador);
  *       400:
  *         description: Error al obtener los trabajadores
  */
-router.get("/", TrabajadorController.getAllTrabajadores);
+router.get("/", requireAdmin, TrabajadorController.getAllTrabajadores);
 
 /**
  * @swagger
@@ -179,7 +179,7 @@ router.get("/", TrabajadorController.getAllTrabajadores);
  *       404:
  *         description: Trabajador no encontrado
  */
-router.get("/:id", TrabajadorController.getTrabajadorById);
+router.get("/:id", requireAdmin, TrabajadorController.getTrabajadorById);
 
 /**
  * @swagger
@@ -215,5 +215,58 @@ router.get("/:id", TrabajadorController.getTrabajadorById);
  *         description: Error al cambiar la contraseña
  */
 router.put("/:id/cambiar-contraseña", requireAdmin, TrabajadorController.changePassword);
+
+/**
+ * @swagger
+ * /trabajadores/{id}:
+ *   put:
+ *     tags:
+ *       - Trabajadores
+ *     summary: Actualizar nombre y apellido de un trabajador
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nombre_trabajador:
+ *                 type: string
+ *               apellido_trabajador:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Trabajador actualizado exitosamente
+ *       400:
+ *         description: Error al actualizar el trabajador
+ */
+router.put("/:id", requireAdmin, TrabajadorController.updateTrabajador);
+
+/**
+ * @swagger
+ * /trabajadores/{id}:
+ *   delete:
+ *     tags:
+ *       - Trabajadores
+ *     summary: Eliminar un trabajador
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Trabajador eliminado exitosamente
+ *       400:
+ *         description: Error al eliminar el trabajador
+ */
+router.delete("/:id", requireAdmin, TrabajadorController.deleteTrabajador);
 
 export default router;

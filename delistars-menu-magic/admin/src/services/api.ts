@@ -110,7 +110,9 @@ export const apiService = {
   // Trabajadores
   async getTrabajadores(): Promise<Trabajador[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores`);
+      const response = await fetch(`${API_BASE_URL}/trabajadores`, {
+        headers: await authHeaders(),
+      });
       if (!response.ok) throw new Error('Failed to fetch trabajadores');
       const data = await response.json();
       return data.data || [];
