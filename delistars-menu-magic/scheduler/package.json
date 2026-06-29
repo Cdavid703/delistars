@@ -1,0 +1,15 @@
+{
+  "name": "delistars-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Abre/cierra la plataforma de clientes (config/client_platform) automáticamente todos los días.",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "firebase": "^12.13.0",
+    "node-cron": "^3.0.3"
+  }
+}

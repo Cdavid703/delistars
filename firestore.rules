@@ -59,6 +59,14 @@ service cloud.firestore {
     }
     function isStaff() { return isAdmin() || isCashier() || isDriver(); }
 
+    // Bot de Firebase Auth (correo/contraseña) dedicado SOLO a abrir/cerrar
+    // la plataforma automáticamente (ver delistars-menu-magic/scheduler).
+    // A propósito no es admin ni cajero: solo puede tocar config/client_platform
+    // y solo los campos active/updatedBy/updatedAt — nada más en toda la base.
+    function isAutoOpenBot() {
+      return isSignedIn() && userEmail() == 'auto-open@delistars-domicilios.app';
+    }
+
     // Admins de confianza total — pueden modificar fidelización (corregir
     // progreso, otorgar/anular premios manualmente desde /admin/fidelizacion).
     // Subconjunto de isAdmin(): a propósito NO incluye a todos los admins
@@ -98,7 +106,11 @@ service cloud.firestore {
     // ── Config de la app (config/client_platform) ──────────────────────────
     match /config/{docId} {
       allow read:  if true;
-      allow write: if isCashier() || isAdmin();
+      allow write: if isCashier() || isAdmin()
+                   || (
+                     isAutoOpenBot() &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedBy','updatedAt'])
+                   );
     }
 
     // ── Listas de roles dinámicos ──────────────────────────────────────────

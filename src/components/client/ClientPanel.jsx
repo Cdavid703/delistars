@@ -244,7 +244,7 @@ export default function ClientPanel() {
             <Clock size={18} className="text-cream/70 flex-shrink-0" />
             <p className="font-body text-cream/70 text-sm text-left">
               Horario habitual:<br />
-              <span className="font-semibold text-cream">6:00 PM – 11:00 PM</span>
+              <span className="font-semibold text-cream">5:30 PM – 11:30 PM</span>
             </p>
           </div>
           <button onClick={logout} className="mt-8 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors">
@@ -1935,7 +1935,7 @@ const CLIENT_HELP_SECTIONS = [
   {
     id: 'horario', emoji: '🕕', title: 'Horario de atención', color: 'text-mustard',
     content: [
-      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 6:00 PM a 11:00 PM. Si la plataforma aparece como "cerrada", intenta más tarde o escríbenos por WhatsApp.' },
+      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 5:30 PM a 11:30 PM. Si la plataforma aparece como "cerrada", intenta más tarde o escríbenos por WhatsApp.' },
       { type: 'tip', text: 'Cada sede tiene su propio número de WhatsApp. Lo encuentras en la tarjeta de sede del panel principal.' },
     ],
   },

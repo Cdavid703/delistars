@@ -1166,7 +1166,7 @@ const MANUAL_SECTIONS = [
         ['Verde parpadeando', 'Plataforma ACTIVA — clientes pueden pedir'],
         ['Gris apagado',      'Plataforma APAGADA — clientes ven pantalla cerrada'],
       ]},
-      { type: 'tip', text: 'Actívala al inicio del turno (6:00 PM) y apágala al cierre (11:00 PM).' },
+      { type: 'tip', text: 'Se abre y cierra sola todos los días (5:30 PM – 11:30 PM). Úsalo solo si necesitas prenderla antes o apagarla antes por algo puntual.' },
     ],
   },
   {
