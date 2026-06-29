@@ -15,8 +15,11 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
   const [orderNumber,   setOrderNumber]   = useState(order.orderNumber || '')
   const [driverId,      setDriverId]      = useState(order.driverEmail || '')
   const [driverNotes,   setDriverNotes]   = useState(order.driverNotes || '')
-  const [payExact,      setPayExact]      = useState(order.payExact ?? true)
-  const [payAmount,     setPayAmount]     = useState(String(order.payAmount || ''))
+  // Pre-llenar desde lo que el cliente ya indicó en su calculadora de cambio
+  // (cashBillAmount/cashChange) si el cajero aún no registró un payAmount, para
+  // no perder el dato y que el domiciliario sepa que debe llevar cambio.
+  const [payExact,      setPayExact]      = useState(order.payExact ?? !(order.cashChange > 0))
+  const [payAmount,     setPayAmount]     = useState(String(order.payAmount || order.cashBillAmount || ''))
   const [loading,       setLoading]       = useState(false)
   const [errors,        setErrors]        = useState([])
 
