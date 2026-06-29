@@ -148,4 +148,29 @@ router.get('/:id', sedeController.getSedeById);
  */
 router.put('/:id', requireAdmin, sedeController.updateSede);
 
+/**
+ * @swagger
+ * /sedes/{id}:
+ *   delete:
+ *     tags:
+ *       - Sedes
+ *     summary: Eliminar una sede
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Sede eliminada correctamente
+ *       404:
+ *         description: Sede no encontrada
+ *       409:
+ *         description: La sede tiene ventas asociadas y no puede eliminarse
+ *       500:
+ *         description: Error en el servidor
+ */
+router.delete('/:id', requireAdmin, sedeController.deleteSede);
+
 export default router;

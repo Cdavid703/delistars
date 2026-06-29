@@ -144,4 +144,13 @@ export class SedeRepository {
 
     return result[0];
   }
+
+  async delete(id: number): Promise<boolean> {
+    const dataSource = getDataSource();
+    const result = await dataSource.query(
+      `DELETE FROM tbl_sedes WHERE id_sede = $1 RETURNING id_sede`,
+      [id]
+    );
+    return result.length > 0;
+  }
 }

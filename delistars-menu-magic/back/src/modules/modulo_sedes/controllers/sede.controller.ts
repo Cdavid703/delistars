@@ -116,4 +116,30 @@ export class SedeController {
       });
     }
   };
+
+  public deleteSede = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const sedeId = Number(req.params.id);
+      if (isNaN(sedeId)) {
+        res.status(400).json({ message: 'ID de sede inválido' });
+        return;
+      }
+
+      const deleted = await this.sedeService.deleteSede(sedeId);
+      if (!deleted) {
+        res.status(404).json({ message: 'Sede no encontrada' });
+        return;
+      }
+
+      res.status(200).json({ message: 'Sede eliminada correctamente' });
+    } catch (error) {
+      console.error('Error al eliminar sede:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      if (errorMessage.includes('ventas asociadas')) {
+        res.status(409).json({ message: 'No se puede eliminar la sede', error: errorMessage });
+      } else {
+        res.status(500).json({ message: 'Error al eliminar la sede', error: errorMessage });
+      }
+    }
+  };
 }

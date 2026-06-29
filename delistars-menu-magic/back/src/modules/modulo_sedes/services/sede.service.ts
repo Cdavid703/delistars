@@ -29,4 +29,18 @@ export class SedeService {
   async updateSede(id: number, updateData: UpdateSedeDTO): Promise<ISede | null> {
     return await this.sedeRepository.update(id, updateData);
   }
+
+  async deleteSede(id: number): Promise<boolean> {
+    const sede = await this.sedeRepository.findById(id);
+    if (!sede) return false;
+    try {
+      return await this.sedeRepository.delete(id);
+    } catch (error: unknown) {
+      // 23503 = foreign_key_violation: hay ventas que referencian esta sede.
+      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === '23503') {
+        throw new Error('No se puede eliminar la sede porque tiene ventas asociadas');
+      }
+      throw error;
+    }
+  }
 }
