@@ -40,10 +40,16 @@ export class ProductsController {
         return;
       }
 
+      const precio = Number(precio_venta);
+      if (!Number.isFinite(precio) || precio < 0) {
+        ApiResponse.error(res, 'precio_venta debe ser un número mayor o igual a 0', 400);
+        return;
+      }
+
       const product = await this.service.create({
         nombre_producto,
         descripcion_producto,
-        precio_venta: Number(precio_venta),
+        precio_venta: precio,
         id_categoria: Number(id_categoria),
         image_url1: image_url1 || null,
         image_url2: image_url2 || null
@@ -78,6 +84,14 @@ export class ProductsController {
       ) {
         ApiResponse.error(res, 'Se debe proporcionar al menos un campo para actualizar', 400);
         return;
+      }
+
+      if (precio_venta !== undefined) {
+        const precio = Number(precio_venta);
+        if (!Number.isFinite(precio) || precio < 0) {
+          ApiResponse.error(res, 'precio_venta debe ser un número mayor o igual a 0', 400);
+          return;
+        }
       }
 
       const updateData: any = {};
