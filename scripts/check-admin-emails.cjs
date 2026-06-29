@@ -11,13 +11,18 @@ const FILES = [
   SOURCE_OF_TRUTH,
   'src/services/roles.js',
   'delistars-menu-magic/front/src/lib/staff.ts',
+  // Reglas de Firestore: lista hardcodeada dentro de isAdmin() { ... in [ ... ] }
+  'firestore.rules',
 ]
 
-// Extrae los emails del bloque `ADMIN_EMAILS = [ ... ]` de un archivo.
+// Extrae los emails de la lista de admins de un archivo. En .ts/.js es el bloque
+// `ADMIN_EMAILS = [ ... ]`; en firestore.rules es el `userEmail() in [ ... ]`.
 function extractAdminEmails(file) {
   const content = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8')
-  const block = content.match(/ADMIN_EMAILS\s*=\s*\[([\s\S]*?)\]/)
-  if (!block) throw new Error(`No se encontró ADMIN_EMAILS en ${file}`)
+  const block = file.endsWith('.rules')
+    ? content.match(/userEmail\(\)\s+in\s+\[([\s\S]*?)\]/)
+    : content.match(/ADMIN_EMAILS\s*=\s*\[([\s\S]*?)\]/)
+  if (!block) throw new Error(`No se encontró la lista de admins en ${file}`)
   const emails = block[1].match(/['"]([^'"]+@[^'"]+)['"]/g) || []
   return emails.map(e => e.replace(/['"]/g, '').toLowerCase()).sort()
 }

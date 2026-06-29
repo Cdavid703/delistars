@@ -1,0 +1,125 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reglas de seguridad de Firestore — DeliStars (app de domicilios)
+//
+// Modelo de auth:
+//   • Staff (admin/cajero/domiciliario): Google sign-in.
+//   • Clientes: sign-in anónimo (signInAnonymously). Tienen uid pero no email.
+//
+// Roles:
+//   • Admin: lista hardcodeada (DEBE coincidir con ADMIN_EMAILS del front —
+//     ver src/services/roles.js y `npm run check:emails`).
+//   • Cajero/Domiciliario: existe un doc cuyo ID es su email en
+//     roles_cashiers / roles_drivers (así los resuelve AuthContext).
+//
+// ⚠️ Probar en Rules Playground / emulador ANTES de desplegar a producción.
+//    Rollback = restaurar las reglas anteriores en la consola de Firebase.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function userEmail()  { return request.auth.token.email; }
+
+    // Admins hardcodeados (sincronizar con ADMIN_EMAILS del front).
+    function isAdmin() {
+      return isSignedIn() && userEmail() in [
+        'thebesta4321@gmail.com',
+        'cdavid.jaramillo@gmail.com',
+        'josemigeul44@gmail.com'
+      ];
+    }
+    // Cajeros/domiciliarios "por defecto" hardcodeados (espejo de DEFAULT_CASHIERS
+    // y DEFAULT_DRIVERS en src/services/roles.js). Pueden NO tener doc en Firestore,
+    // por eso se reconocen aquí además del exists() de la colección dinámica.
+    function isCashier() {
+      return isSignedIn() && (
+        userEmail() in [
+          'lluis02martinez@gmail.com',
+          'josemanuellondonorivillas@gmail.com',
+          'vvillegasmazo@gmail.com',
+          'yencytp@gmail.com',
+          'cdavid.jaramillo@gmail.com',
+          'thebesta4321@gmail.com'
+        ]
+        || exists(/databases/$(database)/documents/roles_cashiers/$(userEmail()))
+      );
+    }
+    function isDriver() {
+      return isSignedIn() && (
+        userEmail() in [
+          'cdavid.jaramillo@gmail.com',
+          'josemanuellondonorivillas@gmail.com'
+        ]
+        || exists(/databases/$(database)/documents/roles_drivers/$(userEmail()))
+      );
+    }
+    function isStaff() { return isAdmin() || isCashier() || isDriver(); }
+
+    // ── Pedidos ────────────────────────────────────────────────────────────
+    // Cliente: solo los suyos (clientUid == su uid). Staff: todos.
+    match /orders/{orderId} {
+      allow read:   if isStaff()
+                    || (isSignedIn() && resource.data.clientUid == request.auth.uid);
+      allow create: if isStaff()
+                    || (isSignedIn() && request.resource.data.clientUid == request.auth.uid);
+      allow update: if isStaff()
+                    || (isSignedIn() && resource.data.clientUid == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ── Config de la app (config/client_platform) ──────────────────────────
+    match /config/{docId} {
+      allow read:  if isSignedIn();
+      allow write: if isCashier() || isAdmin();
+    }
+
+    // ── Listas de roles dinámicos ──────────────────────────────────────────
+    // Cualquier usuario autenticado las lee (AuthContext resuelve su rol);
+    // solo admin las modifica.
+    match /roles_cashiers/{email} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /roles_drivers/{email} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Ubicación de domiciliarios (doc id = email del domiciliario) ────────
+    match /driver_locations/{email} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && userEmail() == email);
+    }
+
+    // ── Perfil de cliente (doc id = uid) ───────────────────────────────────
+    match /customers/{uid} {
+      allow read:  if isStaff() || (isSignedIn() && request.auth.uid == uid);
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ── Turnos (horarios del equipo) ───────────────────────────────────────
+    match /turnos/{weekId} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Contador de número de pedido (transacción) ─────────────────────────
+    match /counters/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Postulaciones a vacantes (formulario público, sin login) ───────────
+    match /vacantes_postulantes/{appId} {
+      allow create: if true;            // postulación pública
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ── Todo lo demás: denegado ────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
