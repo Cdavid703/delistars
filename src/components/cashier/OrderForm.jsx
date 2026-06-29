@@ -42,8 +42,6 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
     if (!form.items.trim())       errs.push('Falta el detalle del pedido')
     if (!driverId)                errs.push('Selecciona un domiciliario')
 
-    console.error('[OrderForm] handleSubmit — form:', form, '| driverId:', driverId, '| errs:', errs)
-
     if (errs.length) {
       setErrors(errs)
       return
@@ -52,7 +50,6 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
     // ── Envío ────────────────────────────────────────────────────────────────
     setErrors([])
     setLoading(true)
-    console.error('[OrderForm] llamando onSubmit...')
     try {
       await onSubmit({
         ...form,
@@ -61,7 +58,6 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
         deliveryPrice: dp,
         totalPrice:    total,
       })
-      console.error('[OrderForm] onSubmit OK')
     } catch (err) {
       console.error('[OrderForm] onSubmit ERROR:', err)
       const msg = err?.code === 'permission-denied'

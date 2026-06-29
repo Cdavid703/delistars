@@ -266,7 +266,6 @@ export default function CashierPanel() {
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
-    console.error('[CashierPanel] handleCreateOrder — data:', data, '| sede:', sede?.id)
     const driver = drivers.find(d => d.id === data.driverId)
     const driverEmail = (driver?.id || data.driverId || '').toLowerCase().trim()
     // Auto-asignar número solo si el cajero no escribió uno manualmente
@@ -290,7 +289,6 @@ export default function CashierPanel() {
         createdAt:     serverTimestamp(),
         updatedAt:     serverTimestamp(),
       })
-      console.error('[CashierPanel] addDoc OK')
       setShowForm(false)
     } catch (err) {
       console.error('[CashierPanel] addDoc ERROR:', err)
