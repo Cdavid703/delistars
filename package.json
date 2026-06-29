@@ -10,6 +10,7 @@
     "build:vacantes": "vite build --config vite.vacantes.config.js && node scripts/postbuild-vacantes.cjs",
     "build:turnos": "vite build --config vite.turnos.config.js && node scripts/postbuild-turnos.cjs",
     "lint": "eslint .",
+    "check:emails": "node scripts/check-admin-emails.cjs",
     "preview": "vite preview",
     "preview:vacantes": "vite preview --config vite.vacantes.config.js",
     "preview:turnos": "vite preview --config vite.turnos.config.js"

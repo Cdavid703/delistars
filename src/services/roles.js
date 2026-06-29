@@ -1,4 +1,7 @@
 // ─── Roles fijos hardcoded ───────────────────────────────────────────────────
+// FUENTE DE VERDAD de ADMIN_EMAILS: delistars-menu-magic/admin/src/lib/team.ts
+// (esta copia es para la app de domicilios). Mantener sincronizadas las 3 apps;
+// verificar con `npm run check:emails`.
 export const ADMIN_EMAILS = [
   'thebesta4321@gmail.com',   // Andrés Elías Arango Monsalve
   'cdavid.jaramillo@gmail.com', // Carlos David Jaramillo Gallego (dev)
