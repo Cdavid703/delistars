@@ -18,6 +18,7 @@ import {
   Send, Radio, Route, Target
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
+import { cashAmount } from '../../utils/payments'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const TABS = [
@@ -410,7 +411,7 @@ export default function DeliveryPanel() {
 
       {/* Cash to collect banner in active tab */}
       {tab === 'active' && activeOrders.some(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto') && (() => {
-        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto').reduce((s, o) => s + (o.totalPrice || 0), 0)
+        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto').reduce((s, o) => s + cashAmount(o), 0)
         return (
           <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
             <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo a cobrar en ruta:</span>
@@ -948,7 +949,7 @@ function DriverOrderDetail({ order, onClose }) {
 function DriverEntregadosSummary({ orders }) {
   const cashOrders   = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const totalFees    = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
-  const totalCash    = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+  const totalCash    = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
 
   return (
     <div className="mx-4 mt-3 bg-gradient-to-r from-mint/10 to-mustard/10 border border-mint/20 rounded-2xl p-4 flex flex-col gap-3">
@@ -988,7 +989,7 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
   )
 
   const cashOrders = completedToday.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
-  const totalCash  = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+  const totalCash  = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
 
   const feeOrders  = completedToday.filter(o => o.deliveryPrice > 0)
   const feeGroups  = {}

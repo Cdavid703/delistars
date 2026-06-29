@@ -6,6 +6,7 @@ import {
 import { db, getNextOrderNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
+import { cashAmount } from '../../utils/payments'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
@@ -1048,12 +1049,6 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
 
   const cashOrders    = filtered.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const cashPending   = cashOrders.filter(o => o.status === 'pending_cuadre')
-  // Efectivo real por pedido: en Mixto solo la porción mixtoEfectivo se cobró en
-  // efectivo (el resto fue transferencia). Si no se registró el desglose, se usa
-  // el total como respaldo conservador (mejor sobrestimar que perder efectivo).
-  const cashAmount    = o => (o.payment === 'Mixto' && o.mixtoEfectivo != null && o.mixtoEfectivo !== '')
-    ? (Number(o.mixtoEfectivo) || 0)
-    : (o.totalPrice || 0)
   const totalCash     = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
 
   const feeOrders     = filtered.filter(o => o.deliveryPrice > 0)
