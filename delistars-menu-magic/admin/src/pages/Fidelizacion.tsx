@@ -37,6 +37,12 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 
 const fmtDate = (ts?: { toDate: () => Date }) => ts?.toDate ? ts.toDate().toLocaleDateString('es-CO') : '—'
 
+// El status del documento puede seguir en 'available' aunque ya venció (no hay
+// proceso que lo actualice solo) — para mostrar/contar bien hay que chequear
+// la fecha también, igual que ya hace el cliente en availableRewardsForSede.
+const isLive = (r: Reward) => r.status === 'available' && (!r.expiresAt?.toDate || r.expiresAt.toDate().getTime() > Date.now())
+const statusOf = (r: Reward) => (r.status === 'available' && !isLive(r)) ? 'expired' : r.status
+
 export default function Fidelizacion() {
   const { user } = useAuthStore()
   const canManage = isSuperAdminEmail(user?.email)
@@ -168,7 +174,7 @@ export default function Fidelizacion() {
           {SEDES.map((sede) => {
             const loy = customer.loyalty?.[sede.id] || {}
             const count = loy.count ?? 0
-            const available = rewards.filter((r) => r.sedeId === sede.id && r.status === 'available')
+            const available = rewards.filter((r) => r.sedeId === sede.id && isLive(r))
             return (
               <div key={sede.id} className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -213,7 +219,8 @@ export default function Fidelizacion() {
             ) : (
               <div className="flex flex-col gap-2">
                 {rewards.map((r) => {
-                  const meta = STATUS_LABEL[r.status] || { label: r.status, cls: 'bg-gray-100 text-gray-500' }
+                  const status = statusOf(r)
+                  const meta = STATUS_LABEL[status] || { label: status, cls: 'bg-gray-100 text-gray-500' }
                   const sedeName = SEDES.find((s) => s.id === r.sedeId)?.name || r.sedeId
                   return (
                     <div key={r.id} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
@@ -228,7 +235,7 @@ export default function Fidelizacion() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.cls}`}>{meta.label}</span>
-                        {r.status === 'available' && canManage && (
+                        {isLive(r) && canManage && (
                           <button onClick={() => revokeReward(r.id)} title="Anular premio" className="text-pepper hover:bg-pepper/10 rounded p-1">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
