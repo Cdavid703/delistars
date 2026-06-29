@@ -95,9 +95,46 @@ service cloud.firestore {
     }
 
     // ── Perfil de cliente (doc id = uid) ───────────────────────────────────
+    // El campo "loyalty" (progreso de fidelización por sede) NUNCA lo escribe
+    // el cliente — solo staff (lo actualiza el domiciliario al marcar entregado).
+    // El cliente sí puede crear/actualizar el resto de su perfil (nombre, tel,
+    // direcciones) con normalidad.
     match /customers/{uid} {
-      allow read:  if isStaff() || (isSignedIn() && request.auth.uid == uid);
-      allow write: if isSignedIn() && request.auth.uid == uid;
+      allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isStaff()
+                    || (isSignedIn() && request.auth.uid == uid && !('loyalty' in request.resource.data));
+      allow update: if isStaff()
+                    || (
+                      isSignedIn() && request.auth.uid == uid &&
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loyalty'])
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // ── Premios de fidelización (subcolección de customers) ─────────────────
+    // Solo staff puede CREAR un premio (otorgarlo al entregar el pedido #10,
+    // #20 o #30). El cliente solo puede: marcar que ya lo vio (notified) o
+    // canjear un premio propio que esté vigente y disponible — nunca inventar
+    // uno, revivir uno vencido/ya usado, ni canjear el de otra persona (se
+    // valida contra el pedido real referenciado).
+    match /customers/{uid}/rewards/{rewardId} {
+      allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isStaff();
+      allow delete: if isAdmin();
+      allow update: if isStaff()
+                    || (
+                      isSignedIn() && request.auth.uid == uid &&
+                      resource.data.status == 'available' &&
+                      resource.data.expiresAt > request.time &&
+                      (
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notified'])
+                        || (
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','redeemedAt','orderId','notified']) &&
+                          request.resource.data.status == 'redeemed' &&
+                          get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.clientUid == uid
+                        )
+                      )
+                    );
     }
 
     // ── Turnos (horarios del equipo) ───────────────────────────────────────

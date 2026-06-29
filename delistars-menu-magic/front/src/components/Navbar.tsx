@@ -154,8 +154,13 @@ export const Navbar = () => {
               {loginOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setLoginOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-60 z-50 bg-background border border-border rounded-xl shadow-card p-2 flex flex-col gap-1 animate-fade-in">
-                    <p className="px-2 py-1.5 text-xs text-muted-foreground">Inicia para hacer tu pedido</p>
+                  <div className="absolute right-0 mt-2 w-64 z-50 bg-background border border-border rounded-xl shadow-card p-2 flex flex-col gap-1 animate-fade-in">
+                    <div className="px-2 pt-1.5 pb-2 mb-1 border-b border-border">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1">🎁 Programa de fidelización</p>
+                      <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                        Inicia con <strong>Google</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial gratis</strong>. Como invitado no acumulas.
+                      </p>
+                    </div>
                     <button onClick={doLogin} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
                       <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
                     </button>
@@ -215,7 +220,12 @@ export const Navbar = () => {
               </button>
             ) : (
               <div className="flex flex-col gap-1 py-1">
-                <p className="text-xs text-muted-foreground">Inicia para hacer tu pedido</p>
+                <div className="bg-secondary/40 rounded-lg px-2.5 py-2 mb-1">
+                  <p className="text-xs font-semibold text-foreground">🎁 Programa de fidelización</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                    Inicia con <strong>Google</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial gratis</strong>. Como invitado no acumulas.
+                  </p>
+                </div>
                 <button onClick={doLogin} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
                   <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
                 </button>

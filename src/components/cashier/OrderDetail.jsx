@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
-import { db, getNextOrderNumber } from '../../services/firebase'
+import { db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
@@ -198,6 +198,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         rejectionReason: rejectReason.trim(),
         updatedAt:       serverTimestamp(),
       })
+      restoreLoyaltyRedemption(order) // si tenía un premio canjeado, se devuelve
       onClose()
     } finally { setLoading(false) }
   }
@@ -260,6 +261,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     const items       = escHtml(order.items || '').replace(/\n/g, '<br/>')
     const notesStr    = order.notes ? `<p><em>Indicaciones: ${escHtml(order.notes)}</em></p>` : ''
     const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${escHtml(order.cashierNotes)}</em></p>` : ''
+    const loyaltyNote = order.loyaltyRedemption?.count > 0
+      ? `<div class="divider"></div><p class="bold center" style="border:2px solid #000;padding:6px">🎁 INCLUYE ${order.loyaltyRedemption.count}x ${escHtml(LOYALTY_REWARD.name).toUpperCase()} GRATIS<br/>(premio fidelización — NO cobrar)</p>`
+      : ''
     const date        = new Date().toLocaleString('es-CO')
 
     const win = window.open('', '_blank', 'width=420,height=700')
@@ -285,6 +289,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     <p class="bold">Pedido:</p>
     <div class="items">${items}</div>
     ${notesStr}
+    ${loyaltyNote}
     <div class="divider"></div>
     <div class="row"><span>Valor pedido:</span><span>${qp}</span></div>
     <div class="row"><span>Domicilio:</span><span>${dp}</span></div>
@@ -447,6 +452,21 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
         <div className="p-5 flex flex-col gap-4">
           <p className="font-body text-xs text-coal/40">{time}</p>
+
+          {/* Premio de fidelización canjeado — bloque MUY visible para que la caja
+              no se confunda al ver una hamburguesa que no aparece en el precio. */}
+          {order.loyaltyRedemption?.count > 0 && (
+            <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
+              <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
+                🎁 PREMIO DE FIDELIZACIÓN CANJEADO
+              </p>
+              <p className="font-body text-sm text-coal/80 mt-1.5 leading-relaxed">
+                Este pedido incluye <strong>{order.loyaltyRedemption.count}x {LOYALTY_REWARD.name} GRATIS</strong>.
+                {' '}<strong>No la cobres</strong> — el cliente la ganó por 10 domicilios entregados en esta sede.
+                Avísale a cocina que la incluya igual.
+              </p>
+            </div>
+          )}
 
           {/* Client info */}
           <Section title="Cliente">

@@ -3,7 +3,10 @@ import {
   collection, query, where, onSnapshot, addDoc, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
-import { db, storage, getNextOrderNumber } from '../../services/firebase'
+import {
+  db, storage, getNextOrderNumber,
+  LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
+} from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -97,6 +100,43 @@ export default function ClientPanel() {
 
   const cashierMsgCountRef = useRef(null)  // null = primera carga, no reproducir
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
+
+  // ─── Fidelización ──────────────────────────────────────────────────────────
+  // Solo aplica a clientes con cuenta de Google real (no invitados/anónimos).
+  const [loyaltyRewards,  setLoyaltyRewards]  = useState([])
+  const [loyaltyProgress, setLoyaltyProgress] = useState({})
+  const [celebrateRewards, setCelebrateRewards] = useState([])
+
+  useEffect(() => {
+    if (!user?.uid || !user?.email) return
+    return onSnapshot(collection(db, 'customers', user.uid, 'rewards'), snap => {
+      setLoyaltyRewards(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }, () => {})
+  }, [user?.uid, user?.email])
+
+  useEffect(() => {
+    if (!user?.uid || !user?.email) return
+    return onSnapshot(doc(db, 'customers', user.uid), snap => {
+      setLoyaltyProgress(snap.exists() ? (snap.data().loyalty || {}) : {})
+    }, () => {})
+  }, [user?.uid, user?.email])
+
+  // Premios recién ganados que el cliente todavía no ha visto.
+  useEffect(() => {
+    const now = Date.now()
+    const unseen = loyaltyRewards.filter(r =>
+      r.status === 'available' && !r.notified && (r.expiresAt?.toMillis?.() ?? Infinity) > now
+    )
+    if (unseen.length > 0) setCelebrateRewards(unseen)
+  }, [loyaltyRewards])
+
+  const sedeLoyalty    = (sede?.id && loyaltyProgress[sede.id]) || { count: 0, totalDelivered: 0 }
+  const availableForSede = availableRewardsForSede(loyaltyRewards, sede?.id)
+
+  const dismissCelebration = () => {
+    celebrateRewards.forEach(r => markRewardNotified(user.uid, r.id).catch(() => {}))
+    setCelebrateRewards([])
+  }
 
   useEffect(() => {
     return onSnapshot(
@@ -226,8 +266,9 @@ export default function ClientPanel() {
   const handleCreateOrder = async (data) => {
     let orderNumber = ''
     try { orderNumber = String(await getNextOrderNumber(sede?.id)) } catch (_) {}
-    await addDoc(collection(db, 'orders'), {
-      ...data,
+    const { redeemRewardIds = [], ...orderData } = data
+    const newOrderRef = await addDoc(collection(db, 'orders'), {
+      ...orderData,
       orderNumber,
       clientUid:   user.uid,
       clientEmail: user.email   || null,
@@ -238,9 +279,15 @@ export default function ClientPanel() {
       // El pago se elige tras la cotización de la caja; aún sin definir.
       payment:        '',
       cashOnDelivery: false,
+      ...(redeemRewardIds.length > 0 ? {
+        loyaltyRedemption: { sedeId: sede?.id || '', rewardIds: redeemRewardIds, count: redeemRewardIds.length },
+      } : {}),
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
     })
+    if (redeemRewardIds.length > 0) {
+      redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
+    }
     setShowForm(false)
     // Guardar/actualizar perfil del cliente frecuente (best-effort, no bloquea)
     if (user.uid) {
@@ -314,6 +361,34 @@ export default function ClientPanel() {
           </div>
         </div>
       </div>
+
+      {/* Fidelización — solo clientes con cuenta de Google (no invitados) */}
+      {user?.email && (
+        <div className="mx-4 mt-3">
+          <div className="card bg-white shadow-soft border border-mustard/30">
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-display text-sm tracking-wide text-coal flex items-center gap-1.5">
+                🍔 Fidelización {sede?.name}
+              </p>
+              {availableForSede.length > 0 && (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-mint/20 text-mint">
+                  {availableForSede.length} premio{availableForSede.length > 1 ? 's' : ''} listo{availableForSede.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <div className="w-full bg-coal/10 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-all"
+                style={{ width: `${sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 0 ? 100 : ((sedeLoyalty.count % 10) / 10) * 100}%` }}
+              />
+            </div>
+            <p className="font-body text-xs text-coal/60 mt-1.5">
+              {sedeLoyalty.count}/10 domicilios entregados
+              {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial gratis! 🎉'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* PWA install card */}
       {!isStandalone && !installDismissed && (canInstall || isIOS) && (
@@ -476,7 +551,7 @@ export default function ClientPanel() {
               <button onClick={() => setShowForm(false)} className="btn-icon"><X size={20} /></button>
             </div>
             <div className="p-5">
-              <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={() => setShowForm(false)} />
+              <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={() => setShowForm(false)} availableRewards={availableForSede} />
             </div>
           </div>
         </div>
@@ -490,6 +565,11 @@ export default function ClientPanel() {
 
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
+
+      {/* Celebración de premio(s) de fidelización ganado(s) */}
+      {celebrateRewards.length > 0 && (
+        <LoyaltyCelebrationModal rewards={celebrateRewards} onClose={dismissCelebration} />
+      )}
 
       {/* Rating modal */}
       {ratingOrder && (
@@ -509,7 +589,11 @@ export default function ClientPanel() {
 }
 
 // ─── Order form ───────────────────────────────────────────────────────────────
-function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
+function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [] }) {
+  const [redeemCount, setRedeemCount] = useState(0)
+  const sortedRewards = [...availableRewards].sort(
+    (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
+  )
   const [form, setForm] = useState({
     name:               user?.displayName || '',
     phone:              '',
@@ -616,9 +700,18 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     try {
+      const redeemRewardIds = redeemCount > 0 ? sortedRewards.slice(0, redeemCount).map(r => r.id) : []
+      const items = redeemRewardIds.length > 0
+        ? `${form.items}\n${redeemRewardIds.length}x ${LOYALTY_REWARD.name} — GRATIS (premio fidelización, NO cobrar)`
+        : form.items
       // Si el pedido viene del menú web, traslada el precio ya calculado a la
       // cotización para que el cajero lo reciba pre-llenado (solo agrega el domicilio).
-      await onSubmit(fromMenu ? { ...form, quotedPrice: menuTotal, fromMenu: true } : form)
+      await onSubmit({
+        ...form,
+        items,
+        redeemRewardIds,
+        ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
+      })
     } catch (err) {
       const msg = err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
@@ -796,6 +889,32 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel }) {
           </div>
         )}
       </div>
+
+      {/* Canje de premios de fidelización ganados en esta sede */}
+      {sortedRewards.length > 0 && (
+        <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4">
+          <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
+            🎁 Tienes {sortedRewards.length} {sortedRewards.length > 1 ? 'premios' : 'premio'} disponible{sortedRewards.length > 1 ? 's' : ''}
+          </p>
+          <p className="font-body text-xs text-coal/60 mt-1 leading-relaxed">
+            {LOYALTY_REWARD.name} GRATIS (premio fidelización). Puedes usarlo ahora o guardarlo para otro pedido.
+          </p>
+          <div className="flex items-center gap-2 mt-3">
+            {Array.from({ length: sortedRewards.length + 1 }, (_, n) => n).map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setRedeemCount(n)}
+                className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+                  redeemCount === n ? 'border-mint bg-mint/20 text-mint' : 'border-coal/15 text-coal/50'
+                }`}
+              >
+                {n === 0 ? 'Guardar' : `Usar ${n}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="label-field">Indicaciones adicionales</label>
@@ -1619,6 +1738,34 @@ function ClientHistoryModal({ orders, onClose, onSelect }) {
             })
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Celebración de premio de fidelización ────────────────────────────────────
+function LoyaltyCelebrationModal({ rewards, onClose }) {
+  const count = rewards.length
+  const resetting = rewards.some(r => r.cycleReset)
+  // Nombres de las sedes donde se ganó cada premio (puede haber de más de una).
+  const sedeNames = [...new Set(rewards.map(r => SEDES[r.sedeId]?.name).filter(Boolean))]
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-coal/60 backdrop-blur-sm px-4">
+      <div className="bg-cream rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl animate-fade-in">
+        <p className="text-5xl mb-2">🎉</p>
+        <p className="font-display text-2xl text-cherry tracking-wide leading-tight">
+          ¡Ganaste {count > 1 ? `${count} Hamburguesas Especiales` : 'una Hamburguesa Especial'} gratis!
+        </p>
+        <p className="font-body text-sm text-coal/70 mt-2 leading-relaxed">
+          Por tus domicilios entregados en <strong>{sedeNames.join(' y ') || 'tu sede'}</strong>. La puedes usar ahora
+          o guardarla para tu próximo pedido — tú decides cuándo.
+        </p>
+        {resetting && (
+          <p className="font-body text-xs text-tangelo mt-3 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2">
+            Tu progreso de fidelización vuelve a empezar desde 0 — ¡sigue pidiendo para ganar más premios!
+          </p>
+        )}
+        <button onClick={onClose} className="btn-primary w-full mt-5">¡Genial!</button>
       </div>
     </div>
   )

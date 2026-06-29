@@ -25,6 +25,15 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       onClick={onClick}
       className={`order-card w-full text-left ${border}`}
     >
+      {/* Premio de fidelización canjeado — muy visible, para que no se cobre */}
+      {order.loyaltyRedemption?.count > 0 && (
+        <div className="mb-2 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
+          <p className="font-body text-xs font-bold text-mint">
+            🎁 Incluye {order.loyaltyRedemption.count}x Hamburguesa Especial GRATIS — NO cobrar
+          </p>
+        </div>
+      )}
+
       {/* Unread chat banner — very visible, at the top */}
       {unreadCount > 0 && (
         <div className="mb-2 flex items-center gap-1.5 bg-cherry/10 border border-cherry/30 rounded-xl px-3 py-2 animate-pulse">

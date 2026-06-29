@@ -3,7 +3,7 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
-import { db } from '../../services/firebase'
+import { db, registerLoyaltyDelivery } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
@@ -584,6 +584,9 @@ function DriverOrderCard({ order, onClick }) {
           )}
         </div>
       )}
+      {order.loyaltyRedemption?.count > 0 && (
+        <p className="mt-1.5 font-body text-xs font-bold text-mint">🎁 Incluye premio gratis</p>
+      )}
     </button>
   )
 }
@@ -677,6 +680,7 @@ function DriverOrderDetail({ order, onClose }) {
     const isCash = order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto'
     const newStatus = isCash ? 'pending_cuadre' : 'completed'
     update({ status: newStatus, deliveredAt: serverTimestamp() })
+    registerLoyaltyDelivery(order) // best-effort, no bloquea la entrega
   }
 
   const navAddress = encodeURIComponent(localAddr + ', Medellín, Colombia')
@@ -696,6 +700,16 @@ function DriverOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Premio de fidelización canjeado */}
+          {order.loyaltyRedemption?.count > 0 && (
+            <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
+              <p className="font-display text-base tracking-wide text-mint">🎁 Incluye premio de fidelización</p>
+              <p className="font-body text-sm text-coal/80 mt-1">
+                Este pedido lleva {order.loyaltyRedemption.count}x Hamburguesa Especial GRATIS — ya está cubierta, no es parte del cobro.
+              </p>
+            </div>
+          )}
+
           {/* Client */}
           <div className="card">
             <div className="flex items-center gap-2 mb-2">
