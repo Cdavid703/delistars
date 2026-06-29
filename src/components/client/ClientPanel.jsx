@@ -52,7 +52,7 @@ const isToday = ts => {
   return d.toDateString() === n.toDateString()
 }
 
-const fmt = v => v ? `$${Number(v).toLocaleString('es-CO')}` : null
+const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : null
 
 const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone
@@ -395,7 +395,7 @@ export default function ClientPanel() {
               <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
                 <div>
                   {o.orderNumber && <span className="font-display text-base text-cherry mr-2">#{o.orderNumber}</span>}
-                  <span className="font-body text-sm">{o.items?.slice(0, 40)}…</span>
+                  <span className="font-body text-sm">{(o.items || '—').slice(0, 40)}…</span>
                 </div>
                 <span className="text-lg">✅</span>
               </button>

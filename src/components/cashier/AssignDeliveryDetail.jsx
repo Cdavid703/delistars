@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import {
-  X, User, MapPin, ShoppingBag, CreditCard, Bike,
-  Hash, AlertCircle, DollarSign
+  X, User, MapPin, CreditCard, Bike,
+  Hash, AlertCircle
 } from 'lucide-react'
 import StatusBadge from '../common/StatusBadge'
 

@@ -10,9 +10,9 @@ import { ADMIN_EMAILS } from '../services/roles'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  MapPin, Phone, Mail, FileText, Upload, CheckCircle,
+  MapPin, Phone, Mail, Upload, CheckCircle,
   Users, Download, LogIn, LogOut, X, AlertCircle,
-  Star, Clock, Bike, DollarSign, ChevronDown, ChevronUp
+  Star
 } from 'lucide-react'
 
 // ─── Job content ──────────────────────────────────────────────────────────────

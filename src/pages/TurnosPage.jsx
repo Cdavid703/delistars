@@ -5,7 +5,7 @@ import { auth, db, provider } from '../services/firebase'
 import { format, addWeeks, startOfWeek, addDays, getISOWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ADMIN_EMAILS } from '../services/roles'
-import { LogIn, LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
+import { LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
 import Logo from '../components/common/Logo'
 
 // ─── Empleados ────────────────────────────────────────────────────────────────
@@ -201,7 +201,6 @@ function DescansosSummary({ schedule }) {
 function MiTurnoCard({ employee, schedule, monday }) {
   const mySchedule = schedule[employee.id] ?? {}
   const restDay    = DAYS.find(d => mySchedule[d.key] === 'descanso')
-  const workDays   = DAYS.filter(d => mySchedule[d.key] && mySchedule[d.key] !== 'descanso')
 
   return (
     <div className="bg-gradient-to-br from-cherry/10 to-tangelo/10 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-3">
@@ -309,6 +308,31 @@ function LoginScreen({ onLogin, error, loading }) {
   )
 }
 
+// ─── Header compartido ────────────────────────────────────────────────────────
+function Header({ isAdmin, isEmployee, user, logout }) {
+  return (
+    <header className="bg-gradient-to-r from-cherry to-tangelo px-5 py-5 shadow-md">
+      <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Logo variant="dark" size="sm" />
+          <div>
+            <h1 className="font-display text-2xl text-cream tracking-widest leading-tight">Turnos</h1>
+            <p className="font-body text-[11px] text-cream/60">Gestión de empleados</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin && <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">Admin</span>}
+          {isEmployee && !isAdmin && <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">Empleado</span>}
+          <span className="hidden sm:block text-cream/70 text-xs">{user.displayName?.split(' ')[0]}</span>
+          <button onClick={logout} className="p-2 rounded-xl text-cream hover:bg-cream/10 transition-colors" title="Cerrar sesión">
+            <LogOut size={18} />
+          </button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function TurnosPage() {
   const [user,       setUser]       = useState(null)
@@ -413,33 +437,10 @@ export default function TurnosPage() {
   // Sin sesión → pantalla de login
   if (!user) return <LoginScreen onLogin={login} error={loginError} loading={loginLoading} />
 
-  // ── Header compartido ────────────────────────────────────────────────────────
-  const Header = () => (
-    <header className="bg-gradient-to-r from-cherry to-tangelo px-5 py-5 shadow-md">
-      <div className="max-w-5xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Logo variant="dark" size="sm" />
-          <div>
-            <h1 className="font-display text-2xl text-cream tracking-widest leading-tight">Turnos</h1>
-            <p className="font-body text-[11px] text-cream/60">Gestión de empleados</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">Admin</span>}
-          {isEmployee && !isAdmin && <span className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">Empleado</span>}
-          <span className="hidden sm:block text-cream/70 text-xs">{user.displayName?.split(' ')[0]}</span>
-          <button onClick={logout} className="p-2 rounded-xl text-cream hover:bg-cream/10 transition-colors" title="Cerrar sesión">
-            <LogOut size={18} />
-          </button>
-        </div>
-      </div>
-    </header>
-  )
-
   // ── PANEL ADMINISTRADOR ──────────────────────────────────────────────────────
   if (isAdmin) return (
     <div className="min-h-screen bg-gradient-soft">
-      <Header />
+      <Header isAdmin={isAdmin} isEmployee={isEmployee} user={user} logout={logout} />
       <div className="max-w-5xl mx-auto px-3 py-5 flex flex-col gap-4">
 
         <WeekSelector weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
@@ -496,7 +497,7 @@ export default function TurnosPage() {
   // ── PANEL EMPLEADO ───────────────────────────────────────────────────────────
   if (isEmployee) return (
     <div className="min-h-screen bg-gradient-soft">
-      <Header />
+      <Header isAdmin={isAdmin} isEmployee={isEmployee} user={user} logout={logout} />
       <div className="max-w-2xl mx-auto px-3 py-5 flex flex-col gap-4">
 
         <WeekSelector weekOffset={weekOffset} setWeekOffset={setWeekOffset} />

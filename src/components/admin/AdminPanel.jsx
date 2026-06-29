@@ -9,7 +9,7 @@ import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, DEFAULT_CASHIERS, DEFAULT_CASHIE
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge, { STATUS_MAP } from '../common/StatusBadge'
-import { format, startOfDay, endOfDay } from 'date-fns'
+import { format, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   Users, LayoutDashboard, ClipboardList, BarChart2,

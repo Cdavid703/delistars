@@ -12,12 +12,12 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   MapPin, Phone, User, ShoppingBag, Navigation,
-  ExternalLink, CheckCircle, Banknote, LogOut, Bell,
+  ExternalLink, CheckCircle, LogOut, Bell,
   DollarSign, Calculator, X, MessageSquare, BookOpen,
-  Search, ChevronDown, ChevronUp, HelpCircle, Receipt,
+  Search, ChevronDown, ChevronUp, HelpCircle,
   Send, Radio, Route, Target
 } from 'lucide-react'
-import { ROLES, SEDES } from '../../services/roles'
+import { SEDES } from '../../services/roles'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const TABS = [
@@ -85,7 +85,7 @@ const isToday = ts => {
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 
 export default function DeliveryPanel() {
-  const { user, sede, logout, selectSede, allRoles, setViewingAs } = useAuth()
+  const { user, sede, logout, selectSede } = useAuth()
   const { canInstall, install } = usePWAInstall()
   const [orders,          setOrders]         = useState([])
   const [tab,             setTab]            = useState('pending')
@@ -105,7 +105,6 @@ export default function DeliveryPanel() {
   const geoWatchId       = useRef(null)
   const locShareWatchId  = useRef(null)
 
-  const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
     if (!user?.email) return
@@ -158,7 +157,7 @@ export default function DeliveryPanel() {
               driverLat: pos.coords.latitude,
               driverLng: pos.coords.longitude,
               driverUpdatedAt: serverTimestamp(),
-            }).catch(() => {})
+            }).catch(err => console.error('[DeliveryPanel] location update failed:', err))
           }
         },
         () => {},
@@ -281,6 +280,9 @@ export default function DeliveryPanel() {
       if (cluster.length >= 2) clusters.push(cluster)
     }
     return clusters
+    // routableAddrKey es la clave serializada de routableOrders (sus direcciones);
+    // se usa a propósito en vez del array para no recalcular en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geoCache, routableAddrKey])
 
   const totalNearby = nearbyClusters.reduce((s, c) => s + c.length, 0)

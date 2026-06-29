@@ -7,7 +7,7 @@ import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  X, MapPin, Phone, User, ShoppingBag,
+  X, MapPin, Phone, User,
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Printer, Hash, DollarSign, MessageSquare, Clock,

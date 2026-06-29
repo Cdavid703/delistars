@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db, getNextOrderNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, ROLES } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
@@ -17,7 +17,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
-  ChevronDown, ChevronUp, BookOpen, X, ShoppingBag,
+  ChevronDown, ChevronUp, BookOpen, X,
   Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
 } from 'lucide-react'
 
@@ -90,7 +90,7 @@ function playMessageSound() {
 }
 
 export default function CashierPanel() {
-  const { user, sede, logout, selectSede, setViewingAs, allRoles } = useAuth()
+  const { user, sede, logout, selectSede } = useAuth()
   const [tab,             setTab]            = useState('active')
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])

@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // delistars-menu-magic es un sub-proyecto aparte con su propio tooling/lint.
+  globalIgnores(['dist', 'delistars-menu-magic']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -16,6 +17,12 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    rules: {
+      // `catch {}` best-effort es un patrón intencional en esta app.
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      // No marcar bindings de catch sin usar (`catch (_) {}`) ni vars con prefijo `_`.
+      'no-unused-vars': ['error', { caughtErrors: 'none', argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
 ])

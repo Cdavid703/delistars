@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs } from 'firebase/firestore'
 import { auth, db, provider, loginAnon } from '../services/firebase'
 import { resolveRole, getAllRoles, ROLES } from '../services/roles'
 
