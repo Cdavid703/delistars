@@ -272,7 +272,7 @@ export default function CashierPanel() {
     // Auto-asignar número solo si el cajero no escribió uno manualmente
     let orderNumber = data.orderNumber?.trim() || ''
     if (!orderNumber) {
-      try { orderNumber = String(await getNextOrderNumber()) } catch (_) {}
+      try { orderNumber = String(await getNextOrderNumber(sede.id)) } catch (_) {}
     }
     try {
       await addDoc(collection(db, 'orders'), {

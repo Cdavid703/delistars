@@ -21,17 +21,18 @@ export const loginAnon = () => signInAnonymously(auth)
 
 provider.setCustomParameters({ prompt: 'select_account' })
 
-// Contador global de pedidos — se resetea cada día y devuelve número formateado (01, 02…).
-// Usa counters/orders { lastNumber: number, date: "YYYY-MM-DD" } en Firestore.
-export async function getNextOrderNumber() {
+// Contador de pedidos POR SEDE — cada sede tiene su propio contador,
+// independiente del de las demás, y se resetea cada día (nuevo turno).
+// Usa counters/orders_<sedeId> { lastNumber: number, date: "YYYY-MM-DD" } en Firestore.
+export async function getNextOrderNumber(sedeId) {
   const today = new Date().toISOString().slice(0, 10)
-  const counterRef = doc(db, 'counters', 'orders')
+  const counterRef = doc(db, 'counters', `orders_${sedeId || 'default'}`)
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef)
     const data = snap.exists() ? snap.data() : {}
     const lastNum = data.date === today ? (Number(data.lastNumber) || 0) : 0
     const next = lastNum + 1
     tx.set(counterRef, { lastNumber: next, date: today }, { merge: true })
-    return String(next).padStart(2, '0')
+    return String(next).padStart(3, '0')
   })
 }

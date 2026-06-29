@@ -225,7 +225,7 @@ export default function ClientPanel() {
 
   const handleCreateOrder = async (data) => {
     let orderNumber = ''
-    try { orderNumber = String(await getNextOrderNumber()) } catch (_) {}
+    try { orderNumber = String(await getNextOrderNumber(sede?.id)) } catch (_) {}
     await addDoc(collection(db, 'orders'), {
       ...data,
       orderNumber,

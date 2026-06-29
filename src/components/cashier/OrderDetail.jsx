@@ -167,7 +167,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       let orderNum = localOrderNumber.trim()
       if (!orderNum) {
         try {
-          orderNum = String(await getNextOrderNumber())
+          orderNum = String(await getNextOrderNumber(order.sedeId))
           setLocalOrderNumber(orderNum)
         } catch (_) {
           setQuoteErrors(['No se pudo asignar número automáticamente. Escríbelo manualmente.'])
