@@ -1048,7 +1048,13 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
 
   const cashOrders    = filtered.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
   const cashPending   = cashOrders.filter(o => o.status === 'pending_cuadre')
-  const totalCash     = cashOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
+  // Efectivo real por pedido: en Mixto solo la porción mixtoEfectivo se cobró en
+  // efectivo (el resto fue transferencia). Si no se registró el desglose, se usa
+  // el total como respaldo conservador (mejor sobrestimar que perder efectivo).
+  const cashAmount    = o => (o.payment === 'Mixto' && o.mixtoEfectivo != null && o.mixtoEfectivo !== '')
+    ? (Number(o.mixtoEfectivo) || 0)
+    : (o.totalPrice || 0)
+  const totalCash     = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
 
   const feeOrders     = filtered.filter(o => o.deliveryPrice > 0)
   const feeGroups     = {}
@@ -1104,7 +1110,7 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
                 {cashPending.length > 0 && (
                   <div className="bg-cherry/10 rounded-xl px-4 py-2 flex items-center justify-between mt-1">
                     <span className="font-body text-xs text-coal/60">Pendiente de recibir ({cashPending.length}):</span>
-                    <span className="font-display text-base text-cherry">{fmt(cashPending.reduce((s, o) => s + (o.totalPrice || 0), 0))}</span>
+                    <span className="font-display text-base text-cherry">{fmt(cashPending.reduce((s, o) => s + cashAmount(o), 0))}</span>
                   </div>
                 )}
               </>

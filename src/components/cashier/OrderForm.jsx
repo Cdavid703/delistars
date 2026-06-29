@@ -42,6 +42,18 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
     if (!form.items.trim())       errs.push('Falta el detalle del pedido')
     if (!driverId)                errs.push('Selecciona un domiciliario')
 
+    // En pago mixto, efectivo + transferencia deben sumar el total a cobrar.
+    if (form.payment === 'Mixto') {
+      const me = parseFloat(form.mixtoEfectivo)      || 0
+      const mt = parseFloat(form.mixtoTransferencia) || 0
+      if (total <= 0) {
+        errs.push('Define el valor del pedido/domicilio para un pago mixto')
+      } else if (me + mt !== total) {
+        const peso = n => `$${n.toLocaleString('es-CO')}`
+        errs.push(`El pago mixto (efectivo ${peso(me)} + transferencia ${peso(mt)}) debe sumar el total ${peso(total)}`)
+      }
+    }
+
     if (errs.length) {
       setErrors(errs)
       return
