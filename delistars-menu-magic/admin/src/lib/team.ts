@@ -11,6 +11,18 @@ export const ADMIN_EMAILS = [
 export const isAdminEmail = (email?: string | null): boolean =>
   !!email && ADMIN_EMAILS.includes(email.toLowerCase())
 
+// Admins de confianza total — pueden modificar fidelización (corregir progreso,
+// otorgar/anular premios). Subconjunto de ADMIN_EMAILS: a propósito NO incluye
+// a todos los admins (ej. josemigeul44@gmail.com puede ver pero no modificar).
+// Espejo de isSuperAdmin() en firestore.rules — mantener sincronizado.
+export const SUPER_ADMIN_EMAILS = [
+  'thebesta4321@gmail.com',
+  'cdavid.jaramillo@gmail.com',
+]
+
+export const isSuperAdminEmail = (email?: string | null): boolean =>
+  !!email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())
+
 // Empleados del equipo — usados en la grilla de Turnos.
 export const EMPLOYEES = [
   { id: 'joseluis',   name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular' },

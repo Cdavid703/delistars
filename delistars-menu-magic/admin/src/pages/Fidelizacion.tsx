@@ -4,8 +4,10 @@ import {
   Timestamp, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '@/services/firebase'
+import { useAuthStore } from '@/store/authStore'
+import { isSuperAdminEmail } from '@/lib/team'
 import { toast } from 'sonner'
-import { Search, Gift, Trash2 } from 'lucide-react'
+import { Search, Gift, Trash2, Lock } from 'lucide-react'
 
 const SEDES = [
   { id: 'santa_lucia', name: 'Santa Lucía' },
@@ -36,6 +38,8 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 const fmtDate = (ts?: { toDate: () => Date }) => ts?.toDate ? ts.toDate().toLocaleDateString('es-CO') : '—'
 
 export default function Fidelizacion() {
+  const { user } = useAuthStore()
+  const canManage = isSuperAdminEmail(user?.email)
   const [search, setSearch]   = useState('')
   const [loading, setLoading] = useState(false)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -70,7 +74,7 @@ export default function Fidelizacion() {
   }
 
   const saveCount = async (sedeId: string) => {
-    if (!customer) return
+    if (!customer || !canManage) return
     const value = Number(editCounts[sedeId])
     if (!Number.isFinite(value) || value < 0) { toast.error('Escribe un número válido (0 o más)'); return }
     try {
@@ -83,7 +87,7 @@ export default function Fidelizacion() {
   }
 
   const grantReward = async (sedeId: string) => {
-    if (!customer) return
+    if (!customer || !canManage) return
     const sedeName = SEDES.find((s) => s.id === sedeId)?.name || sedeId
     if (!window.confirm(`¿Otorgar manualmente 1x ${LOYALTY_REWARD_NAME} gratis en ${sedeName}?`)) return
     try {
@@ -107,7 +111,7 @@ export default function Fidelizacion() {
   }
 
   const revokeReward = async (rewardId: string) => {
-    if (!customer) return
+    if (!customer || !canManage) return
     if (!window.confirm('¿Anular este premio? El cliente ya no podrá usarlo.')) return
     try {
       await updateDoc(doc(db, 'customers', customer.id, 'rewards', rewardId), {
@@ -154,6 +158,13 @@ export default function Fidelizacion() {
             <p className="text-sm text-muted-fg">{customer.email || '—'} · {customer.phone || '—'}</p>
           </div>
 
+          {!canManage && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+              <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+              Solo puedes consultar. Corregir progreso, otorgar y anular premios está reservado a los administradores principales.
+            </div>
+          )}
+
           {SEDES.map((sede) => {
             const loy = customer.loyalty?.[sede.id] || {}
             const count = loy.count ?? 0
@@ -173,22 +184,24 @@ export default function Fidelizacion() {
                   <span>· Total entregados: {loy.totalDelivered ?? 0}</span>
                   <span>· Último contado: {loy.lastCountedDate || '—'}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    className="border rounded px-2 py-1.5 text-sm w-24"
-                    placeholder={String(count)}
-                    value={editCounts[sede.id] ?? ''}
-                    onChange={(e) => setEditCounts((c) => ({ ...c, [sede.id]: e.target.value }))}
-                  />
-                  <button onClick={() => saveCount(sede.id)} className="text-xs font-semibold text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary/5">
-                    Corregir progreso
-                  </button>
-                  <button onClick={() => grantReward(sede.id)} className="text-xs font-semibold text-mint border border-mint/30 rounded px-3 py-1.5 hover:bg-mint/10 flex items-center gap-1 ml-auto">
-                    <Gift className="w-3.5 h-3.5" /> Otorgar premio manual
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      className="border rounded px-2 py-1.5 text-sm w-24"
+                      placeholder={String(count)}
+                      value={editCounts[sede.id] ?? ''}
+                      onChange={(e) => setEditCounts((c) => ({ ...c, [sede.id]: e.target.value }))}
+                    />
+                    <button onClick={() => saveCount(sede.id)} className="text-xs font-semibold text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary/5">
+                      Corregir progreso
+                    </button>
+                    <button onClick={() => grantReward(sede.id)} className="text-xs font-semibold text-mint border border-mint/30 rounded px-3 py-1.5 hover:bg-mint/10 flex items-center gap-1 ml-auto">
+                      <Gift className="w-3.5 h-3.5" /> Otorgar premio manual
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -215,7 +228,7 @@ export default function Fidelizacion() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.cls}`}>{meta.label}</span>
-                        {r.status === 'available' && (
+                        {r.status === 'available' && canManage && (
                           <button onClick={() => revokeReward(r.id)} title="Anular premio" className="text-pepper hover:bg-pepper/10 rounded p-1">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

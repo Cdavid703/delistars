@@ -59,6 +59,23 @@ service cloud.firestore {
     }
     function isStaff() { return isAdmin() || isCashier() || isDriver(); }
 
+    // Admins de confianza total — pueden modificar fidelización (corregir
+    // progreso, otorgar/anular premios manualmente desde /admin/fidelizacion).
+    // Subconjunto de isAdmin(): a propósito NO incluye a todos los admins
+    // (josemigeul44@gmail.com puede ver fidelización pero no modificarla).
+    // Espejo de SUPER_ADMIN_EMAILS en delistars-menu-magic/admin/src/lib/team.ts.
+    function isSuperAdmin() {
+      return isSignedIn() && userEmail() in [
+        'thebesta4321@gmail.com',
+        'cdavid.jaramillo@gmail.com'
+      ];
+    }
+    // Quién puede escribir el progreso/premios de fidelización: cajero y
+    // domiciliario para el flujo automático (entregar pedido, devolver premio
+    // al rechazar), y solo los super admins para el manual. isAdmin() a secas
+    // NO basta — así josemigeul44 queda fuera aunque sea admin.
+    function isLoyaltyManager() { return isCashier() || isDriver() || isSuperAdmin(); }
+
     // ── Pedidos ────────────────────────────────────────────────────────────
     // Cliente: solo los suyos. Cajero: cualquiera (comparten el trabajo), pero
     // solo puede CREAR uno marcado con su propio cashierId (no puede inventar
@@ -107,14 +124,16 @@ service cloud.firestore {
 
     // ── Perfil de cliente (doc id = uid) ───────────────────────────────────
     // El campo "loyalty" (progreso de fidelización por sede) NUNCA lo escribe
-    // el cliente — solo staff (lo actualiza el domiciliario al marcar entregado).
+    // el cliente — solo isLoyaltyManager() (cajero/domiciliario en el flujo
+    // automático, solo super admin en el manual). isAdmin() a secas NO basta:
+    // josemigeul44 puede leer fidelización pero no escribirla.
     // El cliente sí puede crear/actualizar el resto de su perfil (nombre, tel,
     // direcciones) con normalidad.
     match /customers/{uid} {
       allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
-      allow create: if isStaff()
+      allow create: if isLoyaltyManager()
                     || (isSignedIn() && request.auth.uid == uid && !('loyalty' in request.resource.data));
-      allow update: if isStaff()
+      allow update: if isLoyaltyManager()
                     || (
                       isSignedIn() && request.auth.uid == uid &&
                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loyalty'])
@@ -123,16 +142,17 @@ service cloud.firestore {
     }
 
     // ── Premios de fidelización (subcolección de customers) ─────────────────
-    // Solo staff puede CREAR un premio (otorgarlo al entregar el pedido #10,
-    // #20 o #30). El cliente solo puede: marcar que ya lo vio (notified) o
-    // canjear un premio propio que esté vigente y disponible — nunca inventar
-    // uno, revivir uno vencido/ya usado, ni canjear el de otra persona (se
-    // valida contra el pedido real referenciado).
+    // Solo isLoyaltyManager() puede CREAR un premio (otorgarlo al entregar el
+    // pedido #10/#20/#30, o el otorgamiento manual desde /admin/fidelizacion
+    // — este último solo lo puede hacer un super admin). El cliente solo
+    // puede: marcar que ya lo vio (notified) o canjear un premio propio que
+    // esté vigente y disponible — nunca inventar uno, revivir uno vencido/ya
+    // usado, ni canjear el de otra persona (se valida contra el pedido real).
     match /customers/{uid}/rewards/{rewardId} {
       allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
-      allow create: if isStaff();
-      allow delete: if isAdmin();
-      allow update: if isStaff()
+      allow create: if isLoyaltyManager();
+      allow delete: if isSuperAdmin();
+      allow update: if isLoyaltyManager()
                     || (
                       isSignedIn() && request.auth.uid == uid &&
                       resource.data.status == 'available' &&
