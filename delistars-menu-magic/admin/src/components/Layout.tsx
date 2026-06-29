@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { Menu, X, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
+import { RoleSwitcher } from '@/components/RoleSwitcher'
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -90,6 +91,7 @@ const Layout = () => {
             </div>
             
             <div className="flex items-center gap-4">
+              <RoleSwitcher user={user} />
               <div className="hidden sm:flex flex-col items-end">
                 <p className="text-sm font-semibold text-coal">
                   {user?.displayName || 'Administrador'}
