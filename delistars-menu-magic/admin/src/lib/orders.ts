@@ -9,7 +9,10 @@ export interface Order {
   phone?: string
   fullAddress?: string
   barrio?: string
+  reference?: string
   items?: string
+  notes?: string
+  cashierNotes?: string
   payment?: string
   status: string
   deliveryMode?: 'delivery' | 'pickup'
@@ -19,9 +22,15 @@ export interface Order {
   deliveryPrice?: number
   totalPrice?: number
   driverName?: string
+  driverEmail?: string
   cashierName?: string
+  rejectionReason?: string
+  loyaltyRedemption?: { sedeId?: string; rewardIds?: string[]; count?: number }
   createdAt?: Timestamp
 }
+
+// Métodos de pago válidos (mismo vocabulario que OrderForm.jsx en domicilios).
+export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
 
 export const ACTIVE_STATUSES = ['assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
 export const DELIVERED_STATUSES = ['delivered_paid', 'delivered_cash', 'completed']
@@ -42,6 +51,9 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   rejected:       { label: 'Rechazado',      cls: 'bg-red-100 text-red-700' },
   cancelled:      { label: 'Cancelado',      cls: 'bg-red-100 text-red-700' },
 }
+
+// Todos los estados conocidos, para el selector de edición del admin.
+export const ALL_STATUSES = Object.keys(STATUS_MAP)
 
 export const statusInfo = (status: string) =>
   STATUS_MAP[status] || { label: status, cls: 'bg-gray-100 text-gray-700' }

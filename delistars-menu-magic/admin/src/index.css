@@ -79,3 +79,10 @@ textarea:focus-visible,
 select:focus-visible {
   @apply outline-none ring-2 ring-primary ring-offset-2;
 }
+
+/* Campo de formulario estándar del admin (usado por OrderDetailModal y afines) */
+@layer components {
+  .input {
+    @apply border border-gray-300 rounded px-3 py-2 text-sm w-full bg-white;
+  }
+}

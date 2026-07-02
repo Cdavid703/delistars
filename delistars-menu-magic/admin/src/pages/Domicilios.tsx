@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInfo, statusLabel } from '@/lib/orders'
+import { OrderDetailModal } from '@/components/OrderDetailModal'
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b))
@@ -18,6 +19,7 @@ export default function Domicilios() {
   const [fPayment, setFPayment] = useState('all')
   const [fSearch, setFSearch] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
@@ -256,7 +258,11 @@ export default function Domicilios() {
           {filtered.map((o) => {
             const s = statusInfo(o.status)
             return (
-              <div key={o.id} className="bg-white border border-gray-200 rounded-lg p-4">
+              <button
+                key={o.id}
+                onClick={() => setSelectedId(o.id)}
+                className="bg-white border border-gray-200 rounded-lg p-4 w-full text-left hover:border-primary/40 hover:shadow-sm"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-coal">
@@ -279,11 +285,19 @@ export default function Domicilios() {
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
       )}
+
+      {/* Detalle: ver todo, editar o eliminar el pedido */}
+      {selectedId && (() => {
+        const selected = orders.find((o) => o.id === selectedId)
+        return selected
+          ? <OrderDetailModal order={selected} onClose={() => setSelectedId(null)} />
+          : null
+      })()}
     </div>
   )
 }
