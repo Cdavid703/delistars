@@ -8,6 +8,7 @@ import Productos from '@/pages/Productos'
 import Sedes from '@/pages/Sedes'
 import Domicilios from '@/pages/Domicilios'
 import Cuadre from '@/pages/Cuadre'
+import Reportes from '@/pages/Reportes'
 import Clientes from '@/pages/Clientes'
 import Calificaciones from '@/pages/Calificaciones'
 import Usuarios from '@/pages/Usuarios'
@@ -47,6 +48,7 @@ function App() {
               <Route path="sedes" element={<Sedes />} />
               <Route path="domicilios" element={<Domicilios />} />
               <Route path="cuadre" element={<Cuadre />} />
+              <Route path="reportes" element={<Reportes />} />
               <Route path="clientes" element={<Clientes />} />
               <Route path="calificaciones" element={<Calificaciones />} />
               <Route path="usuarios" element={<Usuarios />} />

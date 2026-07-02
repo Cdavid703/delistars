@@ -15,6 +15,7 @@ const Layout = () => {
     { label: 'Sedes', path: '/sedes', icon: '📍' },
     { label: 'Domicilios', path: '/domicilios', icon: '🛵' },
     { label: 'Cuadre de caja', path: '/cuadre', icon: '💵' },
+    { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Clientes', path: '/clientes', icon: '👤' },
     { label: 'Calificaciones', path: '/calificaciones', icon: '⭐' },
     { label: 'Empleados', path: '/usuarios', icon: '🧑‍🍳' },

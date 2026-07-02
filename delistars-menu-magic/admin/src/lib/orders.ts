@@ -32,6 +32,7 @@ export interface Order {
   ratingComment?: string | null
   ratedAt?: Timestamp
   createdAt?: Timestamp
+  updatedAt?: Timestamp
 }
 
 // Efectivo real cobrado por un pedido (espejo de src/utils/payments.js).

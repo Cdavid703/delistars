@@ -19,14 +19,6 @@ export interface Sede {
   horario_domingo?: string;
 }
 
-export interface Trabajador {
-  id_trabajador?: number;
-  nombre_trabajador: string;
-  apellido_trabajador: string;
-  usuario: string;
-  usuario_password?: string;
-}
-
 export interface Producto {
   id_producto: number;
   nombre_producto: string;
@@ -103,89 +95,6 @@ export const apiService = {
       if (!response.ok) throw new Error('Failed to delete sede');
     } catch (error) {
       console.error('Error deleting sede:', error);
-      throw error;
-    }
-  },
-
-  // Trabajadores
-  async getTrabajadores(): Promise<Trabajador[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores`, {
-        headers: await authHeaders(),
-      });
-      if (!response.ok) throw new Error('Failed to fetch trabajadores');
-      const data = await response.json();
-      return data.data || [];
-    } catch (error) {
-      console.error('Error fetching trabajadores:', error);
-      throw error;
-    }
-  },
-
-  async createTrabajador(trabajador: Trabajador): Promise<Trabajador> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(await authHeaders()),
-        },
-        body: JSON.stringify(trabajador),
-      });
-      if (!response.ok) throw new Error('Failed to create trabajador');
-      const data = await response.json();
-      return data.data || data;
-    } catch (error) {
-      console.error('Error creating trabajador:', error);
-      throw error;
-    }
-  },
-
-  async updateTrabajador(id: number, trabajador: Partial<Trabajador>): Promise<Trabajador> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(await authHeaders()),
-        },
-        body: JSON.stringify(trabajador),
-      });
-      if (!response.ok) throw new Error('Failed to update trabajador');
-      const data = await response.json();
-      return data.data || data;
-    } catch (error) {
-      console.error('Error updating trabajador:', error);
-      throw error;
-    }
-  },
-
-  async deleteTrabajador(id: number): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores/${id}`, {
-        method: 'DELETE',
-        headers: await authHeaders(),
-      });
-      if (!response.ok) throw new Error('Failed to delete trabajador');
-    } catch (error) {
-      console.error('Error deleting trabajador:', error);
-      throw error;
-    }
-  },
-
-  async changePassword(id: number, newPassword: string): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/trabajadores/${id}/cambiar-contraseña`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(await authHeaders()),
-        },
-        body: JSON.stringify({ usuario_password: newPassword }),
-      });
-      if (!response.ok) throw new Error('Failed to change password');
-    } catch (error) {
-      console.error('Error changing password:', error);
       throw error;
     }
   },

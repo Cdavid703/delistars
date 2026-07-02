@@ -25,12 +25,11 @@ import { swaggerSpec } from './config/swagger';
 import productsRoutes from './modules/modulo_products/routes/products.routes';
 import categoriesRoutes from './modules/modulo_categories/routes/categories.routes';
 import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
-import trabajadoresRoutes from './modules/modulo_trabajador/routes/trabajador.routes';
 
 const app: Express = express();
 
 // Detrás del gateway nginx (y del nginx del host): confía en los proxies para
-// que req.ip y el rate-limit usen la IP real del cliente, no la del proxy.
+// que req.ip refleje la IP real del cliente, no la del proxy.
 // Nº de saltos configurable (1 = solo gateway Docker; 2 = host nginx + gateway).
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
 
@@ -108,7 +107,6 @@ const apiPrefix = process.env.API_PREFIX || '/api/v1';
 app.use(`${apiPrefix}/products`, productsRoutes);
 app.use(`${apiPrefix}/categories`, categoriesRoutes);
 app.use(`${apiPrefix}/sedes`, sedesRoutes);
-app.use(`${apiPrefix}/trabajadores`, trabajadoresRoutes);
 
 // 404 Handler
 app.use((_req: Request, res: Response) => {
@@ -149,8 +147,7 @@ async function startServer() {
       console.log(`   • ${apiPrefix}/health - Health check`);
       console.log(`   • ${apiPrefix}/products - Productos`);
       console.log(`   • ${apiPrefix}/categories - Categorías`);
-      console.log(`   • ${apiPrefix}/sedes - Sedes`);
-      console.log(`   • ${apiPrefix}/trabajadores - Trabajadores\n`);
+      console.log(`   • ${apiPrefix}/sedes - Sedes\n`);
     });
   } catch (error) {
     console.error('\n❌ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
