@@ -51,6 +51,8 @@ export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
 
 export const ACTIVE_STATUSES = ['assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
 export const DELIVERED_STATUSES = ['delivered_paid', 'delivered_cash', 'completed']
+// Pedidos que no llegaron a nada: el cliente los intentó pero no se entregó.
+export const CLOSED_STATUSES = ['rejected', 'cancelled']
 
 // Etiqueta + clases Tailwind por estado (mismo vocabulario que domicilios).
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {

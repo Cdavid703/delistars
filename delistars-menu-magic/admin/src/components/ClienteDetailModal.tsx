@@ -7,7 +7,7 @@ import type { Timestamp as TimestampType } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { isSuperAdminEmail } from '@/lib/team'
-import { type Order, fmtCOP, fmtDateTime, statusInfo } from '@/lib/orders'
+import { type Order, DELIVERED_STATUSES, CLOSED_STATUSES, fmtCOP, fmtDateTime, statusInfo } from '@/lib/orders'
 import { OrderDetailModal } from '@/components/OrderDetailModal'
 import { toast } from 'sonner'
 import { Gift, Lock, Phone, Trash2, X } from 'lucide-react'
@@ -243,7 +243,23 @@ export function ClienteDetailModal({ customer, onClose }: { customer: Customer; 
             ) : orders.length === 0 ? (
               <p className="text-sm text-muted-fg">Este cliente aún no ha hecho pedidos.</p>
             ) : (
-              <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+              <>
+                {(() => {
+                  const completados = orders.filter((o) => DELIVERED_STATUSES.includes(o.status)).length
+                  const cerrados = orders.filter((o) => CLOSED_STATUSES.includes(o.status)).length
+                  const enCurso = orders.length - completados - cerrados
+                  // El total (orders.length) incluye TODOS los intentos, no solo los
+                  // que se entregaron — este desglose evita la confusión de "por qué
+                  // aparecen tantos pedidos si solo se completó uno".
+                  return (
+                    <p className="text-xs text-muted-fg -mt-1">
+                      {completados} completado{completados !== 1 ? 's' : ''}
+                      {cerrados > 0 && ` · ${cerrados} rechazado${cerrados !== 1 ? 's' : ''}/cancelado${cerrados !== 1 ? 's' : ''}`}
+                      {enCurso > 0 && ` · ${enCurso} en curso`}
+                    </p>
+                  )
+                })()}
+                <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
                 {orders.map((o) => {
                   const s = statusInfo(o.status)
                   return (
@@ -266,7 +282,8 @@ export function ClienteDetailModal({ customer, onClose }: { customer: Customer; 
                     </button>
                   )
                 })}
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>

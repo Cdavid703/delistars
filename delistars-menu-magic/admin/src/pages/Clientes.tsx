@@ -132,7 +132,9 @@ export default function Clientes() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-display text-lg font-bold text-coal">{c.orderCount || 0}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-fg">pedidos</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-fg" title="Incluye rechazados y cancelados — el detalle desglosa por estado">
+                    intentos
+                  </p>
                   <p className="text-xs text-muted-fg mt-1">Últ.: {fmtDate(c.lastOrderAt)}</p>
                 </div>
               </div>
