@@ -26,8 +26,25 @@ export interface Order {
   cashierName?: string
   rejectionReason?: string
   loyaltyRedemption?: { sedeId?: string; rewardIds?: string[]; count?: number }
+  cashOnDelivery?: boolean
+  mixtoEfectivo?: number | string
+  rating?: number
+  ratingComment?: string | null
+  ratedAt?: Timestamp
   createdAt?: Timestamp
 }
+
+// Efectivo real cobrado por un pedido (espejo de src/utils/payments.js).
+// En pago Mixto solo la porción mixtoEfectivo se cobró en efectivo; si no se
+// registró el desglose se usa el total como respaldo conservador.
+export const cashAmount = (o: Order): number =>
+  (o.payment === 'Mixto' && o.mixtoEfectivo != null && o.mixtoEfectivo !== '')
+    ? (Number(o.mixtoEfectivo) || 0)
+    : (o.totalPrice || 0)
+
+// ¿El pedido se cobró (total o parcialmente) en efectivo contra entrega?
+export const isCashOrder = (o: Order): boolean =>
+  !!o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto'
 
 // Métodos de pago válidos (mismo vocabulario que OrderForm.jsx en domicilios).
 export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
