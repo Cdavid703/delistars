@@ -5,14 +5,12 @@ import { useAuthStore } from '@/store/authStore'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Productos from '@/pages/Productos'
-import Trabajadores from '@/pages/Trabajadores'
 import Sedes from '@/pages/Sedes'
 import Domicilios from '@/pages/Domicilios'
 import Cuadre from '@/pages/Cuadre'
 import Clientes from '@/pages/Clientes'
 import Calificaciones from '@/pages/Calificaciones'
 import Usuarios from '@/pages/Usuarios'
-import Fidelizacion from '@/pages/Fidelizacion'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
 import Layout from '@/components/Layout'
@@ -47,13 +45,11 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="productos" element={<Productos />} />
               <Route path="sedes" element={<Sedes />} />
-              <Route path="trabajadores" element={<Trabajadores />} />
               <Route path="domicilios" element={<Domicilios />} />
               <Route path="cuadre" element={<Cuadre />} />
               <Route path="clientes" element={<Clientes />} />
               <Route path="calificaciones" element={<Calificaciones />} />
               <Route path="usuarios" element={<Usuarios />} />
-              <Route path="fidelizacion" element={<Fidelizacion />} />
               <Route path="turnos" element={<Turnos />} />
               <Route path="vacantes" element={<Vacantes />} />
             </Route>
