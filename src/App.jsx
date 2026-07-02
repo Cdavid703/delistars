@@ -50,9 +50,12 @@ export default function App() {
   useEffect(() => {
     if (!user || sede) return
     try {
-      const raw = localStorage.getItem('ds_cart_handoff')
-      if (!raw) return
-      const { sedeId } = JSON.parse(raw)
+      // Sede del carrito entregado por el menú, o del borrador de pedido en
+      // curso (para que una recarga a mitad del formulario no mande al
+      // cliente a elegir sede otra vez).
+      const handoff = JSON.parse(localStorage.getItem('ds_cart_handoff') || 'null')
+      const draft   = JSON.parse(localStorage.getItem('ds_order_draft') || 'null')
+      const sedeId  = handoff?.sedeId || draft?.sedeId
       if (sedeId && SEDES[sedeId]) selectSede(SEDES[sedeId])
     } catch (_) {}
   }, [user, sede])

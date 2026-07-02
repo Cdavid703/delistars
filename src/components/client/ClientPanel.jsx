@@ -60,6 +60,25 @@ const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toL
 const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone
 
+// ─── Borrador del pedido en curso ────────────────────────────────────────────
+// Los navegadores móviles recargan la página con facilidad (cambiar de app,
+// bloquear pantalla, poca memoria). Sin borrador, esa recarga botaba el
+// carrito y el formulario, y el redirect de "sin contexto" expulsaba al
+// cliente al menú: tenía que rehacer TODO el pedido.
+const DRAFT_KEY = 'ds_order_draft'
+const DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 horas
+
+function readOrderDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    if (!d?.savedAt || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS) {
+      localStorage.removeItem(DRAFT_KEY)
+      return null
+    }
+    return d
+  } catch { return null }
+}
+
 function playMessageSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -82,10 +101,11 @@ export default function ClientPanel() {
   const [orders,         setOrders]         = useState([])
   const [ordersLoaded,   setOrdersLoaded]   = useState(false)
   const [selectedId,     setSelectedId]     = useState(null)
-  const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff'))
-  // ¿El cliente entró pasando por la raíz (eligió productos)? Si no, no debe
-  // quedarse en el panel de domicilios: se le envía al menú a escoger productos.
-  const enteredWithCart = useRef(!!localStorage.getItem('ds_cart_handoff'))
+  const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff') || !!readOrderDraft())
+  // ¿El cliente entró con contexto (carrito del menú o un borrador de pedido
+  // sin terminar)? Si no, no debe quedarse en el panel de domicilios: se le
+  // envía al menú a escoger productos.
+  const enteredWithCart = useRef(!!localStorage.getItem('ds_cart_handoff') || !!readOrderDraft())
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
@@ -162,6 +182,9 @@ export default function ClientPanel() {
   // productos. Aplica también al equipo que elige "ver como cliente".
   useEffect(() => {
     if (enteredWithCart.current || showForm) return
+    // Nunca expulsar a quien tiene un pedido a medio hacer (carrito entregado
+    // por el menú o borrador del formulario): perdería todo su pedido.
+    if (localStorage.getItem('ds_cart_handoff') || readOrderDraft()) return
     if (ordersLoaded && orders.length === 0) {
       // Resetea "ver como cliente" para que el equipo no quede atrapado: al
       // volver a /domicilios/ recupera su panel en vez de re-redirigirse.
@@ -288,6 +311,11 @@ export default function ClientPanel() {
     if (redeemRewardIds.length > 0) {
       redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
     }
+    // Solo AHORA que el pedido existe en Firestore se limpian el carrito
+    // entregado por el menú y el borrador — nunca antes, para que una recarga
+    // a mitad del formulario no le pierda el pedido al cliente.
+    localStorage.removeItem('ds_cart_handoff')
+    localStorage.removeItem(DRAFT_KEY)
     setShowForm(false)
     // Guardar/actualizar perfil del cliente frecuente (best-effort, no bloquea)
     if (user.uid) {
@@ -617,6 +645,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   const errorsRef = useRef(null)
 
   useEffect(() => {
+    // 1) Restaurar el borrador si la página se recargó a mitad del formulario
+    //    (muy común en celulares al cambiar de app o bloquear la pantalla).
+    const draft = readOrderDraft()
+    if (draft?.form) {
+      setForm(f => ({ ...f, ...draft.form }))
+      if (draft.fromMenu) { setFromMenu(true); setMenuTotal(draft.menuTotal || 0) }
+    }
+    // 2) El carrito entregado por el menú manda sobre los productos del
+    //    borrador. NO se borra aquí: se borra únicamente al crear el pedido,
+    //    para que una recarga no deje al cliente sin nada.
     try {
       const raw = localStorage.getItem('ds_cart_handoff')
       if (!raw) return
@@ -634,9 +672,27 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       }))
       setFromMenu(true)
       setMenuTotal(total || 0)
-      localStorage.removeItem('ds_cart_handoff')
     } catch (_) {}
   }, [])
+
+  // Autoguardar el borrador mientras el cliente escribe. Si el navegador
+  // recarga la página, todo el formulario se restaura tal cual estaba.
+  // submittingRef evita que un guardado pendiente "resucite" el borrador
+  // después de que el pedido ya se creó (causaría pedidos duplicados).
+  const submittingRef = useRef(false)
+  useEffect(() => {
+    const meaningful = form.items.trim() || form.fullAddress.trim() || form.phone.trim()
+    if (!meaningful) return
+    const t = setTimeout(() => {
+      if (submittingRef.current) return
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          form, fromMenu, menuTotal, sedeId: sede?.id || null, savedAt: Date.now(),
+        }))
+      } catch (_) {}
+    }, 400)
+    return () => clearTimeout(t)
+  }, [form, fromMenu, menuTotal])
 
   useEffect(() => {
     if (errors.length > 0) {
@@ -699,6 +755,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     // la caja cotice el domicilio (ver flujo de cotización en ClientOrderDetail).
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
+    submittingRef.current = true
     try {
       const redeemRewardIds = redeemCount > 0 ? sortedRewards.slice(0, redeemCount).map(r => r.id) : []
       const items = redeemRewardIds.length > 0
@@ -713,6 +770,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
       })
     } catch (err) {
+      // Falló el envío: se reactiva el autoguardado para no perder el borrador.
+      submittingRef.current = false
       const msg = err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
         : 'Error al enviar el pedido. Verifica tu conexión e intenta de nuevo.'
