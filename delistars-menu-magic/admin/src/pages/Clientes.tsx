@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import type { Timestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
+import { DELIVERED_STATUSES } from '@/lib/orders'
 import { Search, Phone } from 'lucide-react'
 import { ClienteDetailModal, type Customer } from '@/components/ClienteDetailModal'
 
@@ -22,6 +23,11 @@ export default function Clientes() {
   const [minOrders, setMinOrders] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Customer | null>(null)
+  // Conteo real de pedidos COMPLETADOS por cliente (clientUid -> cantidad).
+  // orderCount en el doc de customers cuenta cada intento (incluye
+  // rechazados/cancelados) — aquí se cuenta solo lo que de verdad se entregó,
+  // consultando directamente `orders` filtrado por estado.
+  const [completedCounts, setCompletedCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     return onSnapshot(collection(db, 'customers'), (snap) => {
@@ -31,23 +37,35 @@ export default function Clientes() {
     }, (err) => { console.error('Error al leer clientes:', err); setLoading(false) })
   }, [])
 
+  useEffect(() => {
+    const q = query(collection(db, 'orders'), where('status', 'in', DELIVERED_STATUSES))
+    return onSnapshot(q, (snap) => {
+      const counts: Record<string, number> = {}
+      snap.docs.forEach((d) => {
+        const uid = (d.data() as { clientUid?: string }).clientUid
+        if (uid) counts[uid] = (counts[uid] || 0) + 1
+      })
+      setCompletedCounts(counts)
+    }, (err) => console.error('Error al contar pedidos completados:', err))
+  }, [])
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     const min = Number(minOrders) || 0
     let list = customers.filter((c) => {
-      if ((c.orderCount || 0) < min) return false
+      if ((completedCounts[c.id] || 0) < min) return false
       if (!q) return true
       return c.name?.toLowerCase().includes(q) || c.phone?.includes(q) || c.email?.toLowerCase().includes(q)
     })
     list = [...list].sort((a, b) => {
-      if (sortBy === 'orders') return (b.orderCount || 0) - (a.orderCount || 0)
+      if (sortBy === 'orders') return (completedCounts[b.id] || 0) - (completedCounts[a.id] || 0)
       if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '')
       return (b.lastOrderAt?.seconds || 0) - (a.lastOrderAt?.seconds || 0)
     })
     return list
-  }, [customers, search, sortBy, minOrders])
+  }, [customers, search, sortBy, minOrders, completedCounts])
 
-  const totalOrders = customers.reduce((s, c) => s + (c.orderCount || 0), 0)
+  const totalCompleted = Object.values(completedCounts).reduce((s, n) => s + n, 0)
 
   return (
     <div>
@@ -63,8 +81,8 @@ export default function Clientes() {
           <p className="text-2xl font-display font-bold text-coal">{customers.length}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Pedidos acumulados</p>
-          <p className="text-2xl font-display font-bold text-mint">{totalOrders}</p>
+          <p className="text-sm text-muted-fg">Pedidos completados</p>
+          <p className="text-2xl font-display font-bold text-mint">{totalCompleted}</p>
         </div>
       </div>
 
@@ -81,7 +99,7 @@ export default function Clientes() {
         </div>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="border rounded px-2 py-1.5 text-sm">
           <option value="recent">Más recientes</option>
-          <option value="orders">Más pedidos</option>
+          <option value="orders">Más pedidos completados</option>
           <option value="name">Nombre (A-Z)</option>
         </select>
         <input
@@ -89,8 +107,8 @@ export default function Clientes() {
           min={0}
           value={minOrders}
           onChange={(e) => setMinOrders(e.target.value)}
-          placeholder="Mín. pedidos"
-          className="border rounded px-2 py-1.5 text-sm w-28"
+          placeholder="Mín. completados"
+          className="border rounded px-2 py-1.5 text-sm w-32"
         />
       </div>
 
@@ -131,10 +149,8 @@ export default function Clientes() {
                   )}
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="font-display text-lg font-bold text-coal">{c.orderCount || 0}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-fg" title="Incluye rechazados y cancelados — el detalle desglosa por estado">
-                    intentos
-                  </p>
+                  <p className="font-display text-lg font-bold text-coal">{completedCounts[c.id] || 0}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-fg">completados</p>
                   <p className="text-xs text-muted-fg mt-1">Últ.: {fmtDate(c.lastOrderAt)}</p>
                 </div>
               </div>
