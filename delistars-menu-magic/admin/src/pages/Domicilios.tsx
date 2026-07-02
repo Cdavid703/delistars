@@ -10,9 +10,21 @@ const uniq = (arr: (string | undefined)[]) =>
 const deliveryLabel = (m?: string) =>
   m === 'pickup' ? 'Recoge en sede' : 'Domicilio'
 
+const sameDay = (o: Order, dateStr: string) => {
+  if (!o.createdAt?.toDate) return false
+  return o.createdAt.toDate().toDateString() === new Date(dateStr + 'T00:00:00').toDateString()
+}
+
+const todayStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function Domicilios() {
   const [orders, setOrders] = useState<Order[]>([])
+  // Rango de fecha: 'hoy' | 'todo' | una fecha concreta elegida en el picker.
   const [soloHoy, setSoloHoy] = useState(true)
+  const [fecha, setFecha] = useState('')
   const [sede, setSede] = useState('')
   const [fStatus, setFStatus] = useState('all')
   const [fDriver, setFDriver] = useState('all')
@@ -28,12 +40,14 @@ export default function Domicilios() {
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])
 
-  // Base por fecha/sede → alimenta las opciones de los desplegables
+  // Base por fecha/sede → alimenta las opciones de los desplegables.
+  // La fecha elegida en el picker manda sobre el toggle Hoy/Todo.
   const base = useMemo(() => orders.filter((o) => {
-    if (soloHoy && !isToday(o.createdAt)) return false
+    if (fecha) { if (!sameDay(o, fecha)) return false }
+    else if (soloHoy && !isToday(o.createdAt)) return false
     if (sede && o.sedeName !== sede) return false
     return true
-  }), [orders, soloHoy, sede])
+  }), [orders, soloHoy, fecha, sede])
 
   const sedes = useMemo(() => uniq(orders.map((o) => o.sedeName)), [orders])
   const statusOptions = useMemo(() => uniq(base.map((o) => o.status)), [base])
@@ -127,7 +141,7 @@ export default function Domicilios() {
       rs.addRow(['Resumen del reporte']).font = { bold: true, size: 14 }
       rs.addRow([])
       rs.addRow(['Sede', sede || 'Todas'])
-      rs.addRow(['Rango', soloHoy ? 'Hoy' : 'Todo (últimos 500)'])
+      rs.addRow(['Rango', fecha || (soloHoy ? 'Hoy' : 'Todo (últimos 500)')])
       rs.addRow(['Filtros activos', activeFilters])
       rs.addRow(['Pedidos (filtrados)', filtered.length])
       rs.addRow(['Total domicilios', totalDomi]).getCell(2).numFmt = '"$"#,##0'
@@ -165,7 +179,7 @@ export default function Domicilios() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `delistars-reporte-${sede ? sede.replace(/\s+/g, '-') + '-' : ''}${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.download = `delistars-reporte-${sede ? sede.replace(/\s+/g, '-') + '-' : ''}${fecha || new Date().toISOString().slice(0, 10)}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
     } finally {
@@ -180,16 +194,30 @@ export default function Domicilios() {
           <h1 className="text-4xl font-display font-bold text-coal">Domicilios</h1>
           <p className="text-muted-fg mt-1">Pedidos y reportes</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select value={sede} onChange={(e) => setSede(e.target.value)} className="border rounded px-2 py-1 text-sm">
             <option value="">Todas las sedes</option>
             {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <input
+            type="date"
+            value={fecha}
+            max={todayStr()}
+            onChange={(e) => setFecha(e.target.value)}
+            className="border rounded px-2 py-1 text-sm"
+            title="Ver los pedidos de un día específico"
+          />
           <button
-            onClick={() => setSoloHoy((v) => !v)}
-            className={`px-3 py-1 rounded text-sm font-medium ${soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
+            onClick={() => { setFecha(''); setSoloHoy(true) }}
+            className={`px-3 py-1 rounded text-sm font-medium ${!fecha && soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
           >
-            {soloHoy ? 'Hoy' : 'Todo'}
+            Hoy
+          </button>
+          <button
+            onClick={() => { setFecha(''); setSoloHoy(false) }}
+            className={`px-3 py-1 rounded text-sm font-medium ${!fecha && !soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
+          >
+            Todo
           </button>
           <button
             onClick={exportExcel}

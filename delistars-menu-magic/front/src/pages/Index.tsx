@@ -4,6 +4,7 @@ import { SedeModal } from "@/components/SedeModal";
 import { PromoModal } from "@/components/PromoModal";
 import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
+import { LoyaltySection } from "@/components/LoyaltySection";
 import { MenuSection } from "@/components/MenuSection";
 import { Encuentranos } from "@/components/Encuentranos";
 import { Footer } from "@/components/Footer";
@@ -22,6 +23,7 @@ const Index = () => {
         <Navbar />
         <main>
           <Hero />
+          <LoyaltySection />
           <MenuSection />
           <Encuentranos />
         </main>

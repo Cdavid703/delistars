@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\USER\\AppData\\Local\\node-portable\\npm.cmd",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "front-menu",
+      "runtimeExecutable": "C:\\Users\\USER\\AppData\\Local\\node-portable\\npm.cmd",
+      "runtimeArgs": ["run", "dev", "--prefix", "delistars-menu-magic/front", "--", "--port", "5174"],
+      "port": 5174
     }
   ]
 }
