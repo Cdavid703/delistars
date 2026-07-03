@@ -8,6 +8,8 @@ import {
 import StatusBadge from '../common/StatusBadge'
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
+// Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
+const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
 export default function AssignDeliveryDetail({ order, drivers, onClose }) {
   const [quotedPrice,   setQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
@@ -139,13 +141,13 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="label-field">Valor pedido</label>
-                <input className="input-field" value={quotedPrice}
-                  onChange={e => setQuotedPrice(e.target.value)} placeholder="$0" type="number" />
+                <input className="input-field" value={quotedPrice} inputMode="numeric"
+                  onChange={e => setQuotedPrice(onlyDigits(e.target.value))} placeholder="$0" />
               </div>
               <div>
                 <label className="label-field">Domicilio</label>
-                <input className="input-field" value={deliveryPrice}
-                  onChange={e => setDeliveryPrice(e.target.value)} placeholder="$0" type="number" />
+                <input className="input-field" value={deliveryPrice} inputMode="numeric"
+                  onChange={e => setDeliveryPrice(onlyDigits(e.target.value))} placeholder="$0" />
               </div>
             </div>
             <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-3 flex items-center justify-between">
@@ -180,8 +182,8 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
                 <div className="flex flex-col gap-2 animate-fade-in">
                   <div>
                     <label className="label-field">¿Con cuánto paga el cliente?</label>
-                    <input className="input-field" value={payAmount}
-                      onChange={e => setPayAmount(e.target.value)} placeholder="$0" type="number" />
+                    <input className="input-field" value={payAmount} inputMode="numeric"
+                      onChange={e => setPayAmount(onlyDigits(e.target.value))} placeholder="$0" />
                   </div>
                   {pa > 0 && (
                     <div className="bg-mustard/10 border border-mustard/30 rounded-xl px-4 py-3 flex items-center justify-between">

@@ -26,6 +26,8 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 const fmt    = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;')
+// Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
+const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
 const fmtTime = (ts) => {
   if (!ts?.toDate) return null
@@ -678,13 +680,13 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label-field">Valor pedido</label>
-                      <input className="input-field" value={editQuotedPrice}
-                        onChange={e => setEditQuotedPrice(e.target.value)} placeholder="$0" type="number" />
+                      <input className="input-field" value={editQuotedPrice} inputMode="numeric"
+                        onChange={e => setEditQuotedPrice(onlyDigits(e.target.value))} placeholder="$0" />
                     </div>
                     <div>
                       <label className="label-field">Domicilio</label>
-                      <input className="input-field" value={editDeliveryPrice}
-                        onChange={e => setEditDeliveryPrice(e.target.value)} placeholder="$0" type="number" />
+                      <input className="input-field" value={editDeliveryPrice} inputMode="numeric"
+                        onChange={e => setEditDeliveryPrice(onlyDigits(e.target.value))} placeholder="$0" />
                     </div>
                   </div>
                   <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-2 flex items-center justify-between">
@@ -761,14 +763,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               <div className={pickup ? '' : 'grid grid-cols-2 gap-3'}>
                 <div>
                   <label className="label-field">Valor pedido</label>
-                  <input className="input-field" value={localQuotedPrice}
-                    onChange={e => setLocalQuotedPrice(e.target.value)} placeholder="$0" type="number" />
+                  <input className="input-field" value={localQuotedPrice} inputMode="numeric"
+                    onChange={e => setLocalQuotedPrice(onlyDigits(e.target.value))} placeholder="$0" />
                 </div>
                 {!pickup && (
                   <div>
                     <label className="label-field">Domicilio</label>
-                    <input className="input-field" value={localDeliveryPrice}
-                      onChange={e => setLocalDeliveryPrice(e.target.value)} placeholder="$0" type="number" />
+                    <input className="input-field" value={localDeliveryPrice} inputMode="numeric"
+                      onChange={e => setLocalDeliveryPrice(onlyDigits(e.target.value))} placeholder="$0" />
                   </div>
                 )}
               </div>

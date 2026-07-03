@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { AlertCircle } from 'lucide-react'
 
+// Solo dígitos: las cifras en COP son enteras. Se usa en los campos de precio
+// para que el cajero escriba el número directo, sin flechitas de subir/bajar
+// (los inputs type="number" cambiaban ±1 al hacer scroll o con las flechas).
+const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
+
 export default function OrderForm({ drivers, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     orderNumber:        '',
@@ -154,14 +159,14 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
           <div>
             <label htmlFor="of-quotedPrice" className="label-field">Valor pedido</label>
             <input id="of-quotedPrice" name="quotedPrice" className="input-field"
-              value={form.quotedPrice} type="number" min="0"
-              onChange={e => set('quotedPrice', e.target.value)} placeholder="0" />
+              value={form.quotedPrice} inputMode="numeric"
+              onChange={e => set('quotedPrice', onlyDigits(e.target.value))} placeholder="0" />
           </div>
           <div>
             <label htmlFor="of-deliveryPrice" className="label-field">Valor domicilio</label>
             <input id="of-deliveryPrice" name="deliveryPrice" className="input-field"
-              value={form.deliveryPrice} type="number" min="0"
-              onChange={e => set('deliveryPrice', e.target.value)} placeholder="0" />
+              value={form.deliveryPrice} inputMode="numeric"
+              onChange={e => set('deliveryPrice', onlyDigits(e.target.value))} placeholder="0" />
           </div>
         </div>
         {total > 0 && (
@@ -189,16 +194,16 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label-field">Efectivo</label>
-                <input className="input-field" type="number" min="0"
+                <input className="input-field" inputMode="numeric"
                   value={form.mixtoEfectivo}
-                  onChange={e => set('mixtoEfectivo', e.target.value)}
+                  onChange={e => set('mixtoEfectivo', onlyDigits(e.target.value))}
                   placeholder="$0" />
               </div>
               <div>
                 <label className="label-field">Transferencia</label>
-                <input className="input-field" type="number" min="0"
+                <input className="input-field" inputMode="numeric"
                   value={form.mixtoTransferencia}
-                  onChange={e => set('mixtoTransferencia', e.target.value)}
+                  onChange={e => set('mixtoTransferencia', onlyDigits(e.target.value))}
                   placeholder="$0" />
               </div>
             </div>
