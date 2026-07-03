@@ -20,17 +20,19 @@ export function useAllRoles(user: User | null) {
     Promise.all([
       getDocs(collection(db, 'roles_cashiers')),
       getDocs(collection(db, 'roles_drivers')),
+      getDocs(collection(db, 'roles_disabled')),
     ])
-      .then(([cashierSnap, driverSnap]) => {
+      .then(([cashierSnap, driverSnap, disabledSnap]) => {
         if (cancelled) return
         const dynamicCashiers = cashierSnap.docs.map(d => d.id.toLowerCase())
         const dynamicDrivers = driverSnap.docs.map(d => d.id.toLowerCase())
+        const disabled = disabledSnap.docs.map(d => d.id.toLowerCase())
         const roles: RoleName[] = []
         if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(email)) roles.push(ROLES.ADMIN)
         const allCashiers = [...Object.keys(DEFAULT_CASHIERS).map(x => x.toLowerCase()), ...dynamicCashiers]
-        if (allCashiers.includes(email)) roles.push(ROLES.CASHIER)
+        if (allCashiers.includes(email) && !disabled.includes(email)) roles.push(ROLES.CASHIER)
         const allDrivers = [...Object.keys(DEFAULT_DRIVERS).map(x => x.toLowerCase()), ...dynamicDrivers]
-        if (allDrivers.includes(email)) roles.push(ROLES.DRIVER)
+        if (allDrivers.includes(email) && !disabled.includes(email)) roles.push(ROLES.DRIVER)
         roles.push(ROLES.CLIENT)
         setAllRoles(roles)
       })

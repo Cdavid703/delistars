@@ -3,6 +3,7 @@ import { Menu, X, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { RoleSwitcher } from '@/components/RoleSwitcher'
+import logo from '@/assets/logo.svg'
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -34,9 +35,14 @@ const Layout = () => {
         } fixed left-0 top-0 z-40 h-full w-64 bg-coal text-white transition-transform duration-300 ease-in-out lg:static lg:translate-x-0`}
       >
         {/* Logo Section */}
-        <div className="border-b border-gray-700 p-6">
-          <h1 className="text-2xl font-display font-bold text-primary">DeliStars</h1>
-          <p className="text-xs text-gray-400 mt-1">Panel de Administración</p>
+        <div className="border-b border-gray-700 p-6 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-cream flex items-center justify-center shrink-0 shadow-soft">
+            <img src={logo} alt="DeliStars" className="w-8 h-8 object-contain" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-display font-bold text-primary leading-none">DeliStars</h1>
+            <p className="text-[11px] text-gray-400 mt-1 uppercase tracking-wider">Panel de Administración</p>
+          </div>
         </div>
 
         {/* Navigation */}

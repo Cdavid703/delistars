@@ -254,14 +254,17 @@ export default function ClientPanel() {
     })
   )
 
-  if (platformActive === false && effectiveRole === 'client') {
+  // Plataforma cerrada: solo bloquear a quien NO tiene pedidos que rastrear.
+  // Un cliente con pedidos activos/de hoy debe poder seguir viéndolos y chatear
+  // con la caja aunque la plataforma esté cerrada para nuevos pedidos.
+  if (platformActive === false && effectiveRole === 'client' && ordersLoaded && orders.length === 0) {
     return (
       <div className="min-h-screen-safe flex flex-col bg-gradient-to-br from-cherry via-tangelo to-mustard">
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
           <div className="text-6xl mb-4">🔒</div>
           <h1 className="font-display text-3xl text-cream tracking-widest mb-3">Plataforma cerrada</h1>
           <p className="font-body text-cream/80 text-sm max-w-xs">
-            El servicio de domicilios no está disponible en este momento.
+            El servicio de domicilios abre a las 5:30 PM. Mientras tanto puedes ver el menú en la página principal.
           </p>
           <div className="mt-4 bg-cream/10 rounded-2xl px-6 py-4 flex items-center gap-3">
             <Clock size={18} className="text-cream/70 flex-shrink-0" />
@@ -270,7 +273,10 @@ export default function ClientPanel() {
               <span className="font-semibold text-cream">5:30 PM – 11:30 PM</span>
             </p>
           </div>
-          <button onClick={logout} className="mt-8 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors">
+          <a href="/" className="mt-8 inline-flex items-center gap-2 bg-cream text-cherry font-display tracking-wide px-6 py-3 rounded-2xl shadow-card hover:opacity-90 transition-opacity">
+            <ShoppingBag size={18} /> Ver el menú
+          </a>
+          <button onClick={logout} className="mt-4 flex items-center gap-2 text-cream/60 hover:text-cream text-sm font-body transition-colors">
             <LogOut size={14} /> Cerrar sesión
           </button>
         </div>

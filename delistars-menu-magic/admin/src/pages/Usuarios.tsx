@@ -3,14 +3,14 @@ import { collection, getDocs, doc, setDoc, deleteDoc, serverTimestamp } from 'fi
 import { db } from '@/services/firebase'
 import { toast } from 'sonner'
 import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS } from '@/lib/team'
-import { Lock, Pencil, Save, Trash2, X } from 'lucide-react'
+import { Lock, Pencil, RotateCcw, Save, Trash2, X } from 'lucide-react'
 
 type Role = 'cashier' | 'driver'
 
 // Un empleado puede tener uno o ambos roles a la vez (cajero y/o domiciliario).
-// Los "fijos" vienen hardcodeados en el código (DEFAULT_CASHIERS/DEFAULT_DRIVERS)
-// y no se pueden quitar desde aquí; los agregados desde este panel viven en
-// Firestore (roles_cashiers / roles_drivers) y sí se pueden editar/quitar.
+// Los roles "fijos" vienen hardcodeados en el código; los dinámicos viven en
+// Firestore (roles_cashiers / roles_drivers). Para retirar del sistema a un
+// empleado fijo se usa una baja (roles_disabled), que anula todos sus roles.
 interface Employee {
   email: string
   name: string
@@ -19,6 +19,7 @@ interface Employee {
   cashierFixed: boolean
   isDriver: boolean
   driverFixed: boolean
+  disabled: boolean
 }
 
 export default function Usuarios() {
@@ -38,12 +39,14 @@ export default function Usuarios() {
   const load = async () => {
     setLoading(true)
     try {
-      const [cs, ds] = await Promise.all([
+      const [cs, ds, dis] = await Promise.all([
         getDocs(collection(db, 'roles_cashiers')),
         getDocs(collection(db, 'roles_drivers')),
+        getDocs(collection(db, 'roles_disabled')),
       ])
       const dynCashiers = new Map(cs.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string }]))
       const dynDrivers = new Map(ds.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string }]))
+      const disabled = new Set(dis.docs.map((d) => d.id.toLowerCase()))
 
       const emails = new Set([
         ...Object.keys(DEFAULT_CASHIERS).map((e) => e.toLowerCase()),
@@ -67,9 +70,11 @@ export default function Usuarios() {
           cashierFixed,
           isDriver: driverFixed || dynDrivers.has(email),
           driverFixed,
+          disabled: disabled.has(email),
         }
       })
-      list.sort((a, b) => a.name.localeCompare(b.name))
+      // Activos primero, luego por nombre.
+      list.sort((a, b) => (Number(a.disabled) - Number(b.disabled)) || a.name.localeCompare(b.name))
       setEmployees(list)
     } catch {
       toast.error('Error al cargar el equipo')
@@ -80,7 +85,7 @@ export default function Usuarios() {
 
   useEffect(() => { load() }, [])
 
-  const addEmployee = async () => {
+  const addUser = async () => {
     const email = newEmail.trim().toLowerCase()
     if (!email) { toast.error('El correo es obligatorio'); return }
     if (!newCashier && !newDriver) { toast.error('Elige al menos un rol (cajero o domiciliario)'); return }
@@ -88,6 +93,8 @@ export default function Usuarios() {
       const payload = { email, name: newName.trim() || email, phone: newPhone.trim() || null, addedAt: serverTimestamp() }
       if (newCashier) await setDoc(doc(db, 'roles_cashiers', email), payload)
       if (newDriver) await setDoc(doc(db, 'roles_drivers', email), payload)
+      // Por si estaba dado de baja, reactivarlo al re-agregarlo.
+      await deleteDoc(doc(db, 'roles_disabled', email)).catch(() => {})
       toast.success(`${email} agregado`)
       setNewEmail(''); setNewName(''); setNewPhone(''); setNewCashier(true); setNewDriver(false)
       load()
@@ -98,7 +105,7 @@ export default function Usuarios() {
 
   const toggleRole = async (emp: Employee, role: Role) => {
     const fixed = role === 'cashier' ? emp.cashierFixed : emp.driverFixed
-    if (fixed) return // los roles fijos no se editan desde la UI
+    if (fixed || emp.disabled) return // los roles fijos y los dados de baja no se editan por checkbox
     const col = role === 'cashier' ? 'roles_cashiers' : 'roles_drivers'
     const has = role === 'cashier' ? emp.isCashier : emp.isDriver
     try {
@@ -132,16 +139,32 @@ export default function Usuarios() {
     }
   }
 
+  // Dar de baja a cualquier empleado (fijo o dinámico): quita sus roles
+  // dinámicos y registra la baja, que anula tambien los roles fijos del código.
   const removeEmployee = async (emp: Employee) => {
-    if (emp.cashierFixed || emp.driverFixed) return
-    if (!window.confirm(`¿Quitar a ${emp.name} de todos los roles?`)) return
+    if (!window.confirm(`¿Dar de baja a ${emp.name}? Perderá el acceso a los paneles. Podrás reactivarlo después.`)) return
     try {
-      if (emp.isCashier) await deleteDoc(doc(db, 'roles_cashiers', emp.email))
-      if (emp.isDriver) await deleteDoc(doc(db, 'roles_drivers', emp.email))
-      toast.success('Empleado eliminado')
+      await deleteDoc(doc(db, 'roles_cashiers', emp.email)).catch(() => {})
+      await deleteDoc(doc(db, 'roles_drivers', emp.email)).catch(() => {})
+      await setDoc(doc(db, 'roles_disabled', emp.email), { email: emp.email, name: emp.name, disabledAt: serverTimestamp() })
+      toast.success('Empleado dado de baja')
       load()
     } catch {
-      toast.error('Error al eliminar')
+      toast.error('Error al dar de baja')
+    }
+  }
+
+  const reactivate = async (emp: Employee) => {
+    try {
+      await deleteDoc(doc(db, 'roles_disabled', emp.email))
+      // Si no es fijo y no tiene roles dinámicos, se reagrega como cajero por defecto.
+      if (!emp.cashierFixed && !emp.driverFixed) {
+        await setDoc(doc(db, 'roles_cashiers', emp.email), { email: emp.email, name: emp.name, phone: emp.phone || null, addedAt: serverTimestamp() })
+      }
+      toast.success('Empleado reactivado')
+      load()
+    } catch {
+      toast.error('Error al reactivar')
     }
   }
 
@@ -183,7 +206,7 @@ export default function Usuarios() {
               <input type="checkbox" checked={newDriver} onChange={(e) => setNewDriver(e.target.checked)} /> Domiciliario
             </label>
           </div>
-          <button onClick={addEmployee} className="bg-primary text-white rounded px-4 py-2 text-sm font-medium">Agregar</button>
+          <button onClick={addUser} className="bg-primary text-white rounded px-4 py-2 text-sm font-medium">Agregar</button>
         </div>
       </div>
 
@@ -202,7 +225,7 @@ export default function Usuarios() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {employees.map((emp) => (
-                <tr key={emp.email} className="hover:bg-gray-50">
+                <tr key={emp.email} className={`hover:bg-gray-50 ${emp.disabled ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     {editing === emp.email ? (
                       <div className="flex flex-col gap-1">
@@ -211,39 +234,42 @@ export default function Usuarios() {
                       </div>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-coal">{emp.name}</p>
+                        <p className="text-sm font-medium text-coal">
+                          {emp.name}
+                          {emp.disabled && <span className="ml-2 text-[10px] uppercase tracking-wider text-red-600 font-bold">dado de baja</span>}
+                        </p>
                         <p className="text-xs text-muted-fg">{emp.email}{emp.phone ? ` · ${emp.phone}` : ''}</p>
                       </>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {emp.cashierFixed ? (
+                    {emp.disabled ? <span className="text-gray-300">—</span> : emp.cashierFixed ? (
                       <span title="Fijo en el código" className="text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
                     ) : (
                       <input type="checkbox" checked={emp.isCashier} onChange={() => toggleRole(emp, 'cashier')} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {emp.driverFixed ? (
+                    {emp.disabled ? <span className="text-gray-300">—</span> : emp.driverFixed ? (
                       <span title="Fijo en el código" className="text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
                     ) : (
                       <input type="checkbox" checked={emp.isDriver} onChange={() => toggleRole(emp, 'driver')} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {editing === emp.email ? (
+                    {emp.disabled ? (
+                      <button onClick={() => reactivate(emp)} className="inline-flex items-center gap-1 text-xs font-semibold text-mint border border-mint/30 rounded px-3 py-1.5 hover:bg-mint/10">
+                        <RotateCcw className="w-3.5 h-3.5" /> Reactivar
+                      </button>
+                    ) : editing === emp.email ? (
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => saveEdit(emp)} className="text-mint hover:bg-mint/10 rounded p-1.5"><Save className="w-4 h-4" /></button>
                         <button onClick={() => setEditing(null)} className="text-coal/50 hover:bg-gray-100 rounded p-1.5"><X className="w-4 h-4" /></button>
                       </div>
                     ) : (
                       <div className="flex items-center justify-end gap-2">
-                        {!(emp.cashierFixed && emp.driverFixed) && (
-                          <button onClick={() => startEdit(emp)} className="text-primary hover:bg-primary/10 rounded p-1.5"><Pencil className="w-4 h-4" /></button>
-                        )}
-                        {!emp.cashierFixed && !emp.driverFixed && (
-                          <button onClick={() => removeEmployee(emp)} className="text-red-600 hover:bg-red-50 rounded p-1.5"><Trash2 className="w-4 h-4" /></button>
-                        )}
+                        <button onClick={() => startEdit(emp)} className="text-primary hover:bg-primary/10 rounded p-1.5" title="Editar"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => removeEmployee(emp)} className="text-red-600 hover:bg-red-50 rounded p-1.5" title="Dar de baja"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     )}
                   </td>

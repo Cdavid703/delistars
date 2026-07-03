@@ -69,11 +69,16 @@ export const SEDES = {
 }
 
 // ─── Determinar rol base desde Firestore ─────────────────────────────────────
-// getUserRole is called after loading dynamic lists from Firestore
-export function resolveRole(email, dynamicCashiers = [], dynamicDrivers = []) {
+// disabledEmails: empleados dados de baja desde el admin (colección
+// roles_disabled). Anulan tanto los defaults hardcodeados como los dinámicos,
+// para poder retirar del sistema a alguien que ya no trabaja aquí.
+export function resolveRole(email, dynamicCashiers = [], dynamicDrivers = [], disabledEmails = []) {
   if (!email) return ROLES.CLIENT
   const e = email.toLowerCase()
   if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(e)) return ROLES.ADMIN
+
+  const disabled = disabledEmails.map(x => x.toLowerCase())
+  if (disabled.includes(e)) return ROLES.CLIENT
 
   const allCashiers = [...DEFAULT_CASHIERS, ...dynamicCashiers.map(x => x.toLowerCase())]
   if (allCashiers.includes(e)) return ROLES.CASHIER
@@ -85,18 +90,19 @@ export function resolveRole(email, dynamicCashiers = [], dynamicDrivers = []) {
 }
 
 /** Retorna TODOS los roles que puede usar un usuario */
-export function getAllRoles(email, dynamicCashiers = [], dynamicDrivers = []) {
+export function getAllRoles(email, dynamicCashiers = [], dynamicDrivers = [], disabledEmails = []) {
   if (!email) return [ROLES.CLIENT]
   const e = email.toLowerCase()
   const roles = []
 
   if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(e)) roles.push(ROLES.ADMIN)
 
+  const disabled = disabledEmails.map(x => x.toLowerCase())
   const allCashiers = [...DEFAULT_CASHIERS, ...dynamicCashiers.map(x => x.toLowerCase())]
-  if (allCashiers.includes(e)) roles.push(ROLES.CASHIER)
+  if (allCashiers.includes(e) && !disabled.includes(e)) roles.push(ROLES.CASHIER)
 
   const allDrivers = [...DEFAULT_DRIVERS, ...dynamicDrivers.map(x => x.toLowerCase())]
-  if (allDrivers.includes(e)) roles.push(ROLES.DRIVER)
+  if (allDrivers.includes(e) && !disabled.includes(e)) roles.push(ROLES.DRIVER)
 
   roles.push(ROLES.CLIENT)
   return roles

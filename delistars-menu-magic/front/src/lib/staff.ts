@@ -53,18 +53,20 @@ export function getAllRoles(
   email?: string | null,
   dynamicCashiers: string[] = [],
   dynamicDrivers: string[] = [],
+  disabledEmails: string[] = [],
 ): RoleName[] {
   if (!email) return [ROLES.CLIENT]
   const e = email.toLowerCase()
   const roles: RoleName[] = []
+  const disabled = disabledEmails.map(x => x.toLowerCase())
 
   if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(e)) roles.push(ROLES.ADMIN)
 
   const allCashiers = [...CASHIER_EMAILS, ...dynamicCashiers.map(x => x.toLowerCase())]
-  if (allCashiers.includes(e)) roles.push(ROLES.CASHIER)
+  if (allCashiers.includes(e) && !disabled.includes(e)) roles.push(ROLES.CASHIER)
 
   const allDrivers = [...DRIVER_EMAILS, ...dynamicDrivers.map(x => x.toLowerCase())]
-  if (allDrivers.includes(e)) roles.push(ROLES.DRIVER)
+  if (allDrivers.includes(e) && !disabled.includes(e)) roles.push(ROLES.DRIVER)
 
   roles.push(ROLES.CLIENT)
   return roles

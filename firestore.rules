@@ -124,6 +124,11 @@ service cloud.firestore {
       allow read:  if isSignedIn();
       allow write: if isAdmin() || isCashier();
     }
+    // Bajas de empleados: anulan roles (fijos o dinámicos). Solo admin.
+    match /roles_disabled/{email} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
 
     // ── Ubicación de domiciliarios (doc id = email del domiciliario) ────────
     // Solo el propio domiciliario escribe su ubicación. Solo cajero/admin la
@@ -191,6 +196,14 @@ service cloud.firestore {
     // cliente también obtiene su propio número al crear el pedido.
     match /counters/{docId} {
       allow read, write: if isSignedIn();
+    }
+
+    // ── Vacantes publicadas (ofertas de trabajo) ──────────────────────────
+    // Lectura pública (la página /vacantes/ las muestra a cualquiera);
+    // solo el admin publica/edita/borra.
+    match /vacantes/{vacanteId} {
+      allow read:  if true;
+      allow write: if isAdmin();
     }
 
     // ── Postulaciones a vacantes (formulario público, sin login) ───────────

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, orderBy, limit, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo, statusLabel } from '@/lib/orders'
 import { toast } from 'sonner'
-import { Power } from 'lucide-react'
+import { Power, Trash2 } from 'lucide-react'
 
 const StatCard = ({ icon, color, label, value }: { icon: string; color: string; label: string; value: string | number }) => (
   <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center gap-4">
@@ -59,6 +59,16 @@ export default function Dashboard() {
     const t = setInterval(() => setTick((n) => n + 1), 60000)
     return () => clearInterval(t)
   }, [])
+
+  const deleteStale = async (o: Order) => {
+    if (!window.confirm(`¿Eliminar el pedido de ${o.name || o.clientName || 'este cliente'}? Esta acción no se puede deshacer.`)) return
+    try {
+      await deleteDoc(doc(db, 'orders', o.id))
+      toast.success('Pedido eliminado')
+    } catch {
+      toast.error('No se pudo eliminar el pedido')
+    }
+  }
 
   const togglePlatform = async () => {
     if (platformActive === null) return
@@ -129,9 +139,14 @@ export default function Dashboard() {
                   {o.name || o.clientName || '—'}{o.sedeName ? ` · ${o.sedeName}` : ''}
                   {o.driverName ? ` · 🛵 ${o.driverName}` : ''}
                 </span>
-                <span className="shrink-0 text-red-700 font-semibold">
-                  {statusLabel(o.status)} hace {mins} min
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-red-700 font-semibold">
+                    {statusLabel(o.status)} hace {mins} min
+                  </span>
+                  <button onClick={() => deleteStale(o)} title="Eliminar pedido" className="text-red-600 hover:bg-red-100 rounded p-1">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

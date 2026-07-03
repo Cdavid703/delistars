@@ -17,24 +17,28 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Load dynamic role lists from Firestore
-        const [cashierSnap, driverSnap] = await Promise.all([
+        // Load dynamic role lists + bajas (roles_disabled) desde Firestore
+        const [cashierSnap, driverSnap, disabledSnap] = await Promise.all([
           getDocs(collection(db, 'roles_cashiers')),
           getDocs(collection(db, 'roles_drivers')),
-        ]).catch(() => [{ docs: [] }, { docs: [] }])
+          getDocs(collection(db, 'roles_disabled')),
+        ]).catch(() => [{ docs: [] }, { docs: [] }, { docs: [] }])
 
         const dynamicCashiers = cashierSnap.docs?.map(d => d.id) || []
         const dynamicDrivers  = driverSnap.docs?.map(d => d.id)  || []
+        const disabledEmails  = disabledSnap.docs?.map(d => d.id) || []
 
         const resolvedRole = resolveRole(
           firebaseUser.email,
           dynamicCashiers,
-          dynamicDrivers
+          dynamicDrivers,
+          disabledEmails
         )
         const resolvedAllRoles = getAllRoles(
           firebaseUser.email,
           dynamicCashiers,
-          dynamicDrivers
+          dynamicDrivers,
+          disabledEmails
         )
 
         setUser(firebaseUser)

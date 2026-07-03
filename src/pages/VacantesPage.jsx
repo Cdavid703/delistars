@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import logoSello from '../assets/logos/logo_sello.png'
 import {
-  collection, addDoc, onSnapshot, serverTimestamp, query, orderBy
+  collection, addDoc, getDocs, onSnapshot, serverTimestamp, query, orderBy
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
@@ -48,17 +48,49 @@ const ACCEPTED_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]
 
+// Oferta por defecto (fallback): se muestra cuando el admin todavía no ha
+// publicado ninguna vacante en Firestore.
+const DEFAULT_VACANTE = {
+  id: 'default',
+  titulo: JOB_TITLE,
+  subtitulo: JOB_SUBTITLE,
+  zona: JOB_ZONE,
+  descripcion: JOB_DESCRIPTION,
+  beneficios: OFFER_ITEMS.map(o => `${o.label}: ${o.value}`),
+  requisitos: REQUIREMENTS,
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function VacantesPage() {
   const [currentUser, setCurrentUser] = useState(undefined) // undefined = loading
   const [tab,         setTab]         = useState('vacante')  // 'vacante' | 'postulantes'
   const [showForm,    setShowForm]    = useState(false)
+  const [applyingTo,  setApplyingTo]  = useState(null)       // vacante a la que se postula
   const [loginError,  setLoginError]  = useState('')
+  const [vacantes,    setVacantes]    = useState(null)       // null = cargando
 
   // Listen to Firebase auth state independently (no AuthContext dependency)
   useEffect(() => {
     return onAuthStateChanged(auth, u => setCurrentUser(u))
   }, [])
+
+  // Cargar vacantes publicadas desde Firestore. Si no hay ninguna activa (o no
+  // se pueden leer), se usa la oferta por defecto hardcodeada.
+  useEffect(() => {
+    getDocs(collection(db, 'vacantes'))
+      .then(snap => {
+        const activas = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(v => v.activa !== false)
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        setVacantes(activas.length ? activas : [DEFAULT_VACANTE])
+      })
+      .catch(() => setVacantes([DEFAULT_VACANTE]))
+  }, [])
+
+  const lista = vacantes || [DEFAULT_VACANTE]
+  const heroVacante = lista[0] || DEFAULT_VACANTE
+  const openApply = (vacante) => { setApplyingTo(vacante); setShowForm(true) }
 
   const isAdmin = ADMIN_EMAILS.map(e => e.toLowerCase()).includes(
     currentUser?.email?.toLowerCase() ?? ''
@@ -130,13 +162,15 @@ export default function VacantesPage() {
             Oportunidad laboral
           </span>
           <h1 className="font-display text-3xl sm:text-4xl text-cream tracking-wide leading-tight mb-2">
-            {JOB_TITLE}
+            {heroVacante.titulo}
           </h1>
-          <p className="font-body text-cream/80 text-base font-semibold mb-1">{JOB_SUBTITLE}</p>
-          <div className="flex items-center gap-2 mt-3">
-            <MapPin size={14} className="text-cream/60 flex-shrink-0" />
-            <p className="font-body text-sm text-cream/70">{JOB_ZONE}</p>
-          </div>
+          {heroVacante.subtitulo && <p className="font-body text-cream/80 text-base font-semibold mb-1">{heroVacante.subtitulo}</p>}
+          {heroVacante.zona && (
+            <div className="flex items-center gap-2 mt-3">
+              <MapPin size={14} className="text-cream/60 flex-shrink-0" />
+              <p className="font-body text-sm text-cream/70">{heroVacante.zona}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -162,9 +196,13 @@ export default function VacantesPage() {
       )}
 
       {/* Content */}
-      <div className="max-w-3xl mx-auto w-full px-4 pb-16 mt-4 flex flex-col gap-4">
+      <div className="max-w-3xl mx-auto w-full px-4 pb-16 mt-4 flex flex-col gap-8">
         {tab === 'vacante' && (
-          <JobContent onApply={() => setShowForm(true)} />
+          vacantes === null ? (
+            <p className="font-body text-coal/40 text-sm text-center py-8">Cargando vacantes…</p>
+          ) : (
+            lista.map((v) => <JobContent key={v.id} vacante={v} onApply={() => openApply(v)} />)
+          )
         )}
         {tab === 'postulantes' && isAdmin && (
           <PostulantesGrid />
@@ -173,52 +211,70 @@ export default function VacantesPage() {
 
       {/* Application modal */}
       {showForm && (
-        <ApplicationModal onClose={() => setShowForm(false)} />
+        <ApplicationModal vacante={applyingTo} onClose={() => { setShowForm(false); setApplyingTo(null) }} />
       )}
     </div>
   )
 }
 
 // ─── Job content ──────────────────────────────────────────────────────────────
-function JobContent({ onApply }) {
+function JobContent({ vacante, onApply }) {
+  const beneficios = vacante.beneficios || []
+  const requisitos = vacante.requisitos || []
+  const descParas = (vacante.descripcion || '').split('\n\n').filter(Boolean)
   return (
-    <>
-      {/* Description */}
-      <div className="card">
-        <p className="font-display text-xl text-coal tracking-wide mb-3">Descripción del cargo</p>
-        {JOB_DESCRIPTION.split('\n\n').map((p, i) => (
-          <p key={i} className="font-body text-sm text-coal/80 leading-relaxed mb-3 last:mb-0">{p}</p>
-        ))}
+    <div className="flex flex-col gap-4">
+      {/* Título de la vacante (para cuando hay varias) */}
+      <div className="flex items-center gap-2">
+        <Star size={18} className="text-cherry flex-shrink-0" />
+        <p className="font-display text-2xl text-coal tracking-wide">{vacante.titulo}</p>
       </div>
+
+      {/* Description */}
+      {descParas.length > 0 && (
+        <div className="card">
+          <p className="font-display text-xl text-coal tracking-wide mb-3">Descripción del cargo</p>
+          {descParas.map((p, i) => (
+            <p key={i} className="font-body text-sm text-coal/80 leading-relaxed mb-3 last:mb-0">{p}</p>
+          ))}
+        </div>
+      )}
 
       {/* What we offer */}
-      <div className="card border-l-4 border-cherry">
-        <p className="font-display text-xl text-cherry tracking-wide mb-4">¿Qué ofrecemos?</p>
-        <div className="flex flex-col gap-3">
-          {OFFER_ITEMS.map((item, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <span className="text-2xl flex-shrink-0 leading-none mt-0.5">{item.emoji}</span>
-              <div>
-                <p className="font-body text-xs font-semibold text-coal/50 uppercase tracking-wider">{item.label}</p>
-                <p className="font-body text-sm text-coal/90 leading-relaxed">{item.value}</p>
-              </div>
-            </div>
-          ))}
+      {beneficios.length > 0 && (
+        <div className="card border-l-4 border-cherry">
+          <p className="font-display text-xl text-cherry tracking-wide mb-4">¿Qué ofrecemos?</p>
+          <div className="flex flex-col gap-2.5">
+            {beneficios.map((item, i) => {
+              const [label, ...rest] = String(item).split(':')
+              const value = rest.join(':').trim()
+              return (
+                <div key={i} className="flex items-start gap-3">
+                  <CheckCircle size={16} className="text-cherry flex-shrink-0 mt-0.5" />
+                  <p className="font-body text-sm text-coal/90 leading-relaxed">
+                    {value ? <><strong className="text-coal">{label.trim()}:</strong> {value}</> : String(item)}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Requirements */}
-      <div className="card border-l-4 border-mustard">
-        <p className="font-display text-xl text-coal tracking-wide mb-4">Requisitos obligatorios</p>
-        <div className="flex flex-col gap-2">
-          {REQUIREMENTS.map((req, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <CheckCircle size={16} className="text-mint flex-shrink-0 mt-0.5" />
-              <p className="font-body text-sm text-coal/80 leading-relaxed">{req}</p>
-            </div>
-          ))}
+      {requisitos.length > 0 && (
+        <div className="card border-l-4 border-mustard">
+          <p className="font-display text-xl text-coal tracking-wide mb-4">Requisitos obligatorios</p>
+          <div className="flex flex-col gap-2">
+            {requisitos.map((req, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <CheckCircle size={16} className="text-mint flex-shrink-0 mt-0.5" />
+                <p className="font-body text-sm text-coal/80 leading-relaxed">{req}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* How to apply */}
       <div className="card bg-cherry/5 border border-cherry/20">
@@ -238,12 +294,12 @@ function JobContent({ onApply }) {
       <div className="text-center py-4">
         <p className="font-body text-xs text-coal/30">DeliStars · Plataforma de Domicilios · Medellín, Colombia</p>
       </div>
-    </>
+    </div>
   )
 }
 
 // ─── Application modal ────────────────────────────────────────────────────────
-function ApplicationModal({ onClose }) {
+function ApplicationModal({ vacante, onClose }) {
   const [form, setForm]       = useState({ name: '', phone: '', email: '' })
   const [cvFile, setCvFile]   = useState(null)
   const [errors, setErrors]   = useState([])
@@ -292,6 +348,9 @@ function ApplicationModal({ onClose }) {
         email:     form.email.trim().toLowerCase(),
         cvUrl,
         cvName:    cvFile.name,
+        // Vacante a la que se postula (para saber a cuál corresponde el CV)
+        vacanteId:     vacante?.id || null,
+        vacanteTitulo: vacante?.titulo || null,
         submittedAt: serverTimestamp(),
         status:    'nueva',
       })

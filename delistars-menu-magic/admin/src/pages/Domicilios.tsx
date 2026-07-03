@@ -10,21 +10,28 @@ const uniq = (arr: (string | undefined)[]) =>
 const deliveryLabel = (m?: string) =>
   m === 'pickup' ? 'Recoge en sede' : 'Domicilio'
 
-const sameDay = (o: Order, dateStr: string) => {
-  if (!o.createdAt?.toDate) return false
-  return o.createdAt.toDate().toDateString() === new Date(dateStr + 'T00:00:00').toDateString()
-}
-
 const todayStr = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// ¿El pedido cae dentro del rango [desde, hasta] (ambos inclusive)? Cada
+// límite es opcional: solo-desde = de ese día en adelante; solo-hasta = hasta
+// ese día; desde=hasta = un solo día.
+const inRange = (o: Order, desde: string, hasta: string) => {
+  if (!o.createdAt?.toDate) return false
+  const t = o.createdAt.toDate().getTime()
+  if (desde && t < new Date(desde + 'T00:00:00').getTime()) return false
+  if (hasta && t > new Date(hasta + 'T23:59:59.999').getTime()) return false
+  return true
+}
+
 export default function Domicilios() {
   const [orders, setOrders] = useState<Order[]>([])
-  // Rango de fecha: 'hoy' | 'todo' | una fecha concreta elegida en el picker.
+  // Rango de fecha: Hoy/Todo, o un rango desde–hasta (un solo día = desde==hasta).
   const [soloHoy, setSoloHoy] = useState(true)
-  const [fecha, setFecha] = useState('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [sede, setSede] = useState('')
   const [fStatus, setFStatus] = useState('all')
   const [fDriver, setFDriver] = useState('all')
@@ -40,14 +47,16 @@ export default function Domicilios() {
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])
 
+  const rangoActivo = !!(desde || hasta)
+
   // Base por fecha/sede → alimenta las opciones de los desplegables.
-  // La fecha elegida en el picker manda sobre el toggle Hoy/Todo.
+  // El rango desde–hasta manda sobre el toggle Hoy/Todo.
   const base = useMemo(() => orders.filter((o) => {
-    if (fecha) { if (!sameDay(o, fecha)) return false }
+    if (rangoActivo) { if (!inRange(o, desde, hasta)) return false }
     else if (soloHoy && !isToday(o.createdAt)) return false
     if (sede && o.sedeName !== sede) return false
     return true
-  }), [orders, soloHoy, fecha, sede])
+  }), [orders, soloHoy, rangoActivo, desde, hasta, sede])
 
   const sedes = useMemo(() => uniq(orders.map((o) => o.sedeName)), [orders])
   const statusOptions = useMemo(() => uniq(base.map((o) => o.status)), [base])
@@ -141,7 +150,7 @@ export default function Domicilios() {
       rs.addRow(['Resumen del reporte']).font = { bold: true, size: 14 }
       rs.addRow([])
       rs.addRow(['Sede', sede || 'Todas'])
-      rs.addRow(['Rango', fecha || (soloHoy ? 'Hoy' : 'Todo (últimos 500)')])
+      rs.addRow(['Rango', rangoActivo ? `${desde || '…'} a ${hasta || 'hoy'}` : (soloHoy ? 'Hoy' : 'Todo (últimos 500)')])
       rs.addRow(['Filtros activos', activeFilters])
       rs.addRow(['Pedidos (filtrados)', filtered.length])
       rs.addRow(['Total domicilios', totalDomi]).getCell(2).numFmt = '"$"#,##0'
@@ -179,7 +188,8 @@ export default function Domicilios() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `delistars-reporte-${sede ? sede.replace(/\s+/g, '-') + '-' : ''}${fecha || new Date().toISOString().slice(0, 10)}.xlsx`
+      const rangoTag = rangoActivo ? `${desde || 'inicio'}_a_${hasta || 'hoy'}` : new Date().toISOString().slice(0, 10)
+      a.download = `delistars-reporte-${sede ? sede.replace(/\s+/g, '-') + '-' : ''}${rangoTag}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
     } finally {
@@ -199,23 +209,36 @@ export default function Domicilios() {
             <option value="">Todas las sedes</option>
             {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <input
-            type="date"
-            value={fecha}
-            max={todayStr()}
-            onChange={(e) => setFecha(e.target.value)}
-            className="border rounded px-2 py-1 text-sm"
-            title="Ver los pedidos de un día específico"
-          />
+          <div className="flex items-center gap-1 text-sm">
+            <span className="text-muted-fg text-xs">Desde</span>
+            <input
+              type="date"
+              value={desde}
+              max={hasta || todayStr()}
+              onChange={(e) => setDesde(e.target.value)}
+              className="border rounded px-2 py-1 text-sm"
+              title="Fecha inicial del rango"
+            />
+            <span className="text-muted-fg text-xs">Hasta</span>
+            <input
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              max={todayStr()}
+              onChange={(e) => setHasta(e.target.value)}
+              className="border rounded px-2 py-1 text-sm"
+              title="Fecha final del rango (déjala igual a Desde para un solo día)"
+            />
+          </div>
           <button
-            onClick={() => { setFecha(''); setSoloHoy(true) }}
-            className={`px-3 py-1 rounded text-sm font-medium ${!fecha && soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
+            onClick={() => { setDesde(''); setHasta(''); setSoloHoy(true) }}
+            className={`px-3 py-1 rounded text-sm font-medium ${!rangoActivo && soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
           >
             Hoy
           </button>
           <button
-            onClick={() => { setFecha(''); setSoloHoy(false) }}
-            className={`px-3 py-1 rounded text-sm font-medium ${!fecha && !soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
+            onClick={() => { setDesde(''); setHasta(''); setSoloHoy(false) }}
+            className={`px-3 py-1 rounded text-sm font-medium ${!rangoActivo && !soloHoy ? 'bg-primary text-white' : 'border text-coal'}`}
           >
             Todo
           </button>
