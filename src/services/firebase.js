@@ -119,7 +119,9 @@ export async function registerLoyaltyDelivery(order) {
     const sedeId = order.sedeId
     if (!sedeId) return
 
-    const today = new Date().toISOString().slice(0, 10)
+    // Día en hora Colombia (con UTC, dos entregas de la misma noche —antes y
+    // después de las 7 PM— contaban como "días distintos").
+    const today = bogotaToday()
     const customerRef = doc(db, 'customers', order.clientUid)
 
     const newCount = await runTransaction(db, async (tx) => {
