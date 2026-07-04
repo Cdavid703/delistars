@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  collection, query, where, onSnapshot, addDoc, serverTimestamp,
+  collection, query, where, onSnapshot, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import {
-  db, storage, getNextOrderNumber,
+  db, storage, createOrderWithNumber,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
 } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
@@ -293,12 +293,13 @@ export default function ClientPanel() {
   }
 
   const handleCreateOrder = async (data) => {
-    let orderNumber = ''
-    try { orderNumber = String(await getNextOrderNumber(sede?.id)) } catch (_) {}
     const { redeemRewardIds = [], ...orderData } = data
-    const newOrderRef = await addDoc(collection(db, 'orders'), {
+    // Número + pedido en UNA transacción atómica: el pedido SIEMPRE llega a
+    // la caja con su consecutivo asignado, sin saltos ni números quemados.
+    // Si falla, no se crea nada y el formulario muestra el error (el borrador
+    // se conserva para reintentar).
+    const { orderRef: newOrderRef } = await createOrderWithNumber(sede?.id, {
       ...orderData,
-      orderNumber,
       clientUid:   user.uid,
       clientEmail: user.email   || null,
       clientName:  data.name    || user.displayName || 'Invitado',

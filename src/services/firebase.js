@@ -24,11 +24,20 @@ export const loginAnon = () => signInAnonymously(auth)
 
 provider.setCustomParameters({ prompt: 'select_account' })
 
+// Fecha del día en HORA COLOMBIA (America/Bogota), formato YYYY-MM-DD.
+// ⚠️ Antes se usaba la fecha UTC: en Colombia el día UTC cambia a las 7:00 PM,
+// así que el contador se reiniciaba a 001 EN PLENA JORNADA (el turno es
+// 5:30–11:30 PM). Esa era la causa principal de números repetidos/saltados.
+const bogotaToday = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
+
 // Contador de pedidos POR SEDE — cada sede tiene su propio contador,
-// independiente del de las demás, y se resetea cada día (nuevo turno).
-// Usa counters/orders_<sedeId> { lastNumber: number, date: "YYYY-MM-DD" } en Firestore.
+// independiente del de las demás, y se reinicia cada día (hora Colombia).
+// Usa counters/orders_<sedeId> { lastNumber: number, date: "YYYY-MM-DD" }.
+// Solo para asignar número a pedidos YA existentes sin número (fallback al
+// cotizar). Para crear pedidos nuevos usar SIEMPRE createOrderWithNumber.
 export async function getNextOrderNumber(sedeId) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = bogotaToday()
   const counterRef = doc(db, 'counters', `orders_${sedeId || 'default'}`)
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef)
@@ -38,6 +47,27 @@ export async function getNextOrderNumber(sedeId) {
     tx.set(counterRef, { lastNumber: next, date: today }, { merge: true })
     return String(next).padStart(3, '0')
   })
+}
+
+// Crea el pedido Y le asigna su número consecutivo en UNA SOLA transacción
+// atómica: o pasan las dos cosas o ninguna. Así es imposible "quemar" números
+// (contador que avanza sin pedido) o crear pedidos sin número (que luego
+// recibían uno tardío al cotizar y desordenaban la secuencia).
+export async function createOrderWithNumber(sedeId, orderData) {
+  const today = bogotaToday()
+  const counterRef = doc(db, 'counters', `orders_${sedeId || 'default'}`)
+  const orderRef = doc(collection(db, 'orders')) // id generado por adelantado
+  const orderNumber = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterRef)
+    const data = snap.exists() ? snap.data() : {}
+    const lastNum = data.date === today ? (Number(data.lastNumber) || 0) : 0
+    const next = lastNum + 1
+    const num = String(next).padStart(3, '0')
+    tx.set(counterRef, { lastNumber: next, date: today }, { merge: true })
+    tx.set(orderRef, { ...orderData, orderNumber: num })
+    return num
+  })
+  return { orderRef, orderNumber }
 }
 
 // ─── Fidelización ───────────────────────────────────────────────────────────

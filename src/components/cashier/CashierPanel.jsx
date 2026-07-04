@@ -3,7 +3,7 @@ import {
   collection, addDoc, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, getDocs
 } from 'firebase/firestore'
-import { db, getNextOrderNumber } from '../../services/firebase'
+import { db, createOrderWithNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
 import { cashAmount } from '../../utils/payments'
@@ -269,30 +269,32 @@ export default function CashierPanel() {
   const handleCreateOrder = async (data) => {
     const driver = drivers.find(d => d.id === data.driverId)
     const driverEmail = (driver?.id || data.driverId || '').toLowerCase().trim()
-    // Auto-asignar número solo si el cajero no escribió uno manualmente
-    let orderNumber = data.orderNumber?.trim() || ''
-    if (!orderNumber) {
-      try { orderNumber = String(await getNextOrderNumber(sede.id)) } catch (_) {}
+    const manualNumber = data.orderNumber?.trim() || ''
+    const orderData = {
+      ...data,
+      sedeId:        sede.id,
+      sedeName:      sede.name,
+      status:        'assigned',
+      cashierId:     user.uid,
+      cashierName:   user.displayName,
+      driverEmail,
+      driverName:    driver?.name || driver?.id || '',
+      cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
+      assignedAt:    serverTimestamp(),
+      createdAt:     serverTimestamp(),
+      updatedAt:     serverTimestamp(),
     }
     try {
-      await addDoc(collection(db, 'orders'), {
-        ...data,
-        orderNumber,
-        sedeId:        sede.id,
-        sedeName:      sede.name,
-        status:        'assigned',
-        cashierId:     user.uid,
-        cashierName:   user.displayName,
-        driverEmail,
-        driverName:    driver?.name || driver?.id || '',
-        cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
-        assignedAt:    serverTimestamp(),
-        createdAt:     serverTimestamp(),
-        updatedAt:     serverTimestamp(),
-      })
+      if (manualNumber) {
+        // El cajero escribió un número a mano: se respeta tal cual.
+        await addDoc(collection(db, 'orders'), { ...orderData, orderNumber: manualNumber })
+      } else {
+        // Número + pedido en una sola transacción atómica (sin saltos).
+        await createOrderWithNumber(sede.id, orderData)
+      }
       setShowForm(false)
     } catch (err) {
-      console.error('[CashierPanel] addDoc ERROR:', err)
+      console.error('[CashierPanel] crear pedido ERROR:', err)
       throw err   // re-lanzar para que OrderForm muestre el error
     }
   }
