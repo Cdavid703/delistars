@@ -700,6 +700,16 @@ function DriverOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Pedido ya pagado en línea (Wompi): NO cobrar nada al cliente */}
+          {order.payment === 'Wompi' && order.wompi?.status === 'APPROVED' && (
+            <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
+              <p className="font-display text-base tracking-wide text-mint">💳 YA PAGADO (Wompi)</p>
+              <p className="font-body text-sm text-coal/80 mt-1">
+                El cliente pagó en línea — <strong>no le cobres nada</strong>, solo entrega el pedido.
+              </p>
+            </div>
+          )}
+
           {/* Premio de fidelización canjeado */}
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">

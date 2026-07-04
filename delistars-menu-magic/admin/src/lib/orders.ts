@@ -48,7 +48,8 @@ export const isCashOrder = (o: Order): boolean =>
   !!o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto'
 
 // Métodos de pago válidos (mismo vocabulario que OrderForm.jsx en domicilios).
-export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
+// Wompi = pago en línea ya confirmado (tarjeta/PSE/Nequi vía pasarela).
+export const PAYMENT_OPTIONS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto', 'Wompi']
 
 export const ACTIVE_STATUSES = ['assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
 export const DELIVERED_STATUSES = ['delivered_paid', 'delivered_cash', 'completed']

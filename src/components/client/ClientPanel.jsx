@@ -7,6 +7,7 @@ import {
   db, storage, createOrderWithNumber,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
 } from '../../services/firebase'
+import { createWompiSession, verifyWompiTransaction, toCents, matchesOrder } from '../../services/wompi'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -157,6 +158,54 @@ export default function ClientPanel() {
     celebrateRewards.forEach(r => markRewardNotified(user.uid, r.id).catch(() => {}))
     setCelebrateRewards([])
   }
+
+  // ─── Regreso del checkout real de Wompi ────────────────────────────────────
+  // Wompi devuelve al cliente a /domicilios/?wompi_order=<id>&id=<txId>.
+  // Se verifica la transacción contra el backend (con reintentos si PSE quedó
+  // PENDING) y solo entonces se marca el pedido como pagado. En modo simulado
+  // este camino no se usa (el simulador resuelve dentro del detalle).
+  const wompiReturnHandled = useRef(false)
+  useEffect(() => {
+    if (wompiReturnHandled.current || !user?.uid || !ordersLoaded) return
+    const params = new URLSearchParams(window.location.search)
+    const orderId = params.get('wompi_order')
+    const txId    = params.get('id')
+    if (!orderId || !txId) return
+    wompiReturnHandled.current = true
+    ;(async () => {
+      try {
+        const target = orders.find(o => o.id === orderId)
+        let tx = null
+        for (let intento = 0; intento < 4; intento++) {
+          tx = await verifyWompiTransaction(txId)
+          if (tx.status !== 'PENDING') break
+          await new Promise(r => setTimeout(r, 4000)) // PSE puede tardar
+        }
+        if (target && matchesOrder(tx, orderId, target.totalPrice)) {
+          await updateDoc(doc(db, 'orders', orderId), {
+            payment:        'Wompi',
+            cashOnDelivery: false,
+            wompi: {
+              transactionId: tx.transactionId,
+              reference:     tx.reference,
+              status:        tx.status,
+              amountInCents: tx.amountInCents,
+              simulated:     false,
+            },
+            wompiPaidAt: serverTimestamp(),
+            updatedAt:   serverTimestamp(),
+          })
+        }
+        setSelectedId(orderId) // abrir el detalle: ahí ve confirmado o el error
+      } catch (err) {
+        console.error('[Wompi] Error verificando el regreso del checkout:', err)
+        setSelectedId(orderId)
+      } finally {
+        // Limpia la URL para no re-procesar en recargas
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+    })()
+  }, [user?.uid, ordersLoaded, orders])
 
   useEffect(() => {
     return onSnapshot(
@@ -1087,9 +1136,74 @@ function ClientOrderDetail({ order, onClose }) {
   const [payMixtoTr,   setPayMixtoTr]   = useState('')
   const [payError,     setPayError]     = useState('')
   const [savingPay,    setSavingPay]    = useState(false)
+  // Wompi: sesión del simulador (solo desarrollo) y estado de verificación
+  const [wompiSession,   setWompiSession]   = useState(null)
+  const [wompiVerifying, setWompiVerifying] = useState(false)
+
+  // Marca el pedido como pagado SOLO si la verificación del backend confirma
+  // estado APROBADO, con la referencia de este pedido y el monto exacto.
+  const markWompiPaid = async (tx) => {
+    if (!matchesOrder(tx, order.id, order.totalPrice)) {
+      setPayError(tx?.status === 'DECLINED'
+        ? 'El pago fue rechazado. Puedes intentar de nuevo u otro método.'
+        : 'No se pudo confirmar el pago. Si ya pagaste, escríbenos por el chat.')
+      return false
+    }
+    await updateDoc(doc(db, 'orders', order.id), {
+      payment:        'Wompi',
+      cashOnDelivery: false,
+      wompi: {
+        transactionId: tx.transactionId,
+        reference:     tx.reference,
+        status:        tx.status,
+        amountInCents: tx.amountInCents,
+        simulated:     !!tx.simulated,
+      },
+      wompiPaidAt: serverTimestamp(),
+      updatedAt:   serverTimestamp(),
+    })
+    return true
+  }
+
+  const startWompiPayment = async () => {
+    setPayError('')
+    setSavingPay(true)
+    try {
+      const redirectUrl = `${window.location.origin}${window.location.pathname}?wompi_order=${order.id}`
+      const session = await createWompiSession(order.id, toCents(order.totalPrice), redirectUrl)
+      if (session.simulated) {
+        // Sin cuenta Wompi todavía: simulador local (mismo camino de código).
+        setWompiSession(session)
+      } else {
+        // Checkout real de Wompi: al terminar, Wompi devuelve al cliente a
+        // redirectUrl con ?id=<transactionId> (lo procesa ClientPanel).
+        window.location.href = session.checkoutUrl
+      }
+    } catch (err) {
+      setPayError('No se pudo iniciar el pago con Wompi. Verifica tu conexión e intenta de nuevo.')
+    } finally { setSavingPay(false) }
+  }
+
+  // Resultado del simulador (solo desarrollo): recorre la MISMA verificación
+  // del backend que un pago real.
+  const resolveSimulatedWompi = async (approved) => {
+    const s = wompiSession
+    if (!s) return
+    setWompiVerifying(true)
+    setPayError('')
+    try {
+      const txId = `SIM-${approved ? 'APPROVED' : 'DECLINED'}-${s.amountInCents}-${s.reference}`
+      const tx = await verifyWompiTransaction(txId)
+      const ok = await markWompiPaid(tx)
+      if (ok || !approved) setWompiSession(null)
+    } catch {
+      setPayError('No se pudo verificar el pago simulado.')
+    } finally { setWompiVerifying(false) }
+  }
 
   const confirmPaymentMethod = async () => {
     if (!payMethod) { setPayError('Selecciona cómo vas a pagar'); return }
+    if (payMethod === 'Wompi') { await startWompiPayment(); return }
     if (payMethod === 'Mixto' && (!payMixtoEf || !payMixtoTr)) {
       setPayError('Indica cuánto pagarás en efectivo y cuánto en transferencia'); return
     }
@@ -1277,6 +1391,21 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* Pago con Wompi confirmado */}
+          {order.payment === 'Wompi' && order.wompi?.status === 'APPROVED' && (
+            <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-4 flex items-start gap-3">
+              <span className="text-3xl leading-none">💳</span>
+              <div>
+                <p className="font-display text-base tracking-wide text-mint">¡Pago confirmado!</p>
+                <p className="font-body text-xs text-coal/70 mt-0.5">
+                  Pagaste {fmt((order.wompi.amountInCents || 0) / 100)} con Wompi
+                  {order.wompi.simulated ? ' (simulado — desarrollo)' : ''}. Tu pedido quedó
+                  confirmado — no necesitas efectivo ni comprobantes.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Selector de método de pago — aparece tras la cotización de la caja */}
           {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
@@ -1291,7 +1420,16 @@ function ClientOrderDetail({ order, onClose }) {
                 <option>Transferencia</option>
                 <option>Nequi</option>
                 <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
+                <option value="Wompi">💳 Pagar en línea (tarjeta, PSE, Nequi) — Wompi</option>
               </select>
+
+              {payMethod === 'Wompi' && (
+                <p className="font-body text-xs text-coal/60 bg-mint/10 border border-mint/30 rounded-xl px-3 py-2">
+                  Pagas de una vez el total ({fmt(order.totalPrice)}) en la pasarela segura de
+                  Wompi (Bancolombia). Tu pedido queda <strong>confirmado y pagado</strong> — sin
+                  efectivo ni comprobantes.
+                </p>
+              )}
 
               {payMethod === 'Mixto' && (
                 <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
@@ -1690,6 +1828,40 @@ function ClientOrderDetail({ order, onClose }) {
           )}
         </div>
       </div>
+
+      {/* Simulador de pago Wompi — SOLO desarrollo (sin cuenta Wompi aún).
+          Con llaves reales el cliente va al checkout oficial y esto no aparece. */}
+      {wompiSession?.simulated && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-coal/70 backdrop-blur-sm px-4">
+          <div className="bg-cream rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
+            <p className="text-4xl mb-2">💳</p>
+            <p className="font-display text-xl text-coal tracking-wide">Simulador Wompi</p>
+            <p className="font-body text-[10px] uppercase tracking-widest text-tangelo font-bold mt-1">
+              Modo desarrollo — sin cuenta Wompi
+            </p>
+            <p className="font-body text-sm text-coal/70 mt-3">
+              Total a pagar: <strong className="text-cherry">{fmt(wompiSession.amountInCents / 100)}</strong>
+            </p>
+            {payError && <p className="font-body text-xs text-pepper mt-2">{payError}</p>}
+            {wompiVerifying ? (
+              <p className="font-body text-sm text-coal/50 mt-5">Verificando pago…</p>
+            ) : (
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => resolveSimulatedWompi(false)} className="btn-secondary flex-1">
+                  ✕ Rechazar
+                </button>
+                <button onClick={() => resolveSimulatedWompi(true)} className="btn-primary flex-1">
+                  ✓ Aprobar
+                </button>
+              </div>
+            )}
+            <button onClick={() => { setWompiSession(null); setPayError('') }}
+              className="mt-4 font-body text-xs text-coal/40 underline underline-offset-2">
+              Cancelar y volver
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

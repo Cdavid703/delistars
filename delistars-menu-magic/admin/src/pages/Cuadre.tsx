@@ -13,10 +13,10 @@ const sameDay = (o: Order, dateStr: string) => {
   return o.createdAt.toDate().toDateString() === new Date(dateStr + 'T00:00:00').toDateString()
 }
 
-// Porción digital del pedido: transferencia/Nequi completo, o la parte no
-// efectivo de un Mixto.
+// Porción digital del pedido: transferencia/Nequi/Wompi completo, o la parte
+// no efectivo de un Mixto.
 const digitalAmount = (o: Order): number => {
-  if (o.payment === 'Transferencia' || o.payment === 'Nequi') return o.totalPrice || 0
+  if (o.payment === 'Transferencia' || o.payment === 'Nequi' || o.payment === 'Wompi') return o.totalPrice || 0
   if (o.payment === 'Mixto') return Math.max(0, (o.totalPrice || 0) - cashAmount(o))
   return 0
 }

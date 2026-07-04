@@ -25,6 +25,7 @@ import { swaggerSpec } from './config/swagger';
 import productsRoutes from './modules/modulo_products/routes/products.routes';
 import categoriesRoutes from './modules/modulo_categories/routes/categories.routes';
 import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
+import paymentsRoutes from './modules/modulo_payments/routes/payments.routes';
 
 const app: Express = express();
 
@@ -107,6 +108,7 @@ const apiPrefix = process.env.API_PREFIX || '/api/v1';
 app.use(`${apiPrefix}/products`, productsRoutes);
 app.use(`${apiPrefix}/categories`, categoriesRoutes);
 app.use(`${apiPrefix}/sedes`, sedesRoutes);
+app.use(`${apiPrefix}/payments`, paymentsRoutes);
 
 // 404 Handler
 app.use((_req: Request, res: Response) => {
@@ -147,7 +149,8 @@ async function startServer() {
       console.log(`   • ${apiPrefix}/health - Health check`);
       console.log(`   • ${apiPrefix}/products - Productos`);
       console.log(`   • ${apiPrefix}/categories - Categorías`);
-      console.log(`   • ${apiPrefix}/sedes - Sedes\n`);
+      console.log(`   • ${apiPrefix}/sedes - Sedes`);
+      console.log(`   • ${apiPrefix}/payments - Pagos (Wompi)\n`);
     });
   } catch (error) {
     console.error('\n❌ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
