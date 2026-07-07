@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { cashAmount } from '../../utils/payments'
-import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -87,7 +86,6 @@ const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toL
 
 export default function DeliveryPanel() {
   const { user, sede, logout, selectSede } = useAuth()
-  const { canInstall, install } = usePWAInstall()
   const [orders,          setOrders]         = useState([])
   const [tab,             setTab]            = useState('pending')
   const [selected,        setSelected]       = useState(null)
@@ -371,21 +369,6 @@ export default function DeliveryPanel() {
           </button>
         ))}
       </div>
-
-      {/* PWA install banner */}
-      {canInstall && (
-        <div className="mx-4 mt-2 flex items-center gap-3 bg-coal/90 text-cream rounded-2xl px-4 py-3 shadow-lg">
-          <img src="/logo_sello.png" alt="DeliStars" className="w-9 h-9 flex-shrink-0 rounded-xl object-cover" />
-          <div className="flex-1 min-w-0">
-            <p className="font-body font-semibold text-sm leading-tight">Instala la app</p>
-            <p className="font-body text-[11px] text-cream/60">Ábrela directo desde tu pantalla de inicio</p>
-          </div>
-          <button onClick={install}
-            className="flex-shrink-0 bg-cherry text-cream font-body text-xs font-semibold px-3 py-1.5 rounded-xl hover:bg-cherry/80 transition-colors">
-            Instalar
-          </button>
-        </div>
-      )}
 
       {/* Date picker for completed tab */}
       {tab === 'completed' && (
