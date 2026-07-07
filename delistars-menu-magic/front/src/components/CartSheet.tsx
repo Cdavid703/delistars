@@ -32,7 +32,9 @@ export const CartSheet = () => {
           name,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
-          addons: it.addons.map((a) => a.name),
+          addons: it.addons.map((a) => `Adición + ${a.name}`),
+          salsas: it.salsas.map((s) => s.name),
+          cebollas: it.cebollas.map((c) => c.name),
           notes: it.notes,
         };
       }),
@@ -125,7 +127,17 @@ export const CartSheet = () => {
                       </div>
                       {it.addons.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          + {it.addons.map((a) => a.name).join(", ")}
+                          {it.addons.map((a) => `Adición + ${a.name}`).join(", ")}
+                        </p>
+                      )}
+                      {it.salsas.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          Salsas: {it.salsas.map((s) => s.name).join(", ")}
+                        </p>
+                      )}
+                      {it.cebollas.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          Cebolla: {it.cebollas.map((c) => c.name).join(", ")}
                         </p>
                       )}
                       {it.notes && <p className="text-xs italic text-muted-foreground mt-1">"{it.notes}"</p>}

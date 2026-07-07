@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCart, formatCOP } from "@/context/CartContext";
-import { apiService, type Addon, type Product as ApiProduct } from "@/services/api";
+import { apiService, type Addon, type Salsa, type Cebolla, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -64,6 +64,10 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const [addonQtys, setAddonQtys] = useState<Record<number, number>>({});
   const [notes, setNotes] = useState("");
   const [addons, setAddons] = useState<Addon[]>([]);
+  const [salsas, setSalsas] = useState<Salsa[]>([]);
+  const [cebollas, setCebollas] = useState<Cebolla[]>([]);
+  const [selectedSalsas, setSelectedSalsas] = useState<Set<number>>(new Set());
+  const [selectedCebollas, setSelectedCebollas] = useState<Set<number>>(new Set());
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // States for product presentations (e.g. juices)
@@ -83,6 +87,8 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
     if (product) {
       setQty(1);
       setAddonQtys({});
+      setSelectedSalsas(new Set());
+      setSelectedCebollas(new Set());
       setNotes("");
       setCurrentImageIndex(0);
 
@@ -133,16 +139,22 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   }, [product, hasPresentations]);
 
   useEffect(() => {
-    const fetchAddons = async () => {
+    const fetchOptions = async () => {
       try {
-        const apiAddons = await apiService.getAddons();
+        const [apiAddons, apiSalsas, apiCebollas] = await Promise.all([
+          apiService.getAddons(),
+          apiService.getSalsas(),
+          apiService.getCebollas(),
+        ]);
         setAddons(apiAddons);
+        setSalsas(apiSalsas);
+        setCebollas(apiCebollas);
       } catch (error) {
-        console.error('Error loading addons:', error);
+        console.error('Error loading addons/salsas/cebollas:', error);
       }
     };
 
-    fetchAddons();
+    fetchOptions();
   }, []);
 
   if (!product) return null;
@@ -228,6 +240,20 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const setAddonQty = (id: number, val: number) =>
     setAddonQtys((prev) => ({ ...prev, [id]: Math.max(0, val) }));
 
+  const toggleSalsa = (id: number) =>
+    setSelectedSalsas((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleCebolla = (id: number) =>
+    setSelectedCebollas((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   // Hide additions for category 7 (Bebidas)
   const isBebida = product.id_categoria === 7;
 
@@ -239,6 +265,9 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const unit = basePrice + selectedAddons.reduce((s, a) => s + a.price, 0);
   const total = unit * qty;
 
+  const chosenSalsas = isBebida ? [] : salsas.filter((s) => selectedSalsas.has(s.id));
+  const chosenCebollas = isBebida ? [] : cebollas.filter((c) => selectedCebollas.has(c.id));
+
   const handleAdd = () => {
     if (notes.length > 250) {
       toast.error("El comentario es muy largo");
@@ -248,6 +277,8 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       product,
       quantity: qty,
       addons: selectedAddons,
+      salsas: chosenSalsas,
+      cebollas: chosenCebollas,
       notes: notes.trim(),
       presentation: selectedPresentation || undefined,
       selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined,
@@ -451,6 +482,60 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN SALSAS (Ocultar para bebidas) */}
+            {!isBebida && salsas.length > 0 && (
+              <div className="border-t border-border/60 pt-4">
+                <p className="font-display text-lg tracking-wide mb-1">Salsas</p>
+                <p className="text-xs text-muted-foreground mb-3">Selecciona las salsas que deseas (sin costo adicional)</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {salsas.map((s) => {
+                    const selected = selectedSalsas.has(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleSalsa(s.id)}
+                        className={`px-2 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${
+                          selected
+                            ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                            : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN CEBOLLAS (Ocultar para bebidas) */}
+            {!isBebida && cebollas.length > 0 && (
+              <div className="border-t border-border/60 pt-4">
+                <p className="font-display text-lg tracking-wide mb-1">Cebolla</p>
+                <p className="text-xs text-muted-foreground mb-3">Selecciona el tipo de cebolla (sin costo adicional)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {cebollas.map((c) => {
+                    const selected = selectedCebollas.has(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleCebolla(c.id)}
+                        className={`px-3 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${
+                          selected
+                            ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                            : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

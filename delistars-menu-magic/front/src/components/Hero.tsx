@@ -32,10 +32,10 @@ export const Hero = () => {
     const fetchProducts = async () => {
       try {
         const products = await apiService.getProducts();
-        // Filtrar solo productos que NO sean adiciones (id_categoria != 5)
+        // Filtrar solo productos que NO sean adiciones (5) ni salsas (8)
         // y que NO sean hamburguesas de pollo
         const filteredProducts = products.filter((p: ApiProduct) => {
-          if (p.id_categoria === 5) return false;
+          if (p.id_categoria === 5 || p.id_categoria === 8) return false;
           
           const isHamburguesaDePollo = 
             p.nombre_producto.toLowerCase().includes("hamburguesa") && 

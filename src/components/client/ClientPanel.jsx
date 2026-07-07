@@ -718,7 +718,9 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       if (!Array.isArray(cartItems) || cartItems.length === 0) return
       const lines = cartItems.map(it => {
         let line = `${it.quantity}x ${it.name}`
-        if (it.addons?.length) line += ` (+ ${it.addons.join(', ')})`
+        if (it.addons?.length) line += ` (${it.addons.join(', ')})`
+        if (it.salsas?.length) line += ` | Salsas: ${it.salsas.join(', ')}`
+        if (it.cebollas?.length) line += ` | Cebolla: ${it.cebollas.join(', ')}`
         if (it.notes) line += ` — "${it.notes}"`
         return line
       })

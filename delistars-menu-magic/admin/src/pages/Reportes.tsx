@@ -22,7 +22,8 @@ function parseItems(items?: string): { name: string; qty: number }[] {
     const m = line.match(/^(\d+)\s*x\s+(.+)$/i)
     if (!m) continue
     let name = m[2]
-      .replace(/\(\+.*?\)/g, '')   // adiciones "(+ queso, tocineta)"
+      .replace(/\(.*?\)/g, '')     // adiciones "(Adición + queso, ...)"
+      .replace(/\|[^|—]*/g, '')    // salsas/cebollas "| Salsas: ..."
       .replace(/—\s*".*?"/g, '')   // notas — "sin cebolla"
       .replace(/\s+/g, ' ')
       .trim()

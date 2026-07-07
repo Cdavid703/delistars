@@ -32,6 +32,16 @@ export interface Addon {
   price: number;
 }
 
+export interface Salsa {
+  id: number;
+  name: string;
+}
+
+export interface Cebolla {
+  id: number;
+  name: string;
+}
+
 export interface Sede {
   id_sede: number;
   nombre_sede: string;
@@ -97,9 +107,10 @@ export const apiService = {
   async getAddons(): Promise<Addon[]> {
     try {
       // Obtener todos los productos y filtrar por id_categoria 5 (Adiciones)
+      // Excluir cebollas (precio 0 en cat 5) ya que se manejan aparte
       const products = await this.getProducts();
       return products
-        .filter((p) => p.id_categoria === 5)
+        .filter((p) => p.id_categoria === 5 && parseFloat(p.precio_venta) > 0)
         .map((p) => ({
           id: p.id_producto,
           name: p.nombre_producto,
@@ -107,6 +118,30 @@ export const apiService = {
         }));
     } catch (error) {
       console.error('Error fetching addons:', error);
+      return [];
+    }
+  },
+
+  async getSalsas(): Promise<Salsa[]> {
+    try {
+      const products = await this.getProducts();
+      return products
+        .filter((p) => p.id_categoria === 8)
+        .map((p) => ({ id: p.id_producto, name: p.nombre_producto }));
+    } catch (error) {
+      console.error('Error fetching salsas:', error);
+      return [];
+    }
+  },
+
+  async getCebollas(): Promise<Cebolla[]> {
+    try {
+      const products = await this.getProducts();
+      return products
+        .filter((p) => p.id_categoria === 5 && parseFloat(p.precio_venta) === 0)
+        .map((p) => ({ id: p.id_producto, name: p.nombre_producto }));
+    } catch (error) {
+      console.error('Error fetching cebollas:', error);
       return [];
     }
   },
