@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import { db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD } from '../../services/firebase'
-import { verifyWompiTransaction, toCents } from '../../services/wompi'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
@@ -70,23 +69,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [searchingAddr,  setSearchingAddr]  = useState(false)
   const [addrSearched,   setAddrSearched]   = useState(false)
   const [savingAddr,     setSavingAddr]     = useState(false)
-
-  // Verificación INDEPENDIENTE del pago Wompi: la caja no confía en lo que
-  // escribió el navegador del cliente — consulta el estado real vía backend.
-  // null = verificando · objeto = resultado
-  const [wompiCheck, setWompiCheck] = useState(null)
-  useEffect(() => {
-    if (order.payment !== 'Wompi' || !order.wompi?.transactionId) return
-    let cancelled = false
-    setWompiCheck(null)
-    verifyWompiTransaction(order.wompi.transactionId)
-      .then(tx => { if (!cancelled) setWompiCheck(tx) })
-      .catch(() => { if (!cancelled) setWompiCheck({ status: 'ERROR', amountInCents: 0 }) })
-    return () => { cancelled = true }
-  }, [order.payment, order.wompi?.transactionId])
-
-  const wompiVerified = wompiCheck?.status === 'APPROVED' &&
-    wompiCheck.amountInCents === toCents(order.totalPrice)
 
   const orderSede = SEDES[order.sedeId]
   const pickup    = order.deliveryMode === 'pickup'
@@ -277,8 +259,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     const qp          = fmt(order.quotedPrice)
     const dp          = fmt(order.deliveryPrice)
     const tp          = fmt(order.totalPrice)
-    const paymentStr  = escHtml(order.payment || '—') +
-      (order.payment === 'Wompi' && order.wompi?.status === 'APPROVED' ? ' — YA PAGADO ✓' : '')
+    const paymentStr  = escHtml(order.payment || '—')
     const items       = escHtml(order.items || '').replace(/\n/g, '<br/>')
     const notesStr    = order.notes ? `<p><em>Indicaciones: ${escHtml(order.notes)}</em></p>` : ''
     const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${escHtml(order.cashierNotes)}</em></p>` : ''
@@ -473,35 +454,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
         <div className="p-5 flex flex-col gap-4">
           <p className="font-body text-xs text-coal/40">{time}</p>
-
-          {/* Pago Wompi — sello con verificación independiente contra Wompi */}
-          {order.payment === 'Wompi' && (
-            wompiCheck === null ? (
-              <div className="bg-smoked/50 border border-coal/10 rounded-2xl p-4">
-                <p className="font-body text-sm text-coal/60">💳 Verificando pago con Wompi…</p>
-              </div>
-            ) : wompiVerified ? (
-              <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
-                <p className="font-display text-base tracking-wide text-mint">💳 PAGADO CON WOMPI ✓</p>
-                <p className="font-body text-sm text-coal/80 mt-1">
-                  Verificado con Wompi: <strong>{fmt(wompiCheck.amountInCents / 100)}</strong>
-                  {order.wompi?.simulated ? ' (SIMULADO — desarrollo)' : ''}.
-                  No cobrar nada al cliente — sin efectivo ni comprobantes.
-                </p>
-              </div>
-            ) : (
-              <div className="bg-pepper/10 border-2 border-pepper rounded-2xl p-4">
-                <p className="font-display text-base tracking-wide text-pepper">⚠️ PAGO WOMPI SIN VERIFICAR</p>
-                <p className="font-body text-sm text-coal/80 mt-1">
-                  El pedido dice "Wompi" pero la verificación contra Wompi
-                  {wompiCheck.status === 'ERROR'
-                    ? ' falló (revisa la conexión o reabre el pedido).'
-                    : ` devolvió estado ${wompiCheck.status}${wompiCheck.amountInCents ? ` por ${fmt(wompiCheck.amountInCents / 100)}` : ''} — el monto o el estado NO cuadran.`}
-                  {' '}<strong>No despachar como pagado sin confirmar.</strong>
-                </p>
-              </div>
-            )
-          )}
 
           {/* Premio de fidelización canjeado — bloque MUY visible para que la caja
               no se confunda al ver una hamburguesa que no aparece en el precio. */}
