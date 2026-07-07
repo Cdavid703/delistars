@@ -13,16 +13,19 @@ export function useAllRoles(user: User | null) {
   useEffect(() => {
     if (!user?.email) { setAllRoles([ROLES.CLIENT]); return }
     let cancelled = false
+    // Cada lectura tolera fallas por separado: si roles_disabled no se puede
+    // leer (reglas sin publicar), no se pierden los demás roles.
+    const safeIds = async (col: string): Promise<string[]> => {
+      try { return (await getDocs(collection(db, col))).docs.map(d => d.id) }
+      catch { return [] }
+    }
     Promise.all([
-      getDocs(collection(db, 'roles_cashiers')),
-      getDocs(collection(db, 'roles_drivers')),
-      getDocs(collection(db, 'roles_disabled')),
+      safeIds('roles_cashiers'),
+      safeIds('roles_drivers'),
+      safeIds('roles_disabled'),
     ])
-      .then(([cashierSnap, driverSnap, disabledSnap]) => {
+      .then(([dynamicCashiers, dynamicDrivers, disabled]) => {
         if (cancelled) return
-        const dynamicCashiers = cashierSnap.docs.map(d => d.id)
-        const dynamicDrivers = driverSnap.docs.map(d => d.id)
-        const disabled = disabledSnap.docs.map(d => d.id)
         setAllRoles(getAllRoles(user.email, dynamicCashiers, dynamicDrivers, disabled))
       })
       .catch(() => { if (!cancelled) setAllRoles(getAllRoles(user.email)) })

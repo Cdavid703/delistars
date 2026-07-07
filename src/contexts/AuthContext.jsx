@@ -17,16 +17,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Load dynamic role lists + bajas (roles_disabled) desde Firestore
-        const [cashierSnap, driverSnap, disabledSnap] = await Promise.all([
-          getDocs(collection(db, 'roles_cashiers')),
-          getDocs(collection(db, 'roles_drivers')),
-          getDocs(collection(db, 'roles_disabled')),
-        ]).catch(() => [{ docs: [] }, { docs: [] }, { docs: [] }])
-
-        const dynamicCashiers = cashierSnap.docs?.map(d => d.id) || []
-        const dynamicDrivers  = driverSnap.docs?.map(d => d.id)  || []
-        const disabledEmails  = disabledSnap.docs?.map(d => d.id) || []
+        // Cada lista se lee por separado y tolera fallas: si una colección no
+        // se puede leer (reglas de Firestore sin publicar), esa lista queda
+        // vacía pero NO se pierden las demás ni los roles hardcodeados.
+        const safeIds = async (col) => {
+          try { return (await getDocs(collection(db, col))).docs.map(d => d.id) }
+          catch { return [] }
+        }
+        const [dynamicCashiers, dynamicDrivers, disabledEmails] = await Promise.all([
+          safeIds('roles_cashiers'),
+          safeIds('roles_drivers'),
+          safeIds('roles_disabled'),
+        ])
 
         const resolvedRole = resolveRole(
           firebaseUser.email,

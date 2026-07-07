@@ -17,26 +17,34 @@ export function useAllRoles(user: User | null) {
     const email = user?.email?.toLowerCase()
     if (!email) { setAllRoles([ROLES.CLIENT]); return }
     let cancelled = false
-    Promise.all([
-      getDocs(collection(db, 'roles_cashiers')),
-      getDocs(collection(db, 'roles_drivers')),
-      getDocs(collection(db, 'roles_disabled')),
-    ])
-      .then(([cashierSnap, driverSnap, disabledSnap]) => {
-        if (cancelled) return
-        const dynamicCashiers = cashierSnap.docs.map(d => d.id.toLowerCase())
-        const dynamicDrivers = driverSnap.docs.map(d => d.id.toLowerCase())
-        const disabled = disabledSnap.docs.map(d => d.id.toLowerCase())
-        const roles: RoleName[] = []
-        if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(email)) roles.push(ROLES.ADMIN)
-        const allCashiers = [...Object.keys(DEFAULT_CASHIERS).map(x => x.toLowerCase()), ...dynamicCashiers]
-        if (allCashiers.includes(email) && !disabled.includes(email)) roles.push(ROLES.CASHIER)
-        const allDrivers = [...Object.keys(DEFAULT_DRIVERS).map(x => x.toLowerCase()), ...dynamicDrivers]
-        if (allDrivers.includes(email) && !disabled.includes(email)) roles.push(ROLES.DRIVER)
-        roles.push(ROLES.CLIENT)
-        setAllRoles(roles)
-      })
-      .catch(() => { if (!cancelled) setAllRoles([ROLES.ADMIN, ROLES.CLIENT]) })
+
+    // Cada colección se lee por separado y tolera fallas: si una lectura no
+    // se puede (p. ej. reglas de Firestore sin publicar para roles_disabled),
+    // esa lista queda vacía pero NUNCA se pierden los roles del código ni los
+    // que sí se pudieron leer. Antes un Promise.all que fallaba dejaba solo
+    // admin+client (2 roles) — regresión que rompió el selector de roles.
+    const safeIds = async (col: string): Promise<string[]> => {
+      try { return (await getDocs(collection(db, col))).docs.map(d => d.id.toLowerCase()) }
+      catch { return [] }
+    }
+
+    ;(async () => {
+      const [dynamicCashiers, dynamicDrivers, disabled] = await Promise.all([
+        safeIds('roles_cashiers'),
+        safeIds('roles_drivers'),
+        safeIds('roles_disabled'),
+      ])
+      if (cancelled) return
+      const roles: RoleName[] = []
+      if (ADMIN_EMAILS.map(a => a.toLowerCase()).includes(email)) roles.push(ROLES.ADMIN)
+      const allCashiers = [...Object.keys(DEFAULT_CASHIERS).map(x => x.toLowerCase()), ...dynamicCashiers]
+      if (allCashiers.includes(email) && !disabled.includes(email)) roles.push(ROLES.CASHIER)
+      const allDrivers = [...Object.keys(DEFAULT_DRIVERS).map(x => x.toLowerCase()), ...dynamicDrivers]
+      if (allDrivers.includes(email) && !disabled.includes(email)) roles.push(ROLES.DRIVER)
+      roles.push(ROLES.CLIENT)
+      setAllRoles(roles)
+    })()
+
     return () => { cancelled = true }
   }, [user?.email])
 
