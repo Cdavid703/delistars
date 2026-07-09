@@ -59,7 +59,7 @@ const fmtFecha = (ts?: Timestamp): string => {
 }
 
 export default function Vacantes() {
-  const [tab, setTab] = useState<'vacantes' | 'postulantes'>('vacantes')
+  const [tab, setTab] = useState<'vacantes' | 'postulantes' | 'preview'>('vacantes')
   const [vacantes, setVacantes] = useState<Vacante[]>([])
   const [postulantes, setPostulantes] = useState<Postulante[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,9 +144,36 @@ export default function Vacantes() {
         <button onClick={() => setTab('postulantes')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'postulantes' ? 'bg-coal text-white' : 'border text-coal'}`}>
           👥 Postulantes ({postulantes.length})
         </button>
+        <button onClick={() => setTab('preview')} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === 'preview' ? 'bg-coal text-white' : 'border text-coal'}`}>
+          👁️ Vista previa (como usuario)
+        </button>
       </div>
 
-      {tab === 'vacantes' ? (
+      {/* Vista previa: la página real de /vacantes/ tal como la ve un cliente
+          (mismo origen, sin login → muestra la oferta activa + formulario). */}
+      {tab === 'preview' && (
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="text-sm text-muted-fg">
+              Así se ve la página de vacantes para el cliente. Se actualiza sola con lo que publiques.
+            </p>
+            <a href="/vacantes/" target="_blank" rel="noreferrer"
+              className="text-sm font-medium text-primary underline underline-offset-4">
+              Abrir en pestaña nueva ↗
+            </a>
+          </div>
+          <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+            <iframe
+              src="/vacantes/"
+              title="Vista previa de vacantes"
+              className="w-full"
+              style={{ height: '78vh', border: 'none' }}
+            />
+          </div>
+        </div>
+      )}
+
+      {tab !== 'preview' && (tab === 'vacantes' ? (
         vacantes.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-2">📋</p>
@@ -214,7 +241,7 @@ export default function Vacantes() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Modal crear/editar vacante */}
       {editingId !== null && (

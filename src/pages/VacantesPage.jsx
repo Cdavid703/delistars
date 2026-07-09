@@ -16,30 +16,29 @@ import {
 } from 'lucide-react'
 
 // ─── Job content ──────────────────────────────────────────────────────────────
-const JOB_TITLE = 'Domiciliario / Mensajero Motorizado Autónomo'
-const JOB_SUBTITLE = 'Pago Diario Garantizado + 100% Propinas'
-const JOB_ZONE = 'Zona Santa Lucía / La América / Santa Teresita – Medellín'
+const JOB_TITLE = '🛵 Domiciliario Motorizado'
+const JOB_SUBTITLE = 'Pago diario + cena incluida + 100% propinas · ¡Cupo para ingreso inmediato!'
+const JOB_ZONE = 'La América / Santa Lucía – Medellín · Cra. 87 #48e-3'
 
-const JOB_DESCRIPTION = `En DELISTARS estamos buscando personas proactivas, responsables y con excelente conocimiento de la zona occidental de Medellín (Santa Lucía, Santa Teresita, La América y alrededores) para unirse a nuestra operación como Domiciliarios Autónomos.
+const JOB_DESCRIPTION = `¡Convocatoria abierta! Buscamos al mejor talento en mensajería autónoma para unirse a nuestro equipo de distribución en el sector de La América / Santa Lucía, en Medellín.
 
-Si vives cerca de la zona, buscas un ingreso diario estable, manejar tu propio tiempo y cuentas con moto propia, ¡esta oportunidad es para ti!`
+Horario: de 5:00 PM a 11:30 PM aproximadamente, 6 días a la semana (se trabajan los fines de semana de alta demanda, con 1 día de descanso fijo entre semana).
+
+Modalidad de contratación: Contrato Civil de Prestación de Servicios (Independiente).`
 
 const OFFER_ITEMS = [
-  { emoji: '📄', label: 'Contrato', value: 'Civil por Prestación de Servicios (Independiente).' },
-  { emoji: '💵', label: 'Ingreso mínimo garantizado', value: '$60.000 COP por jornada. Cubre disponibilidad y auxilio de rodamiento / combustible.' },
-  { emoji: '🛵', label: 'Esquema de ganancia', value: '$4.000 COP base por domicilio + recargos por distancia. Si el total supera el mínimo, ¡te llevas el excedente real!' },
-  { emoji: '🤝', label: 'Propinas', value: 'El 100% de las propinas son tuyas. DELISTARS no retiene ni descuenta nada.' },
-  { emoji: '💰', label: 'Frecuencia de pago', value: 'Liquidación y pago en efectivo al finalizar cada jornada.' },
-  { emoji: '⏰', label: 'Horario', value: 'Flexibilidad dentro del turno de 5:00 PM a 11:30 PM.' },
+  { emoji: '💵', label: 'Valor base diario', value: '$91.250 COP por jornada operativa. Sobre este valor se aplica la deducción correspondiente para tu cobertura de salud y pensión; el detalle exacto de la liquidación se te explica en la entrevista cara a cara.' },
+  { emoji: '⭐', label: 'Incentivo sede Santa Teresita', value: 'Los servicios de domicilio despachados desde la sede de Santa Teresita se suman de forma adicional al pago de tu día.' },
+  { emoji: '🍔', label: 'Alimentación incluida', value: 'Te entregamos la cena sin costo en el local por cada turno laborado.' },
+  { emoji: '🤝', label: 'Propinas', value: 'El 100% de las propinas que dejen los clientes son completamente tuyas.' },
 ]
 
 const REQUIREMENTS = [
-  'Motocicleta propia en óptimas condiciones mecánicas.',
-  'Licencia de conducción A2 vigente.',
-  'Documentos del vehículo al día (SOAT y Revisión Tecno-mecánica vigentes).',
-  'Afiliado y activo en Seguridad Social (Salud + ARL Riesgo IV — presentar soporte al inicio).',
-  'RUT actualizado (actividad económica de mensajería / transporte).',
-  'Excelente actitud de servicio al cliente, puntualidad y honestidad.',
+  'Motocicleta propia en excelente estado mecánico.',
+  'Licencia de conducción categoría A2 vigente.',
+  'SOAT y Revisión Técnico-Mecánica vigentes al día.',
+  'Sin comparendos pendientes en el SIMIT (o con acuerdo de pago activo).',
+  'Documentos básicos para apertura de carpeta: fotocopia de cédula y pasado judicial de la Policía.',
 ]
 
 const ACCEPTED_TYPES = [
