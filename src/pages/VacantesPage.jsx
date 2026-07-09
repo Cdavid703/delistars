@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
-import { db, storage, auth, provider } from '../services/firebase'
+import { db, storage, auth, provider, loginAnon } from '../services/firebase'
 import { ADMIN_EMAILS } from '../services/roles'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -333,6 +333,11 @@ function ApplicationModal({ vacante, onClose }) {
     setLoading(true)
     setErrors([])
     try {
+      // El postulante no crea cuenta, pero Storage exige una sesión para subir.
+      // Se inicia sesión anónima (transparente) antes de cargar la hoja de vida.
+      if (!auth.currentUser) {
+        try { await loginAnon() } catch (_) { /* si falla, el upload dará el error abajo */ }
+      }
       // Upload CV to Firebase Storage
       const ext = cvFile.name.split('.').pop()
       const fileName = `cvs/${Date.now()}_${form.name.replace(/\s+/g, '_').slice(0, 30)}.${ext}`

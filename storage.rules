@@ -1,0 +1,41 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reglas de Firebase Storage — DeliStars
+//
+// Solo se usan dos rutas de subida (ver grep en el repo):
+//   • cvs/…      → hojas de vida de postulantes a vacantes (sesión anónima).
+//   • receipts/… → comprobantes de transferencia subidos por el cliente.
+//
+// ⚠️ Se publican en Firebase Console → Storage → Reglas (NO se despliegan con
+//    git/docker). Rollback = restaurar las reglas anteriores en la consola.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Hojas de vida de postulantes. El postulante NO crea cuenta: entra con
+    // sesión anónima antes de subir. Solo crear, con límite de tamaño y tipo
+    // (PDF/DOC/DOCX). El admin las descarga por el enlace con token.
+    match /cvs/{fileName} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.size < 8 * 1024 * 1024
+                    && request.resource.contentType.matches('application/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document)');
+      allow update, delete: if false;
+    }
+
+    // Comprobantes de pago (transferencias) subidos por el cliente en su pedido.
+    match /receipts/{orderId}/{fileName} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.size < 10 * 1024 * 1024;
+      allow update, delete: if false;
+    }
+
+    // Todo lo demás: denegado.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
