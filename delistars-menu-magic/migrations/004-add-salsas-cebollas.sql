@@ -5,6 +5,15 @@
 
 BEGIN;
 
+-- 0. Sincronizar la secuencia de id_producto con el máximo real. Los productos
+--    se sembraron con ids explícitos (seeds.sql / migraciones previas) sin
+--    avanzar el contador serial, así que un INSERT sin id chocaría con ids ya
+--    usados (ej. 48). Esto lo corrige y también evita el bug a futuro.
+SELECT setval(
+  pg_get_serial_sequence('tbl_productos', 'id_producto'),
+  (SELECT COALESCE(MAX(id_producto), 1) FROM tbl_productos)
+);
+
 -- 1. Nueva categoría: Salsas (id 8)
 INSERT INTO categoria (id_categoria, nombre_categoria)
 VALUES (8, 'Salsas')
