@@ -335,14 +335,25 @@ function ApplicationModal({ vacante, onClose }) {
     try {
       // El postulante no crea cuenta, pero Storage exige una sesión para subir.
       // Se inicia sesión anónima (transparente) antes de cargar la hoja de vida.
+      // NO se envuelve en try/catch: si el login anónimo está deshabilitado en
+      // Firebase Auth, queremos que el error propague al catch de abajo (y quede
+      // en consola con su código real) en vez de subir sin sesión y fallar con un
+      // 403 confuso de Storage.
       if (!auth.currentUser) {
-        try { await loginAnon() } catch (_) { /* si falla, el upload dará el error abajo */ }
+        await loginAnon()
       }
-      // Upload CV to Firebase Storage
+      // Upload CV to Firebase Storage. Se fija el contentType explícito porque
+      // algunos selectores de archivo en móvil entregan File.type vacío, y las
+      // reglas de Storage validan el tipo (PDF/DOC/DOCX).
       const ext = cvFile.name.split('.').pop()
       const fileName = `cvs/${Date.now()}_${form.name.replace(/\s+/g, '_').slice(0, 30)}.${ext}`
       const storageRef = ref(storage, fileName)
-      await uploadBytes(storageRef, cvFile)
+      const contentType = cvFile.type
+        || (/\.pdf$/i.test(cvFile.name) ? 'application/pdf'
+          : /\.docx$/i.test(cvFile.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : /\.doc$/i.test(cvFile.name) ? 'application/msword'
+          : 'application/octet-stream')
+      await uploadBytes(storageRef, cvFile, { contentType })
       const cvUrl = await getDownloadURL(storageRef)
 
       // Save applicant data to Firestore
