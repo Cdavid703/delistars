@@ -48,8 +48,8 @@ export const MenuSection = () => {
   }, []);
 
   const filteredProducts = products.filter((p) => {
-    // Excluir adiciones (categoría 5)
-    if (p.id_categoria === 5) return false;
+    // Excluir adiciones (categoría 5) y salsas (categoría 8)
+    if (p.id_categoria === 5 || p.id_categoria === 8) return false;
 
     // Los jugos solo aparecen en la sede de Santa Teresita (sede === 2)
     const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
@@ -107,10 +107,10 @@ export const MenuSection = () => {
       ) : (
         // Si no hay búsqueda, renderizar las categorías normales
         categories
-          .filter((cat) => cat.id_categoria !== 5) // Excluir categoría 5 (Adiciones)
+          .filter((cat) => cat.id_categoria !== 5 && cat.id_categoria !== 8) // Excluir Adiciones y Salsas
           .map((cat) => {
             const categoryProducts = products.filter((p) => {
-              if (p.id_categoria !== cat.id_categoria || p.id_categoria === 5) return false;
+              if (p.id_categoria !== cat.id_categoria || p.id_categoria === 5 || p.id_categoria === 8) return false;
               const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
               if (isJugo && Number(sede) !== 2) return false;
               return true;

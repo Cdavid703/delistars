@@ -41,9 +41,9 @@ export const Navbar = () => {
     queryFn: () => apiService.getCategories(),
   });
 
-  // Filtrar adiciones (id_categoria === 5) o por nombre y generar los enlaces
+  // Filtrar adiciones (id_categoria === 5), salsas (8) o por nombre
   const navLinks = categories
-    .filter((cat) => cat.id_categoria !== 5 && !cat.nombre_categoria.toLowerCase().includes('adicion'))
+    .filter((cat) => cat.id_categoria !== 5 && cat.id_categoria !== 8 && !cat.nombre_categoria.toLowerCase().includes('adicion'))
     .map((cat) => ({
       href: `#${cat.nombre_categoria.toLowerCase().replace(/\s+/g, "-")}`,
       label: cat.nombre_categoria,

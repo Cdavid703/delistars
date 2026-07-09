@@ -18,7 +18,8 @@
       "PowerShell(npm run build 2>&1)",
       "Bash(which node *)",
       "Bash(ls /c/Users/USER/AppData/Local/node-portable/)",
-      "Bash(scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -r dist/* root@177.7.52.161:/var/www/delistars.com/dist/)"
+      "Bash(scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -r dist/* root@177.7.52.161:/var/www/delistars.com/dist/)",
+      "Bash(npx tsc *)"
     ]
   }
 }

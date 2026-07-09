@@ -19,17 +19,25 @@ export const CartSheet = () => {
   // ya autenticado porque la sesión se comparte entre el menú y domicilios).
   const proceed = () => {
     const handoff = {
-      items: items.map((it) => ({
-        name: it.presentation 
-          ? `${it.product.nombre_producto} (${it.presentation.sabor}, ${it.presentation.tamano}${it.presentation.base ? `, ${it.presentation.base}` : ''})`
-          : it.selectedDrink
-            ? `${it.product.nombre_producto} + ${it.selectedDrink}`
-            : it.product.nombre_producto,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        addons: it.addons.map((a) => a.name),
-        notes: it.notes,
-      })),
+      items: items.map((it) => {
+        let name = it.product.nombre_producto;
+        if (it.presentation) {
+          name = `${it.product.nombre_producto} (${it.presentation.sabor}, ${it.presentation.tamano}${it.presentation.base ? `, ${it.presentation.base}` : ''})`;
+        } else if (it.selectedDrink) {
+          name = `${it.product.nombre_producto} + ${it.selectedDrink}`;
+        } else if (it.selectedOption) {
+          name = `${it.product.nombre_producto} (${it.selectedOption})`;
+        }
+        return {
+          name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          addons: it.addons.map((a) => `Adición + ${a.name}`),
+          salsas: it.salsas.map((s) => s.name),
+          cebollas: it.cebollas.map((c) => c.name),
+          notes: it.notes,
+        };
+      }),
       total,
       // El slug de la sede es la única fuente de verdad (definido en data/menu.ts).
       sedeId: SEDES.find((s) => s.id === sede)?.slug ?? null,
@@ -107,6 +115,11 @@ export const CartSheet = () => {
                               Bebida: {it.selectedDrink}
                             </span>
                           )}
+                          {it.selectedOption && (
+                            <span className="block text-xs font-sans text-primary font-semibold mt-1 animate-fade-in">
+                              Opción: {it.selectedOption}
+                            </span>
+                          )}
                         </h4>
                         <button onClick={() => removeItem(it.uid)} className="text-muted-foreground hover:text-destructive transition-smooth">
                           <Trash2 className="w-4 h-4" />
@@ -114,7 +127,17 @@ export const CartSheet = () => {
                       </div>
                       {it.addons.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          + {it.addons.map((a) => a.name).join(", ")}
+                          {it.addons.map((a) => `Adición + ${a.name}`).join(", ")}
+                        </p>
+                      )}
+                      {it.salsas.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          Salsas: {it.salsas.map((s) => s.name).join(", ")}
+                        </p>
+                      )}
+                      {it.cebollas.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          Cebolla: {it.cebollas.map((c) => c.name).join(", ")}
                         </p>
                       )}
                       {it.notes && <p className="text-xs italic text-muted-foreground mt-1">"{it.notes}"</p>}

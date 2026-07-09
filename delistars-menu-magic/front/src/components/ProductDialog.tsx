@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCart, formatCOP } from "@/context/CartContext";
-import { apiService, type Addon, type Product as ApiProduct } from "@/services/api";
+import { apiService, type Addon, type Salsa, type Cebolla, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -20,12 +20,54 @@ const COMBO_DRINKS = [
   "Agua Saborizada Limón 400 ml"
 ];
 
+const PRODUCT_OPTIONS = {
+  hamburguesa_pollo: {
+    title: "Elige un ingrediente",
+    subtitle: "Selecciona una opción para tu hamburguesa (sin costo adicional)",
+    items: ["Queso", "Tocineta"],
+  },
+  papastars: {
+    title: "Elige tu proteína",
+    subtitle: "Selecciona cómo deseas tu Papastars (sin costo adicional)",
+    items: ["Chicharron", "Pollo"],
+  }
+};
+
+const getProductCustomOptions = (product: ApiProduct | null) => {
+  if (!product) return null;
+  const name = product.nombre_producto.toLowerCase();
+  
+  const isHamburguesaPollo = 
+    product.id_producto === 3 || 
+    name === "hamburguesa de pollo" || 
+    name === "hamburguesa de pollo con queso o tocineta" ||
+    name === "hamburguesa de pollo con queso y tocineta";
+    
+  if (isHamburguesaPollo) {
+    return PRODUCT_OPTIONS.hamburguesa_pollo;
+  }
+  
+  const isPapastars = 
+    product.id_producto === 20 || 
+    name === "papastars";
+    
+  if (isPapastars) {
+    return PRODUCT_OPTIONS.papastars;
+  }
+  
+  return null;
+};
+
 export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null; onClose: () => void }) => {
   const { addItem } = useCart();
   const [qty, setQty] = useState(1);
   const [addonQtys, setAddonQtys] = useState<Record<number, number>>({});
   const [notes, setNotes] = useState("");
   const [addons, setAddons] = useState<Addon[]>([]);
+  const [salsas, setSalsas] = useState<Salsa[]>([]);
+  const [cebollas, setCebollas] = useState<Cebolla[]>([]);
+  const [selectedSalsas, setSelectedSalsas] = useState<Set<number>>(new Set());
+  const [selectedCebollas, setSelectedCebollas] = useState<Set<number>>(new Set());
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // States for product presentations (e.g. juices)
@@ -36,12 +78,17 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   // States for combo drink selection
   const [selectedDrink, setSelectedDrink] = useState<string>("");
 
+  // States for custom options (e.g. queso/tocineta or chicharron/pollo)
+  const [selectedOption, setSelectedOption] = useState<string>("");
+
   const hasPresentations = !!(product?.presentations && product.presentations.length > 0);
 
   useEffect(() => {
     if (product) {
       setQty(1);
       setAddonQtys({});
+      setSelectedSalsas(new Set());
+      setSelectedCebollas(new Set());
       setNotes("");
       setCurrentImageIndex(0);
 
@@ -80,20 +127,34 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       } else {
         setSelectedDrink("");
       }
+
+      // Initialize selectedOption
+      const customOptions = getProductCustomOptions(product);
+      if (customOptions) {
+        setSelectedOption(customOptions.items[0]);
+      } else {
+        setSelectedOption("");
+      }
     }
   }, [product, hasPresentations]);
 
   useEffect(() => {
-    const fetchAddons = async () => {
+    const fetchOptions = async () => {
       try {
-        const apiAddons = await apiService.getAddons();
+        const [apiAddons, apiSalsas, apiCebollas] = await Promise.all([
+          apiService.getAddons(),
+          apiService.getSalsas(),
+          apiService.getCebollas(),
+        ]);
         setAddons(apiAddons);
+        setSalsas(apiSalsas);
+        setCebollas(apiCebollas);
       } catch (error) {
-        console.error('Error loading addons:', error);
+        console.error('Error loading addons/salsas/cebollas:', error);
       }
     };
 
-    fetchAddons();
+    fetchOptions();
   }, []);
 
   if (!product) return null;
@@ -179,6 +240,20 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const setAddonQty = (id: number, val: number) =>
     setAddonQtys((prev) => ({ ...prev, [id]: Math.max(0, val) }));
 
+  const toggleSalsa = (id: number) =>
+    setSelectedSalsas((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleCebolla = (id: number) =>
+    setSelectedCebollas((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   // Hide additions for category 7 (Bebidas)
   const isBebida = product.id_categoria === 7;
 
@@ -190,6 +265,9 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const unit = basePrice + selectedAddons.reduce((s, a) => s + a.price, 0);
   const total = unit * qty;
 
+  const chosenSalsas = isBebida ? [] : salsas.filter((s) => selectedSalsas.has(s.id));
+  const chosenCebollas = isBebida ? [] : cebollas.filter((c) => selectedCebollas.has(c.id));
+
   const handleAdd = () => {
     if (notes.length > 250) {
       toast.error("El comentario es muy largo");
@@ -199,9 +277,12 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       product,
       quantity: qty,
       addons: selectedAddons,
+      salsas: chosenSalsas,
+      cebollas: chosenCebollas,
       notes: notes.trim(),
       presentation: selectedPresentation || undefined,
-      selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined
+      selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined,
+      selectedOption: getProductCustomOptions(product) ? selectedOption : undefined
     });
     toast.success(`${product.nombre_producto} agregado al carrito 🎉`);
     onClose();
@@ -372,6 +453,89 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN OPCIONES PERSONALIZABLES (Hamburguesa de pollo o Papastars) */}
+            {getProductCustomOptions(product) && (
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <div>
+                  <p className="font-display text-base tracking-wide mb-1">
+                    {getProductCustomOptions(product)?.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {getProductCustomOptions(product)?.subtitle}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {getProductCustomOptions(product)?.items.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setSelectedOption(opt)}
+                        className={`px-3 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center leading-normal min-h-[48px] flex items-center justify-center ${selectedOption === opt
+                          ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                          : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                          }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN SALSAS (Ocultar para bebidas) */}
+            {!isBebida && salsas.length > 0 && (
+              <div className="border-t border-border/60 pt-4">
+                <p className="font-display text-lg tracking-wide mb-1">Salsas</p>
+                <p className="text-xs text-muted-foreground mb-3">Selecciona las salsas que deseas (sin costo adicional)</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {salsas.map((s) => {
+                    const selected = selectedSalsas.has(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleSalsa(s.id)}
+                        className={`px-2 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${
+                          selected
+                            ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                            : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN CEBOLLAS (Ocultar para bebidas) */}
+            {!isBebida && cebollas.length > 0 && (
+              <div className="border-t border-border/60 pt-4">
+                <p className="font-display text-lg tracking-wide mb-1">Cebolla</p>
+                <p className="text-xs text-muted-foreground mb-3">Selecciona el tipo de cebolla (sin costo adicional)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {cebollas.map((c) => {
+                    const selected = selectedCebollas.has(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => toggleCebolla(c.id)}
+                        className={`px-3 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${
+                          selected
+                            ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                            : "bg-muted/50 border-border text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

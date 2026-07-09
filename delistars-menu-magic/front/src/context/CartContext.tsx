@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
-import type { Addon, Product as ApiProduct } from "@/services/api";
+import type { Addon, Salsa, Cebolla, Product as ApiProduct } from "@/services/api";
 
 export type CartItem = {
   uid: string;
   product: ApiProduct;
   quantity: number;
   addons: Addon[];
+  salsas: Salsa[];
+  cebollas: Cebolla[];
   notes: string;
   unitPrice: number; // includes addons
   presentation?: {
@@ -16,6 +18,7 @@ export type CartItem = {
     precio_venta: number;
   };
   selectedDrink?: string;
+  selectedOption?: string;
 };
 
 type CartCtx = {
