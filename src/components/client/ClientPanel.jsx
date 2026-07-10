@@ -17,7 +17,7 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation, Search,
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, Download
+  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
@@ -559,15 +559,13 @@ export default function ClientPanel() {
         </div>
       )}
 
-      {/* Botón de descarga del menú */}
+      {/* Botón al menú interactivo (la raíz) — el PDF quedaba desactualizado */}
       <div className="px-4 mt-4">
         <a
-          href={import.meta.env.BASE_URL + 'menu-delistars.pdf'}
-          download="Menu-DeliStars.pdf"
+          href="/"
           className="flex items-center justify-center gap-3 w-full bg-gradient-to-r from-cherry to-tangelo text-cream font-display tracking-wide text-lg py-4 rounded-2xl shadow-glow hover:opacity-90 transition-opacity"
         >
-          <Download size={22} />
-          Ver menú DeliStars
+          🍔 Ver menú DeliStars
         </a>
       </div>
 

@@ -8,3 +8,6 @@ dist-turnos/
 *.log
 .DS_Store
 Thumbs.db
+
+# Caché local de logos (generado)
+.logocache/
