@@ -212,6 +212,18 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // ── Métricas de embudo (carritos que llegan al checkout) ───────────────
+    // El cliente (incluso anónimo) registra que entró al checkout con carrito;
+    // comparado con los pedidos creados da la tasa de abandono en Reportes.
+    // Solo crear (nunca editar/borrar) y solo con su propio uid; lee el admin.
+    match /metrics_funnel/{eventId} {
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.type == 'checkout_started';
+      allow read:   if isAdmin();
+      allow update, delete: if false;
+    }
+
     // ── Todo lo demás: denegado ────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

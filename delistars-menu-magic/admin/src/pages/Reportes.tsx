@@ -66,6 +66,32 @@ export default function Reportes() {
     }, (err) => console.error('Error al leer pedidos:', err))
   }, [])
 
+  // Embudo: eventos "llegó al checkout" que escribe la app de domicilios.
+  const [funnel, setFunnel] = useState<{ at?: { toDate?: () => Date } }[]>([])
+  useEffect(() => {
+    const q = query(collection(db, 'metrics_funnel'), orderBy('at', 'desc'), limit(2000))
+    return onSnapshot(q, (snap) => setFunnel(snap.docs.map((d) => d.data() as { at?: { toDate?: () => Date } })), () => {})
+  }, [])
+
+  // Carritos que llegaron al checkout vs pedidos que el CLIENTE envió (los del
+  // cajero se excluyen: no pasan por el checkout del cliente). Sin filtro de
+  // sede: el embudo se mide global.
+  const funnelStats = useMemo(() => {
+    const cutoff = Date.now() - days * DAY_MS
+    const checkouts = funnel.filter((e) => {
+      const d = e.at?.toDate?.()
+      return !!d && d.getTime() >= cutoff
+    }).length
+    const clientOrders = orders.filter((o) => {
+      if ((o as unknown as { cashierId?: string }).cashierId) return false
+      const d = o.createdAt?.toDate?.()
+      return !!d && d.getTime() >= cutoff
+    }).length
+    const abandoned = Math.max(0, checkouts - clientOrders)
+    const rate = checkouts > 0 ? Math.round((abandoned / checkouts) * 100) : null
+    return { checkouts, clientOrders, abandoned, rate }
+  }, [funnel, orders, days])
+
   // Solo pedidos ENTREGADOS dentro del rango — ventas reales, no intentos.
   const delivered = useMemo(() => {
     const cutoff = Date.now() - days * DAY_MS
@@ -184,6 +210,22 @@ export default function Reportes() {
           <p className="text-sm text-muted-fg">Ticket promedio</p>
           <p className="text-2xl font-display font-bold text-coal">{fmtCOP(Math.round(ticketPromedio))}</p>
         </div>
+      </div>
+
+      {/* Embudo de carritos: checkout iniciado vs pedido enviado (todas las sedes) */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+          <p className="text-sm font-display font-semibold text-coal">🛒 Embudo de pedidos <span className="font-normal text-muted-fg">(todas las sedes)</span></p>
+          <p className="text-sm text-muted-fg">Llegaron al checkout: <span className="font-bold text-coal">{funnelStats.checkouts}</span></p>
+          <p className="text-sm text-muted-fg">Enviaron pedido: <span className="font-bold text-mint">{funnelStats.clientOrders}</span></p>
+          <p className="text-sm text-muted-fg">
+            Abandono:{' '}
+            {funnelStats.rate === null
+              ? <span className="text-muted-fg">sin datos aún</span>
+              : <span className={`font-bold ${funnelStats.rate > 40 ? 'text-red-600' : 'text-coal'}`}>{funnelStats.abandoned} ({funnelStats.rate}%)</span>}
+          </p>
+        </div>
+        <p className="text-xs text-muted-fg mt-1">Se mide desde que el cliente llega con su carrito al paso de dirección. Los datos se acumulan desde el 10 de julio de 2026.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

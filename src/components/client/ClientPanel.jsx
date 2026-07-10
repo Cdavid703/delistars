@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   collection, query, where, onSnapshot, serverTimestamp,
-  doc, getDoc, setDoc, updateDoc, arrayUnion, increment
+  doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import {
   db, storage, createOrderWithNumber,
@@ -166,6 +166,25 @@ export default function ClientPanel() {
     )
   }, [])
 
+  // Embudo: registrar (una sola vez por carrito) que el cliente llegó al
+  // checkout. Comparado con los pedidos creados da la tasa de abandono en
+  // Reportes del admin. Best-effort: si falla, no molesta al cliente.
+  useEffect(() => {
+    if (!user?.uid || !showForm) return
+    if (!localStorage.getItem('ds_cart_handoff')) return
+    if (sessionStorage.getItem('ds_funnel_logged')) return
+    // El flag se pone ANTES de escribir (evita duplicados por re-render) pero
+    // se quita si el write falla, para reintentar en la próxima carga.
+    sessionStorage.setItem('ds_funnel_logged', '1')
+    addDoc(collection(db, 'metrics_funnel'), {
+      type:   'checkout_started',
+      uid:    user.uid,
+      sedeId: sede?.id || null,
+      anon:   !user.email,
+      at:     serverTimestamp(),
+    }).catch(() => sessionStorage.removeItem('ds_funnel_logged'))
+  }, [user?.uid, showForm])
+
   useEffect(() => {
     if (!user?.uid) return
     const q = query(collection(db, 'orders'), where('clientUid', '==', user.uid))
@@ -323,6 +342,7 @@ export default function ClientPanel() {
     // a mitad del formulario no le pierda el pedido al cliente.
     localStorage.removeItem('ds_cart_handoff')
     localStorage.removeItem(DRAFT_KEY)
+    sessionStorage.removeItem('ds_funnel_logged')  // próximo carrito = nuevo evento de embudo
     setShowForm(false)
     // Guardar/actualizar perfil del cliente frecuente (best-effort, no bloquea)
     if (user.uid) {
