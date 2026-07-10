@@ -339,6 +339,30 @@ export default function ClientPanel() {
     }
   }
 
+  // ── Checkout a pantalla completa ─────────────────────────────────────────
+  // Cuando el cliente llega del menú con su carrito (o tiene un borrador a
+  // medias), se le muestra SOLO el formulario de entrega (dirección, datos,
+  // canje de premios). El panel de abajo queda únicamente para RASTREAR
+  // pedidos; los productos siempre se escogen en el menú de la raíz.
+  const exitCheckout = () => {
+    // El carrito no se pierde: el handoff solo se borra al crear el pedido.
+    if (orders.length > 0) setShowForm(false)
+    else window.location.href = '/'
+  }
+  if (showForm) {
+    return (
+      <div className="min-h-screen-safe bg-gradient-soft">
+        <div className="sticky top-0 z-20 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
+          <p className="font-display text-xl text-coal tracking-wide">Completa tu pedido</p>
+          <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
+        </div>
+        <div className="p-5 max-w-lg mx-auto pb-16">
+          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
       {/* Hero header */}
@@ -569,28 +593,14 @@ export default function ClientPanel() {
         </div>
       </div>
 
-      {/* FAB */}
+      {/* FAB — pedir se hace SIEMPRE desde el menú de la raíz: aquí ya no se
+          arma un pedido a mano (texto libre); este panel solo rastrea pedidos. */}
       <div className="fixed bottom-6 right-4 z-30">
-        <button onClick={() => setShowForm(true)} className="btn-primary shadow-glow gap-2 pr-5">
+        <a href="/" className="btn-primary shadow-glow gap-2 pr-5">
           <Plus size={20} />
           Hacer pedido
-        </button>
+        </a>
       </div>
-
-      {/* Order form modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm">
-          <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-slide-in-right">
-            <div className="sticky top-0 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
-              <p className="font-display text-xl text-coal tracking-wide">Nuevo pedido</p>
-              <button onClick={() => setShowForm(false)} className="btn-icon"><X size={20} /></button>
-            </div>
-            <div className="p-5">
-              <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={() => setShowForm(false)} availableRewards={availableForSede} />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Order detail modal */}
       {selected && <ClientOrderDetail order={selected} onClose={() => setSelectedId(null)} />}
