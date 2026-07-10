@@ -33,6 +33,7 @@ export default function Usuarios() {
   const [newDriver, setNewDriver] = useState(false)
 
   const [editing, setEditing] = useState<string | null>(null)
+  const [editEmail, setEditEmail] = useState('')
   const [editName, setEditName] = useState('')
   const [editPhone, setEditPhone] = useState('')
 
@@ -122,17 +123,45 @@ export default function Usuarios() {
 
   const startEdit = (emp: Employee) => {
     setEditing(emp.email)
+    setEditEmail(emp.email)
     setEditName(emp.name)
     setEditPhone(emp.phone || '')
   }
 
   const saveEdit = async (emp: Employee) => {
+    const newEmail = editEmail.trim().toLowerCase()
+    const emailChanged = newEmail !== emp.email
+    if (!newEmail || !newEmail.includes('@')) { toast.error('El correo no es válido'); return }
+    // Los roles fijos viven hardcodeados en el código: cambiarles el correo aquí
+    // no serviría (el código seguiría apuntando al correo viejo).
+    if (emailChanged && (emp.cashierFixed || emp.driverFixed)) {
+      toast.error('Este empleado tiene roles fijos en el código; su correo no se puede cambiar desde aquí')
+      return
+    }
+    if (emailChanged && employees.some((e) => e.email === newEmail)) {
+      toast.error(`Ya existe un empleado con el correo ${newEmail}`)
+      return
+    }
     try {
-      const payload = { email: emp.email, name: editName.trim() || emp.email, phone: editPhone.trim() || null }
-      if (emp.isCashier && !emp.cashierFixed) await setDoc(doc(db, 'roles_cashiers', emp.email), payload, { merge: true })
-      if (emp.isDriver && !emp.driverFixed) await setDoc(doc(db, 'roles_drivers', emp.email), payload, { merge: true })
+      const payload = { email: newEmail, name: editName.trim() || newEmail, phone: editPhone.trim() || null }
+      if (emailChanged) {
+        // El correo es el ID del documento: se crea el doc nuevo primero y luego
+        // se borra el viejo (si el borrado fallara, queda duplicado pero funcional
+        // — nunca se pierde al empleado).
+        if (emp.isCashier) {
+          await setDoc(doc(db, 'roles_cashiers', newEmail), { ...payload, addedAt: serverTimestamp() })
+          await deleteDoc(doc(db, 'roles_cashiers', emp.email))
+        }
+        if (emp.isDriver) {
+          await setDoc(doc(db, 'roles_drivers', newEmail), { ...payload, addedAt: serverTimestamp() })
+          await deleteDoc(doc(db, 'roles_drivers', emp.email))
+        }
+      } else {
+        if (emp.isCashier && !emp.cashierFixed) await setDoc(doc(db, 'roles_cashiers', emp.email), payload, { merge: true })
+        if (emp.isDriver && !emp.driverFixed) await setDoc(doc(db, 'roles_drivers', emp.email), payload, { merge: true })
+      }
       setEditing(null)
-      toast.success('Datos actualizados')
+      toast.success(emailChanged ? `Correo actualizado a ${newEmail}` : 'Datos actualizados')
       load()
     } catch {
       toast.error('Error al guardar los cambios')
@@ -229,6 +258,14 @@ export default function Usuarios() {
                   <td className="px-4 py-3">
                     {editing === emp.email ? (
                       <div className="flex flex-col gap-1">
+                        <input
+                          className="border rounded px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          placeholder="Correo de Google"
+                          disabled={emp.cashierFixed || emp.driverFixed}
+                          title={emp.cashierFixed || emp.driverFixed ? 'Correo fijo en el código — no se puede cambiar desde aquí' : 'Correo con el que inicia sesión'}
+                        />
                         <input className="border rounded px-2 py-1 text-sm" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nombre" />
                         <input className="border rounded px-2 py-1 text-sm" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Teléfono" />
                       </div>
