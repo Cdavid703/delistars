@@ -9,7 +9,9 @@ const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firesto
 const cron = require('node-cron')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
-const admin = require('firebase-admin')
+const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
+const { getFirestore: getAdminFirestore } = require('firebase-admin/firestore')
+let adminDb = null // se inicializa en main() si hay credenciales
 
 const TIMEZONE = 'America/Bogota'
 
@@ -59,7 +61,7 @@ async function signIn() {
 // ~X min" en su rastreo. Lee con la SA de solo lectura; escribe con el bot.
 async function updateEtaStats() {
   try {
-    const snap = await admin.firestore()
+    const snap = await adminDb
       .collection('orders')
       .orderBy('deliveredAt', 'desc')
       .limit(200)
@@ -108,7 +110,8 @@ async function main() {
   // omite (el abre/cierra de plataforma no depende de ella).
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     try {
-      admin.initializeApp({ projectId: firebaseConfig.projectId })
+      const adminApp = initAdminApp({ credential: applicationDefault(), projectId: firebaseConfig.projectId })
+      adminDb = getAdminFirestore(adminApp)
       cron.schedule('*/30 17-23 * * *', updateEtaStats, { timezone: TIMEZONE })
       updateEtaStats() // una vez al arrancar
       console.log('[scheduler] eta_stats activo (cada 30 min en horario de servicio)')
