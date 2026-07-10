@@ -230,9 +230,12 @@ export default function CashierPanel() {
 
   useEffect(() => () => alarm.stop(), [])
 
+  // Lista de domiciliarios EN VIVO: si el admin corrige/agrega uno mientras la
+  // caja tiene la app abierta, la lista se actualiza sola. Antes se cargaba una
+  // única vez al montar y una corrección de correo dejaba a la caja asignando
+  // pedidos al correo viejo (el domiciliario no los veía) hasta refrescar.
   useEffect(() => {
-    const loadDrivers = async () => {
-      const snap = await getDocs(collection(db, 'roles_drivers'))
+    return onSnapshot(collection(db, 'roles_drivers'), snap => {
       const firestoreDrivers = snap.docs.map(d => ({
         id: d.id, ...d.data(),
         phone: d.data().phone || null,
@@ -242,8 +245,7 @@ export default function CashierPanel() {
         .filter(email => !firestoreIds.includes(email))
         .map(email => ({ id: email, name: DEFAULT_DRIVER_NAMES[email] || email, phone: null }))
       setDrivers([...defaultDriverObjs, ...firestoreDrivers])
-    }
-    loadDrivers()
+    }, () => {})
   }, [])
 
   const isPickup = o => o.deliveryMode === 'pickup'
