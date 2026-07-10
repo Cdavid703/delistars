@@ -146,6 +146,10 @@ services:
       VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
       AUTO_OPEN_BOT_EMAIL: ${AUTO_OPEN_BOT_EMAIL}
       AUTO_OPEN_BOT_PASSWORD: ${AUTO_OPEN_BOT_PASSWORD}
+      # SA de SOLO LECTURA (la del backup) para calcular tiempos de entrega.
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/firestore-backup-key.json
+    volumes:
+      - /opt/delistars/secrets:/secrets:ro
     networks:
       - delistars_network
     restart: unless-stopped

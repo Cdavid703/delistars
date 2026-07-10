@@ -7,6 +7,9 @@ const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
 const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firestore')
 const cron = require('node-cron')
+// Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
+// la misma del backup). La escritura de estadísticas va por el bot (reglas).
+const admin = require('firebase-admin')
 
 const TIMEZONE = 'America/Bogota'
 
@@ -49,6 +52,43 @@ async function signIn() {
   console.log(`[scheduler] Sesión iniciada como ${BOT_EMAIL}`)
 }
 
+// ── Tiempo típico de entrega por sede ────────────────────────────────────────
+// Cada 30 min (en horario de servicio) calcula la MEDIANA de minutos entre
+// crear el pedido y entregarlo (últimos 200 entregados, descartando atípicos)
+// y la publica en config/eta_stats para que el cliente vea "suele llegar en
+// ~X min" en su rastreo. Lee con la SA de solo lectura; escribe con el bot.
+async function updateEtaStats() {
+  try {
+    const snap = await admin.firestore()
+      .collection('orders')
+      .orderBy('deliveredAt', 'desc')
+      .limit(200)
+      .get()
+    const bySede = {}
+    snap.forEach((d) => {
+      const o = d.data()
+      if (!o.deliveredAt?.toMillis || !o.createdAt?.toMillis || !o.sedeId) return
+      const min = (o.deliveredAt.toMillis() - o.createdAt.toMillis()) / 60000
+      if (min < 10 || min > 180) return // atípicos: pruebas, pedidos olvidados
+      ;(bySede[o.sedeId] = bySede[o.sedeId] || []).push(min)
+    })
+    const stats = {}
+    for (const [sede, arr] of Object.entries(bySede)) {
+      arr.sort((a, b) => a - b)
+      stats[sede] = { medianMin: Math.round(arr[Math.floor(arr.length / 2)]), sample: arr.length }
+    }
+    if (Object.keys(stats).length === 0) { console.log('[scheduler] eta_stats: sin datos suficientes'); return }
+    await setDoc(doc(db, 'config', 'eta_stats'), {
+      ...stats,
+      updatedBy: BOT_EMAIL,
+      updatedAt: serverTimestamp(),
+    })
+    console.log('[scheduler] eta_stats actualizado:', JSON.stringify(stats))
+  } catch (err) {
+    console.error('[scheduler] Error al actualizar eta_stats:', err?.code || err?.message || err)
+  }
+}
+
 async function main() {
   // Reintenta el login inicial — si el contenedor arranca antes de que la
   // red esté lista, no debe morir, solo seguir intentando.
@@ -62,6 +102,22 @@ async function main() {
 
   cron.schedule('30 17 * * *', () => setPlatformActive(true),  { timezone: TIMEZONE })
   cron.schedule('30 23 * * *', () => setPlatformActive(false), { timezone: TIMEZONE })
+
+  // Estadísticas de tiempo de entrega: requieren la llave de la SA de solo
+  // lectura montada en el contenedor. Si no está, esta parte simplemente se
+  // omite (el abre/cierra de plataforma no depende de ella).
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+      admin.initializeApp({ projectId: firebaseConfig.projectId })
+      cron.schedule('*/30 17-23 * * *', updateEtaStats, { timezone: TIMEZONE })
+      updateEtaStats() // una vez al arrancar
+      console.log('[scheduler] eta_stats activo (cada 30 min en horario de servicio)')
+    } catch (err) {
+      console.error('[scheduler] eta_stats deshabilitado:', err?.message || err)
+    }
+  } else {
+    console.log('[scheduler] eta_stats omitido: sin GOOGLE_APPLICATION_CREDENTIALS')
+  }
 
   console.log(`[scheduler] Listo. Abre 5:30pm / cierra 11:30pm (${TIMEZONE}). El cajero igual puede prender/apagar manualmente en cualquier momento.`)
 }

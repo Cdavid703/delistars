@@ -103,13 +103,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Config de la app (config/client_platform) ──────────────────────────
+    // ── Config de la app (config/client_platform, config/eta_stats) ────────
     match /config/{docId} {
       allow read:  if true;
       allow write: if isCashier() || isAdmin()
                    || (
-                     isAutoOpenBot() &&
-                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedBy','updatedAt'])
+                     isAutoOpenBot() && (
+                       // Estadísticas de tiempo de entrega que publica el
+                       // scheduler (medianas por sede — nada sensible).
+                       docId == 'eta_stats'
+                       || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedBy','updatedAt'])
+                     )
                    );
     }
 

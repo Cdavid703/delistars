@@ -1219,6 +1219,16 @@ function ClientOrderDetail({ order, onClose }) {
     return () => clearInterval(id)
   }, [order.status, order.inTransitAt, order.acceptedAt])
 
+  // Tiempo típico de entrega de la sede (mediana publicada por el scheduler
+  // en config/eta_stats — lectura pública, best-effort).
+  const [etaStats, setEtaStats] = useState(null)
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'eta_stats'))
+      .then(s => { if (s.exists()) setEtaStats(s.data()) })
+      .catch(() => {})
+  }, [])
+  const sedeEta = (order.sedeId && etaStats?.[order.sedeId]) || null
+
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
   const progress = getProgress(order.status)
@@ -1247,6 +1257,12 @@ function ClientOrderDetail({ order, onClose }) {
           <div className="w-full bg-cream/20 rounded-full h-2">
             <div className="bg-cream h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
+          {/* Tiempo típico de entrega (mediana histórica por sede, calculada por el scheduler) */}
+          {sedeEta?.medianMin > 0 && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
+            <p className="font-body text-xs text-cream/80 mt-2">
+              🕒 Los pedidos de esta sede suelen llegar en <strong>~{sedeEta.medianMin} min</strong> desde que se envían
+            </p>
+          )}
         </div>
 
         <div className="p-5 flex flex-col gap-4">

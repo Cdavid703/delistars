@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "firebase": "^12.13.0",
+    "firebase-admin": "^14.1.0",
     "node-cron": "^3.0.3"
   }
 }
