@@ -662,6 +662,11 @@ function DriverOrderDetail({ order, onClose }) {
     try {
       await updateDoc(doc(db, 'orders', order.id), {
         fullAddress: addrDraft.trim(),
+        // El domiciliario reescribió la dirección: las coordenadas que había
+        // elegido el cliente ya no aplican, se limpian para no navegar al punto
+        // viejo (Maps/Waze vuelven a resolver por el texto nuevo).
+        addrLat: null,
+        addrLng: null,
         updatedAt:   serverTimestamp(),
       })
       setLocalAddr(addrDraft.trim())
@@ -683,9 +688,20 @@ function DriverOrderDetail({ order, onClose }) {
     registerLoyaltyDelivery(order) // best-effort, no bloquea la entrega
   }
 
+  // Si el cliente geolocalizó su dirección al pedir, navegamos DIRECTO a esas
+  // coordenadas (pin exacto). Si no, caemos al texto como antes.
+  const hasCoords  = order.addrLat != null && order.addrLng != null
   const navAddress = encodeURIComponent(localAddr + ', Medellín, Colombia')
-  const openMaps = () => window.open(`https://www.google.com/maps/dir/?api=1&destination=${navAddress}`, '_blank')
-  const openWaze = () => window.open(`https://waze.com/ul?q=${encodeURIComponent(localAddr)}&navigate=yes`, '_blank')
+  const openMaps = () => window.open(
+    hasCoords
+      ? `https://www.google.com/maps/dir/?api=1&destination=${order.addrLat},${order.addrLng}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${navAddress}`,
+    '_blank')
+  const openWaze = () => window.open(
+    hasCoords
+      ? `https://waze.com/ul?ll=${order.addrLat},${order.addrLng}&navigate=yes`
+      : `https://waze.com/ul?q=${encodeURIComponent(localAddr)}&navigate=yes`,
+    '_blank')
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"

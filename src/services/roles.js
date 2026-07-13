@@ -57,6 +57,14 @@ export const SEDES = {
     mapsAddress: 'DELISTAR | Santa Lucía | Perros y hamburguesas | Medellín, Cra. 87 #48e-3, Santa Rosa De Lima, Medellín, San Javier, Medellín, Antioquia',
     coords:    { lat: 6.2397, lng: -75.6111 },
     whatsapp:  '573135065720',
+    // Barrios habituales de cobertura. NO es un filtro: el cliente puede
+    // escribir cualquier barrio; esto solo lo autocompleta y le avisa que el
+    // domicilio se confirma en caja. Editar libremente según la operación.
+    barrios: [
+      'Santa Lucía', 'Santa Rosa de Lima', 'San Javier', 'La Pradera', 'Antonio Nariño',
+      'El Salado', 'Veinte de Julio', 'Metropolitano', 'Eduardo Santos', 'Los Alcázares',
+      'Barrio Cristóbal', 'La Floresta', 'Calasanz', 'Belencito', 'La América',
+    ],
   },
   santa_teresita: {
     id:        'santa_teresita',
@@ -65,6 +73,11 @@ export const SEDES = {
     mapsAddress: 'Cl 35B #87A-165, La América, Medellín, Antioquia',
     coords:    { lat: 6.2477, lng: -75.6020 },
     whatsapp:  '573150634084',
+    barrios: [
+      'Santa Teresita', 'La América', 'La Floresta', 'Calasanz', 'Barrio Cristóbal',
+      'Simón Bolívar', 'Santa Mónica', 'Ferrini', 'Los Pinos', 'El Danubio',
+      'La Castellana', 'Florida Nueva', 'Campo Alegre', 'Santa Lucía', 'Laureles',
+    ],
   },
 }
 
