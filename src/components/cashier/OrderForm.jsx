@@ -8,7 +8,6 @@ const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
 export default function OrderForm({ drivers, onSubmit, onCancel }) {
   const [form, setForm] = useState({
-    orderNumber:        '',
     name:               '',
     phone:              '',
     fullAddress:        '',
@@ -90,14 +89,19 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
     <div className="flex flex-col gap-4 animate-fade-in">
 
       {/* Identificación */}
+      <div className="bg-mint/10 border border-mint/30 rounded-xl px-3 py-2">
+        <p className="font-body text-xs text-coal/70">
+          🔢 El <strong>N° de pedido</strong> se asigna automáticamente al guardar, siguiendo la
+          numeración del día de esta sede.
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="of-orderNumber" className="label-field">
-            N° de pedido <span className="text-[10px] text-coal/40 normal-case font-normal">(auto · editable)</span>
-          </label>
-          <input id="of-orderNumber" name="orderNumber" className="input-field"
-            value={form.orderNumber} onChange={e => set('orderNumber', e.target.value)}
-            placeholder="Se asigna al guardar" autoComplete="off" />
+          <label htmlFor="of-name" className="label-field">Nombre del cliente *</label>
+          <input id="of-name" name="name" className="input-field"
+            value={form.name} onChange={e => set('name', e.target.value)}
+            placeholder="Nombre completo" autoComplete="name" />
         </div>
         <div>
           <label htmlFor="of-phone" className="label-field">Teléfono / WhatsApp *</label>
@@ -105,13 +109,6 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
             value={form.phone} type="tel" onChange={e => set('phone', e.target.value)}
             placeholder="3001234567" autoComplete="tel" />
         </div>
-      </div>
-
-      <div>
-        <label htmlFor="of-name" className="label-field">Nombre del cliente *</label>
-        <input id="of-name" name="name" className="input-field"
-          value={form.name} onChange={e => set('name', e.target.value)}
-          placeholder="Nombre completo" autoComplete="name" />
       </div>
 
       {/* Dirección */}

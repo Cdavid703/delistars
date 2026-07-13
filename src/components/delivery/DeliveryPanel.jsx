@@ -536,15 +536,32 @@ function ReturnToSedeModal({ sedeId, onClose }) {
   )
 }
 
+// Badge con la sede de la que sale el pedido — clave para que el domiciliario
+// sepa a dónde dirigirse al aceptar (sobre todo si trabaja "Ambas sedes").
+function SedeBadge({ order, size = 'sm' }) {
+  const sedeName = order.sedeName || SEDES[order.sedeId]?.name
+  if (!sedeName) return null
+  const color = order.sedeId === 'santa_teresita'
+    ? 'bg-mint/15 text-[#2d8c6f] border-mint/40'
+    : 'bg-cherry/10 text-cherry border-cherry/30'
+  const pad = size === 'lg' ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-[11px]'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border font-body font-bold ${pad} ${color}`}>
+      <MapPin size={size === 'lg' ? 14 : 11} /> {sedeName}
+    </span>
+  )
+}
+
 // ─── Mini card ────────────────────────────────────────────────────────────────
 function DriverOrderCard({ order, onClick }) {
   return (
     <button onClick={onClick}
       className={`order-card w-full text-left ${order.status === 'assigned' ? 'border-cherry bg-cherry/5' : 'border-smoked'}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {order.orderNumber && <span className="font-display text-lg text-cherry">#{order.orderNumber}</span>}
           <StatusBadge status={order.status} />
+          <SedeBadge order={order} />
         </div>
         {order.status === 'assigned' && (
           <span className="text-xs font-semibold text-cherry animate-pulse font-body">¡Aceptar!</span>
@@ -675,9 +692,10 @@ function DriverOrderDetail({ order, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-slide-in-right">
         <div className="sticky top-0 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {order.orderNumber && <span className="font-display text-2xl text-cherry">#{order.orderNumber}</span>}
             <StatusBadge status={order.status} />
+            <SedeBadge order={order} size="lg" />
           </div>
           <button onClick={onClose} className="btn-icon text-coal/50">✕</button>
         </div>
