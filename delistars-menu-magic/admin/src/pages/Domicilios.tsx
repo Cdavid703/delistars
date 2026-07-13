@@ -3,6 +3,8 @@ import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestor
 import { db } from '@/services/firebase'
 import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInfo, statusLabel } from '@/lib/orders'
 import { OrderDetailModal } from '@/components/OrderDetailModal'
+import { PageTabs } from '@/components/PageTabs'
+import Cuadre from './Cuadre'
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b))
@@ -26,7 +28,7 @@ const inRange = (o: Order, desde: string, hasta: string) => {
   return true
 }
 
-export default function Domicilios() {
+function DomiciliosPedidos() {
   const [orders, setOrders] = useState<Order[]>([])
   // Rango de fecha: Hoy/Todo, o un rango desde–hasta (un solo día = desde==hasta).
   const [soloHoy, setSoloHoy] = useState(true)
@@ -349,6 +351,25 @@ export default function Domicilios() {
           ? <OrderDetailModal order={selected} onClose={() => setSelectedId(null)} />
           : null
       })()}
+    </div>
+  )
+}
+
+// Sección "Domicilios" del panel: agrupa los pedidos y el cuadre de caja en
+// pestañas (antes eran dos ítems separados del menú lateral).
+export default function Domicilios() {
+  const [tab, setTab] = useState('pedidos')
+  return (
+    <div>
+      <PageTabs
+        tabs={[
+          { key: 'pedidos', label: '🛵 Domicilios' },
+          { key: 'cuadre',  label: '💵 Cuadre de caja' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+      {tab === 'pedidos' ? <DomiciliosPedidos /> : <Cuadre />}
     </div>
   )
 }

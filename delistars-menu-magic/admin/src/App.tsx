@@ -7,10 +7,8 @@ import Dashboard from '@/pages/Dashboard'
 import Productos from '@/pages/Productos'
 import Sedes from '@/pages/Sedes'
 import Domicilios from '@/pages/Domicilios'
-import Cuadre from '@/pages/Cuadre'
 import Reportes from '@/pages/Reportes'
 import Clientes from '@/pages/Clientes'
-import Calificaciones from '@/pages/Calificaciones'
 import Usuarios from '@/pages/Usuarios'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
@@ -47,10 +45,12 @@ function App() {
               <Route path="productos" element={<Productos />} />
               <Route path="sedes" element={<Sedes />} />
               <Route path="domicilios" element={<Domicilios />} />
-              <Route path="cuadre" element={<Cuadre />} />
               <Route path="reportes" element={<Reportes />} />
               <Route path="clientes" element={<Clientes />} />
-              <Route path="calificaciones" element={<Calificaciones />} />
+              {/* Fusionados como pestañas: cuadre → Domicilios, calificaciones → Clientes.
+                  Se redirigen los enlaces viejos para no romper marcadores. */}
+              <Route path="cuadre" element={<Navigate to="/domicilios" replace />} />
+              <Route path="calificaciones" element={<Navigate to="/clientes" replace />} />
               <Route path="usuarios" element={<Usuarios />} />
               <Route path="turnos" element={<Turnos />} />
               <Route path="vacantes" element={<Vacantes />} />

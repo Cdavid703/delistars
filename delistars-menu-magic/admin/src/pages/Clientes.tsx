@@ -5,6 +5,8 @@ import { db } from '@/services/firebase'
 import { DELIVERED_STATUSES } from '@/lib/orders'
 import { Search, Phone } from 'lucide-react'
 import { ClienteDetailModal, type Customer } from '@/components/ClienteDetailModal'
+import { PageTabs } from '@/components/PageTabs'
+import Calificaciones from './Calificaciones'
 
 const fmtDate = (ts?: Timestamp) =>
   ts?.toDate ? ts.toDate().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -16,7 +18,7 @@ const SEDE_NAMES: Record<string, string> = {
 
 type SortBy = 'recent' | 'orders' | 'name'
 
-export default function Clientes() {
+function ClientesLista() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortBy>('recent')
@@ -160,6 +162,25 @@ export default function Clientes() {
       )}
 
       {selected && <ClienteDetailModal customer={selected} onClose={() => setSelected(null)} />}
+    </div>
+  )
+}
+
+// Sección "Clientes" del panel: agrupa el listado de clientes y las
+// calificaciones en pestañas (antes eran dos ítems separados del menú lateral).
+export default function Clientes() {
+  const [tab, setTab] = useState('clientes')
+  return (
+    <div>
+      <PageTabs
+        tabs={[
+          { key: 'clientes',       label: '👤 Clientes' },
+          { key: 'calificaciones', label: '⭐ Calificaciones' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+      {tab === 'clientes' ? <ClientesLista /> : <Calificaciones />}
     </div>
   )
 }
