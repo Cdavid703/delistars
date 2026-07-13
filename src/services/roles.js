@@ -61,9 +61,15 @@ export const SEDES = {
     // escribir cualquier barrio; esto solo lo autocompleta y le avisa que el
     // domicilio se confirma en caja. Editar libremente según la operación.
     barrios: [
-      'Santa Lucía', 'Santa Rosa de Lima', 'San Javier', 'La Pradera', 'Antonio Nariño',
-      'El Salado', 'Veinte de Julio', 'Metropolitano', 'Eduardo Santos', 'Los Alcázares',
-      'Barrio Cristóbal', 'La Floresta', 'Calasanz', 'Belencito', 'La América',
+      // Comuna 13 (San Javier) — donde está la sede
+      'Santa Rosa de Lima', 'Santa Lucía', 'San Javier No. 1', 'San Javier No. 2',
+      'La Pradera', 'Antonio Nariño', 'El Salado', 'Veinte de Julio', 'Metropolitano',
+      'El Socorro', 'La Divisa', 'Eduardo Santos', 'Blanquizal', 'El Pesebre',
+      'Los Alcázares', 'Belencito', 'Betania', 'Juan XXIII', 'Nuevos Conquistadores',
+      'Las Independencias', 'El Corazón', 'La Gabriela',
+      // Comuna 12 (La América) colindante
+      'Barrio Cristóbal', 'El Danubio', 'La Floresta', 'Calasanz', 'Ferrini',
+      'Los Pinos', 'Simón Bolívar', 'La América', 'Santa Mónica',
     ],
   },
   santa_teresita: {
@@ -74,9 +80,17 @@ export const SEDES = {
     coords:    { lat: 6.2477, lng: -75.6020 },
     whatsapp:  '573150634084',
     barrios: [
-      'Santa Teresita', 'La América', 'La Floresta', 'Calasanz', 'Barrio Cristóbal',
-      'Simón Bolívar', 'Santa Mónica', 'Ferrini', 'Los Pinos', 'El Danubio',
-      'La Castellana', 'Florida Nueva', 'Campo Alegre', 'Santa Lucía', 'Laureles',
+      // Comuna 12 (La América) — donde está la sede
+      'Santa Teresita', 'La América', 'La Floresta', 'Calasanz', 'Calasanz Parte Alta',
+      'Ferrini', 'Los Pinos', 'El Danubio', 'Santa Mónica', 'Barrio Cristóbal',
+      'Simón Bolívar', 'La Castellana', 'Campo Alegre', 'Nueva Villa de la Iguaná',
+      'Santa Lucía',
+      // Comuna 11 (Laureles-Estadio) colindante
+      'Laureles', 'Bolivariana', 'Las Acacias', 'San Joaquín', 'Los Conquistadores',
+      'Florida Nueva', 'El Velódromo', 'Estadio', 'Naranjal', 'Suramericana',
+      'Carlos E. Restrepo', 'Los Colores', 'El Nogal',
+      // Comuna 16 (Belén) colindante al sur
+      'Rosales', 'Belén', 'La Palma',
     ],
   },
 }
