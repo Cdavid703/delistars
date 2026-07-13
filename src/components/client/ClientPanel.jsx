@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
+import AddressBook from './AddressBook'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -675,17 +676,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     mixtoEfectivo:      '',
     mixtoTransferencia: '',
   })
-  const [savedAddresses,    setSavedAddresses]    = useState([])
   const [loading,           setLoading]           = useState(false)
   const [errors,            setErrors]            = useState([])
-  const [addrSuggestions,   setAddrSuggestions]   = useState([])
-  const [detectingLocation, setDetectingLocation] = useState(false)
   const [fromMenu,          setFromMenu]          = useState(false)
   const [menuTotal,         setMenuTotal]         = useState(0)
   const errorsRef = useRef(null)
-  // true justo después de elegir una sugerencia, para que el efecto de
-  // autocompletado no vuelva a buscar con el texto que acabamos de fijar.
-  const pickedRef = useRef(false)
 
   useEffect(() => {
     // 1) Restaurar el borrador si la página se recargó a mitad del formulario
@@ -755,72 +750,10 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         name:  data.name  || f.name,
         phone: data.phone || f.phone,
       }))
-      setSavedAddresses(data.addresses || [])
     }).catch(() => {})
   }, [user?.uid])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  // Convierte una feature de Photon en { label, lat, lng }
-  const featureToSuggestion = (f) => {
-    const p = f.properties || {}
-    const num      = p.housenumber ? ` #${p.housenumber}` : ''
-    const street   = p.street ? `${p.street}${num}` : (p.name || '')
-    const locality = p.district || p.suburb || p.city || ''
-    const label    = [street, locality].filter(Boolean).join(', ')
-    const [lng, lat] = f.geometry?.coordinates || []
-    return label ? { label, lat, lng } : null
-  }
-
-  // El cliente eligió una sugerencia geocodificada: fija el texto canónico y
-  // guarda sus coordenadas (para que el pin del domiciliario caiga exacto).
-  const pickSuggestion = (s) => {
-    pickedRef.current = true
-    setForm(f => ({ ...f, fullAddress: s.label, addrLat: s.lat ?? null, addrLng: s.lng ?? null }))
-    setAddrSuggestions([])
-  }
-
-  // Autocompletado EN VIVO mientras el cliente escribe la dirección (antes solo
-  // había sugerencias vía GPS). Debounce de 500ms, sesgado a la sede.
-  useEffect(() => {
-    if (pickedRef.current) { pickedRef.current = false; return }
-    const q = form.fullAddress.trim()
-    if (q.length < 5) { setAddrSuggestions([]); return }
-    const ctrl = new AbortController()
-    const t = setTimeout(async () => {
-      try {
-        const lat = sede?.coords?.lat ?? 6.24, lon = sede?.coords?.lng ?? -75.58
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q + ', Medellín, Colombia')}&limit=5&lat=${lat}&lon=${lon}`
-        const res = await fetch(url, { signal: ctrl.signal })
-        if (!res.ok) return
-        const data = await res.json()
-        setAddrSuggestions((data.features || []).map(featureToSuggestion).filter(Boolean))
-      } catch (_) {}
-    }, 500)
-    return () => { clearTimeout(t); ctrl.abort() }
-  }, [form.fullAddress, sede])
-
-  const detectLocation = () => {
-    if (!navigator.geolocation) return
-    setDetectingLocation(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const { latitude, longitude } = pos.coords
-          const res = await fetch(
-            `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}&limit=4`
-          )
-          if (res.ok) {
-            const data = await res.json()
-            setAddrSuggestions((data.features || []).map(featureToSuggestion).filter(Boolean))
-          }
-        } catch (_) {}
-        setDetectingLocation(false)
-      },
-      () => setDetectingLocation(false),
-      { timeout: 10000, maximumAge: 30000 }
-    )
-  }
 
   const handleSubmit = async () => {
     const errs = []
@@ -933,106 +866,38 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       )}
 
       {form.deliveryMode === 'delivery' && (
-      <>
       <div>
-        <label className="label-field">Dirección de entrega *</label>
-        <div className="flex gap-2">
-          <input
-            className="input-field flex-1"
-            value={form.fullAddress}
-            onChange={e => setForm(f => ({ ...f, fullAddress: e.target.value, addrLat: null, addrLng: null }))}
-            placeholder="Calle, número, apartamento…"
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            onClick={detectLocation}
-            disabled={detectingLocation}
-            className="flex-shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl border border-cherry/20 bg-cherry/5 text-cherry text-xs font-semibold font-body hover:bg-cherry/10 transition-colors disabled:opacity-50"
-            title="Detectar mi ubicación"
-          >
-            <LocateFixed size={14} />
-            {detectingLocation ? 'Detectando…' : 'Ubicación'}
-          </button>
-        </div>
+        <AddressBook
+          user={user}
+          sede={sede}
+          currentAddress={form.fullAddress}
+          onSelect={(a) => setForm(f => ({
+            ...f,
+            fullAddress: a.fullAddress,
+            barrio:      a.barrio,
+            reference:   a.reference,
+            addrLat:     a.lat,
+            addrLng:     a.lng,
+          }))}
+        />
 
-        {addrSuggestions.length > 0 && (
-          <div className="mt-1.5 flex flex-col gap-1">
-            <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Toca la dirección correcta para ubicar bien tu pedido</p>
-            {addrSuggestions.map((s, i) => (
-              <button key={i} type="button"
-                onClick={() => pickSuggestion(s)}
-                className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
-                📍 {s.label}
-              </button>
-            ))}
-            <button type="button" onClick={() => setAddrSuggestions([])}
-              className="text-[10px] font-body text-coal/40 hover:text-coal/60 text-right">
-              Ninguna — escribir manualmente
-            </button>
-          </div>
-        )}
-
-        {/* Confirmación de que la dirección quedó geolocalizada */}
-        {form.addrLat != null && addrSuggestions.length === 0 && (
-          <p className="mt-1.5 font-body text-[11px] text-mint flex items-center gap-1">
-            <span>✓</span> Dirección ubicada en el mapa — el domiciliario llegará con precisión
-          </p>
-        )}
-
-        {savedAddresses.length > 0 && addrSuggestions.length === 0 && (
-          <div className="mt-1.5 flex flex-col gap-1">
-            <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Entregas anteriores</p>
-            {[...savedAddresses].reverse().slice(0, 3).map((addr, i) => (
-              <button key={i} type="button"
-                onClick={() => { pickedRef.current = true; setForm(f => ({ ...f, fullAddress: addr, addrLat: null, addrLng: null })) }}
-                className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors truncate">
-                📍 {addr}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {!user?.email && (
-          <div className="mt-2 bg-cherry/5 border border-cherry/15 rounded-xl px-3 py-2.5 flex items-start gap-2">
-            <Info size={13} className="text-cherry/50 flex-shrink-0 mt-0.5" />
-            <p className="font-body text-[11px] text-coal/55 leading-relaxed">
-              Si <strong>inicias sesión con Google</strong>, tu nombre, teléfono y dirección se guardan automáticamente para no tener que escribirlos en el próximo pedido.
-            </p>
+        {/* Resumen de la dirección elegida + aviso NO restrictivo de barrio */}
+        {form.fullAddress && (
+          <div className="mt-2 bg-mint/10 border border-mint/30 rounded-xl px-4 py-2.5 flex items-start gap-2">
+            <MapPin size={14} className="text-mint flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-body text-sm font-semibold text-coal">{form.fullAddress}</p>
+              <p className="font-body text-[11px] text-coal/55 leading-relaxed mt-0.5">
+                {form.barrio && <>📍 {form.barrio} · </>}
+                {form.addrLat != null
+                  ? 'Ubicada en el mapa. '
+                  : ''}
+                El valor del domicilio se confirma en caja antes de que pagues.
+              </p>
+            </div>
           </div>
         )}
       </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label-field">Barrio</label>
-          <input className="input-field" list="ds-barrios-sede"
-            value={form.barrio} onChange={e => set('barrio', e.target.value)} placeholder="Barrio" autoComplete="off" />
-          <datalist id="ds-barrios-sede">
-            {(sede?.barrios || []).map(b => <option key={b} value={b} />)}
-          </datalist>
-        </div>
-        <div>
-          <label className="label-field">Referencia</label>
-          <input className="input-field" value={form.reference} onChange={e => set('reference', e.target.value)} placeholder="Punto de referencia" />
-        </div>
-      </div>
-
-      {/* Aviso NO restrictivo: el barrio no bloquea el pedido, solo informa. */}
-      {form.barrio.trim() && (() => {
-        const known = (sede?.barrios || []).some(b => b.toLowerCase() === form.barrio.trim().toLowerCase())
-        return (
-          <div className={`rounded-xl px-3 py-2 flex items-start gap-2 ${known ? 'bg-mint/10 border border-mint/30' : 'bg-mustard/10 border border-mustard/30'}`}>
-            <Info size={13} className={`flex-shrink-0 mt-0.5 ${known ? 'text-mint' : 'text-mustard'}`} />
-            <p className="font-body text-[11px] text-coal/60 leading-relaxed">
-              {known
-                ? <>Tu barrio está en nuestra zona de <strong>{sede?.name}</strong>. El valor del domicilio se confirma en caja antes de que pagues.</>
-                : <>No tenemos <strong>{form.barrio.trim()}</strong> en la lista, pero <strong>igual puedes pedir</strong>: la caja revisa si podemos llegar y te confirma el domicilio antes de pagar.</>}
-            </p>
-          </div>
-        )
-      })()}
-      </>
       )}
 
       <div>
