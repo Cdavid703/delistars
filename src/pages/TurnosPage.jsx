@@ -11,7 +11,6 @@ import Logo from '../components/common/Logo'
 // ─── Empleados ────────────────────────────────────────────────────────────────
 const EMPLOYEES = [
   { id: 'joseluis',   email: 'lluis02martinez@gmail.com',           name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular'   },
-  { id: 'yency',      email: 'yencytp@gmail.com',                   name: 'Yency Torres Parra',             short: 'Yency',       type: 'regular'   },
   { id: 'sara',       email: 'monsalvesara1124@gmail.com',          name: 'Sara Castaño Monsalve',          short: 'Sara',        type: 'regular'   },
   { id: 'valentina',  email: 'vvillegasmazo@gmail.com',             name: 'Valentina Villegas Mazo',        short: 'Valentina',   type: 'regular'   },
   { id: 'josemanuel', email: 'josemanuellondonorivillas@gmail.com', name: 'Jose Manuel Londoño Rivillas',   short: 'Jose Manuel', type: 'regular'   },
