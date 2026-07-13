@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
+
+// Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
+const MapPicker = lazy(() => import('./MapPicker'))
 
 // ─── Nomenclatura oficial colombiana (menús cerrados = sin typos) ──────────────
 const VIA_TIPOS = [
@@ -60,11 +63,25 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
   const [customLabel, setCustom] = useState(
     initial && !LABEL_PRESETS.some(l => l.label === initial.label) ? initial.label : '',
   )
-  const [errors, setErrors] = useState([])
-  const [saving, setSaving] = useState(false)
+  const [errors, setErrors]     = useState([])
+  const [saving, setSaving]     = useState(false)
+  const [showMap, setShowMap]   = useState(false)
+  const [locating, setLocating] = useState(false)
 
   const set = (k, v) => setP(f => ({ ...f, [k]: v }))
+  // Cambiar un campo que afecta la geolocalización invalida la coordenada y el
+  // pin anteriores (se recalcularán al volver a abrir el mapa / guardar).
+  const setAddr = (k, v) => { setP(f => ({ ...f, [k]: v, lat: null, lng: null })); setShowMap(false) }
   const preview = buildFormatted(p)
+
+  // Geocodifica la dirección armada y abre el mapa para afinar el pin.
+  const openMap = async () => {
+    setLocating(true)
+    const coords = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : await geocode(p, sede)
+    if (coords) setP(f => ({ ...f, lat: coords.lat, lng: coords.lng }))
+    setLocating(false)
+    setShowMap(true)
+  }
 
   const pickLabel = (preset) => {
     if (preset.label === 'Otra') { set('emoji', preset.emoji); set('label', customLabel || 'Otra') }
@@ -81,7 +98,9 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
     if (errs.length) { setErrors(errs); return }
     setErrors([])
     setSaving(true)
-    const coords = await geocode(p, sede)
+    // Si el cliente ya ajustó el pin en el mapa, se respeta esa coordenada;
+    // si no, se geocodifica la dirección armada como respaldo.
+    const coords = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : await geocode(p, sede)
     const place = {
       ...p,
       id:        p.id || `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -129,15 +148,15 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
           <div>
             <label className="label-field">Vía</label>
             <div className="grid grid-cols-[1.4fr_1fr_0.9fr_1fr] gap-2">
-              <select className="input-field" value={p.tipoVia} onChange={e => set('tipoVia', e.target.value)}>
+              <select className="input-field" value={p.tipoVia} onChange={e => setAddr('tipoVia', e.target.value)}>
                 {VIA_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <input className="input-field" inputMode="numeric" value={p.viaNum}
-                onChange={e => set('viaNum', onlyDigits(e.target.value))} placeholder="44" />
-              <select className="input-field" value={p.viaLetra} onChange={e => set('viaLetra', e.target.value)}>
+                onChange={e => setAddr('viaNum', onlyDigits(e.target.value))} placeholder="44" />
+              <select className="input-field" value={p.viaLetra} onChange={e => setAddr('viaLetra', e.target.value)}>
                 {LETRAS.map(l => <option key={l} value={l}>{l || '–'}</option>)}
               </select>
-              <select className="input-field" value={p.viaOrient} onChange={e => set('viaOrient', e.target.value)}>
+              <select className="input-field" value={p.viaOrient} onChange={e => setAddr('viaOrient', e.target.value)}>
                 {ORIENTACIONES.map(o => <option key={o} value={o}>{o || '–'}</option>)}
               </select>
             </div>
@@ -155,13 +174,13 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
             <div className="flex items-center gap-2">
               <span className="font-display text-lg text-coal/40">#</span>
               <input className="input-field flex-1" inputMode="numeric" value={p.cruceNum}
-                onChange={e => set('cruceNum', onlyDigits(e.target.value))} placeholder="70" />
-              <select className="input-field w-16" value={p.cruceLetra} onChange={e => set('cruceLetra', e.target.value)}>
+                onChange={e => setAddr('cruceNum', onlyDigits(e.target.value))} placeholder="70" />
+              <select className="input-field w-16" value={p.cruceLetra} onChange={e => setAddr('cruceLetra', e.target.value)}>
                 {LETRAS.map(l => <option key={l} value={l}>{l || '–'}</option>)}
               </select>
               <span className="font-display text-lg text-coal/40">–</span>
               <input className="input-field flex-1" inputMode="numeric" value={p.placa}
-                onChange={e => set('placa', onlyDigits(e.target.value))} placeholder="23" />
+                onChange={e => setAddr('placa', onlyDigits(e.target.value))} placeholder="23" />
             </div>
           </div>
 
@@ -169,7 +188,7 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
           <div>
             <label className="label-field">Barrio</label>
             <input className="input-field" list="ds-barrios-builder" value={p.barrio}
-              onChange={e => set('barrio', e.target.value)} placeholder="Barrio" autoComplete="off" />
+              onChange={e => setAddr('barrio', e.target.value)} placeholder="Barrio" autoComplete="off" />
             <datalist id="ds-barrios-builder">
               {(sede?.barrios || []).map(b => <option key={b} value={b} />)}
             </datalist>
@@ -197,6 +216,28 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
               {p.barrio && <p className="font-body text-xs text-coal/50">📍 {p.barrio}</p>}
             </div>
           )}
+
+          {/* Ajuste fino del pin en el mapa */}
+          <div className="flex flex-col gap-1.5">
+            {!showMap ? (
+              <button type="button" onClick={openMap} disabled={locating}
+                className="flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 border border-cherry/25 bg-cherry/5 text-cherry font-body text-sm font-semibold hover:bg-cherry/10 transition-colors disabled:opacity-50">
+                <MapPin size={15} />
+                {locating ? 'Ubicando…' : (p.lat != null ? 'Ajustar el pin en el mapa' : 'Ubicar en el mapa y ajustar el pin')}
+              </button>
+            ) : (
+              <>
+                <p className="font-body text-[11px] text-coal/55">Arrastra el pin 📍 (o toca el mapa) hasta la puerta exacta.</p>
+                <Suspense fallback={<div className="h-[220px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
+                  <MapPicker initialLat={p.lat} initialLng={p.lng}
+                    onChange={(lat, lng) => setP(f => ({ ...f, lat, lng }))} />
+                </Suspense>
+                <p className="font-body text-[11px] text-mint flex items-center gap-1">
+                  <Check size={12} /> Pin ubicado — el domiciliario llegará justo aquí.
+                </p>
+              </>
+            )}
+          </div>
 
           {errors.length > 0 && (
             <div className="bg-red-50 border border-red-300 rounded-xl p-3 flex flex-col gap-1">
