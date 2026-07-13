@@ -637,6 +637,7 @@ export default function CashierPanel() {
           drivers={drivers}
           alarmActive={alarmActive}
           onDismissAlarm={dismissAlert}
+          unreadClientMsgs={unreadChatMap[selected.id] || 0}
           onReassign={order => { setSelectedId(null); setAssigning(order) }}
         />
       )}
