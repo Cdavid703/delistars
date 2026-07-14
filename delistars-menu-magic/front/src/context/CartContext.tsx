@@ -37,10 +37,42 @@ type CartCtx = {
 
 const Ctx = createContext<CartCtx | null>(null);
 
+// El carrito se guarda en localStorage para que NO se pierda si la página
+// recarga o el móvil descarta la pestaña (cambiar de app, pull-to-refresh,
+// PWA). Antes vivía solo en memoria y el cliente perdía sus productos.
+const CART_KEY = "ds_cart_items";
+const CART_TTL = 12 * 60 * 60 * 1000; // 12 h — evita mostrar un carrito muy viejo
+
+function loadCart(): CartItem[] {
+  try {
+    const raw = localStorage.getItem(CART_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items)) return [];
+    if (Date.now() - (parsed.savedAt || 0) > CART_TTL) {
+      localStorage.removeItem(CART_KEY);
+      return [];
+    }
+    return parsed.items as CartItem[];
+  } catch {
+    return [];
+  }
+}
+
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<CartItem[]>(loadCart);
   const [isOpen, setOpen] = useState(false);
   const [sede, setSedeState] = useState<number | null>(null);
+
+  // Persiste el carrito ante cualquier cambio (agregar, quitar, cantidad).
+  useEffect(() => {
+    try {
+      if (items.length === 0) localStorage.removeItem(CART_KEY);
+      else localStorage.setItem(CART_KEY, JSON.stringify({ items, savedAt: Date.now() }));
+    } catch {
+      /* almacenamiento lleno o no disponible: el carrito sigue en memoria */
+    }
+  }, [items]);
 
   const setSede = (s: number | null) => {
     setSedeState(s);

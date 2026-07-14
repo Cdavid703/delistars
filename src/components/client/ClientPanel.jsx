@@ -342,6 +342,7 @@ export default function ClientPanel() {
     // entregado por el menú y el borrador — nunca antes, para que una recarga
     // a mitad del formulario no le pierda el pedido al cliente.
     localStorage.removeItem('ds_cart_handoff')
+    localStorage.removeItem('ds_cart_items')       // carrito persistido del menú (front)
     localStorage.removeItem(DRAFT_KEY)
     sessionStorage.removeItem('ds_funnel_logged')  // próximo carrito = nuevo evento de embudo
     setShowForm(false)
