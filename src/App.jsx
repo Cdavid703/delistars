@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useAuth } from './contexts/AuthContext'
 import LoginPage            from './pages/LoginPage'
 import SedeSelectionPage    from './pages/SedeSelectionPage'
 import RoleChoicePage       from './pages/RoleChoicePage'
-import CashierPanel         from './components/cashier/CashierPanel'
-import DeliveryPanel        from './components/delivery/DeliveryPanel'
-import ClientPanel          from './components/client/ClientPanel'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
 import { ROLES, SEDES } from './services/roles'
+
+// Cada panel de rol se carga por separado: un cliente no descarga el código del
+// cajero ni del domiciliario (y viceversa), aligerando la carga inicial.
+const CashierPanel  = lazy(() => import('./components/cashier/CashierPanel'))
+const DeliveryPanel = lazy(() => import('./components/delivery/DeliveryPanel'))
+const ClientPanel   = lazy(() => import('./components/client/ClientPanel'))
 
 function LoadingScreen() {
   return (
@@ -72,10 +75,12 @@ export default function App() {
     <>
       <OfflineBanner />
       <InstallPromptBanner />
-      {view === ROLES.ADMIN   && <AdminRedirect />}
-      {view === ROLES.CASHIER && <CashierPanel />}
-      {view === ROLES.DRIVER  && <DeliveryPanel />}
-      {view !== ROLES.ADMIN && view !== ROLES.CASHIER && view !== ROLES.DRIVER && <ClientPanel />}
+      <Suspense fallback={<LoadingScreen />}>
+        {view === ROLES.ADMIN   && <AdminRedirect />}
+        {view === ROLES.CASHIER && <CashierPanel />}
+        {view === ROLES.DRIVER  && <DeliveryPanel />}
+        {view !== ROLES.ADMIN && view !== ROLES.CASHIER && view !== ROLES.DRIVER && <ClientPanel />}
+      </Suspense>
     </>
   )
 }
