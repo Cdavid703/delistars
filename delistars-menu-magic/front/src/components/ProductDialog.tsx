@@ -59,7 +59,7 @@ const getProductCustomOptions = (product: ApiProduct | null) => {
 };
 
 export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null; onClose: () => void }) => {
-  const { addItem } = useCart();
+  const { addItem, setOpen } = useCart();
   const [qty, setQty] = useState(1);
   const [addonQtys, setAddonQtys] = useState<Record<number, number>>({});
   const [notes, setNotes] = useState("");
@@ -284,7 +284,9 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       selectedDrink: product.id_categoria === 4 ? selectedDrink : undefined,
       selectedOption: getProductCustomOptions(product) ? selectedOption : undefined
     });
-    toast.success(`${product.nombre_producto} agregado al carrito 🎉`);
+    toast.success(`${product.nombre_producto} agregado al carrito 🎉`, {
+      action: { label: "Ver carrito 🛒", onClick: () => setOpen(true) },
+    });
     onClose();
   };
 

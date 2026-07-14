@@ -83,7 +83,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     const unitPrice = basePrice + i.addons.reduce((s, a) => s + a.price, 0);
     const uid = `${i.product.id_producto}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setItems((prev) => [...prev, { ...i, uid, unitPrice }]);
-    setOpen(true);
+    // NO se abre el carrito automáticamente: el cliente se queda en el menú y
+    // puede seguir agregando productos sin interrupción. El aviso de "agregado"
+    // y el acceso al carrito los da el toast (con acción "Ver carrito") + el
+    // badge del navbar.
   };
 
   const removeItem = (uid: string) => setItems((p) => p.filter((x) => x.uid !== uid));
