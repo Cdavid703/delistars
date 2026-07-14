@@ -1207,9 +1207,20 @@ function ClientOrderDetail({ order, onClose }) {
                 <span className="text-3xl leading-none">⏳</span>
                 <p className="font-display text-xl tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
               </div>
+              {/* Confirmación de que el pedido SÍ llegó — tranquiliza al cliente */}
+              <div className="bg-mint/15 border border-mint/40 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-lg">✅</span>
+                <p className="font-body text-xs text-coal/75 leading-relaxed">
+                  <strong>¡Pedido recibido!</strong>{order.createdAt?.toDate ? ` Enviado a las ${format(order.createdAt.toDate(), 'h:mm a')}.` : ''} Ya está en la caja.
+                </p>
+              </div>
               <p className="font-body text-sm text-coal/80 leading-relaxed">
                 La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te
-                enviará el <strong>valor del domicilio</strong>.
+                enviará el <strong>valor del domicilio</strong>. Normalmente responde en pocos minutos.
+              </p>
+              <p className="font-body text-xs text-tangelo flex items-start gap-1.5">
+                <span>🔔</span>
+                <span>Te avisaremos <strong>aquí mismo</strong> y en el chat apenas cotice — puedes dejar esta pantalla abierta.</span>
               </p>
               <div className="bg-cream/60 rounded-xl px-4 py-3 flex items-center gap-2">
                 <span className="text-lg">🔒</span>
