@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { useCart, formatCOP } from "@/context/CartContext";
 import { SEDES } from "@/data/menu";
-import { Minus, Plus, Trash2, ShoppingBag, LogIn, UserX, Clock } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, LogIn, UserX, Clock, ArrowLeft } from "lucide-react";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { usePlatformStatus } from "@/hooks/usePlatformStatus";
 import { optimizeImage } from "@/lib/utils";
@@ -85,6 +85,10 @@ export const CartSheet = () => {
               <div className="text-6xl mb-3 animate-bounce-soft">🛒</div>
               <p className="text-muted-foreground">Tu carrito está vacío</p>
               <p className="text-sm text-muted-foreground mt-1">¡Añade algo delicioso del menú!</p>
+              <Button onClick={() => setOpen(false)} size="lg"
+                className="mt-6 bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth">
+                <ArrowLeft className="w-4 h-4" /> Ver el menú
+              </Button>
             </div>
           ) : (
             <>
@@ -163,6 +167,18 @@ export const CartSheet = () => {
                   <span className="font-display text-lg">Total</span>
                   <span className="font-display text-2xl text-primary">{formatCOP(total)}</span>
                 </div>
+
+                {/* Volver al menú para agregar más productos — el carrito se abre
+                    solo al agregar, así que hace falta una salida clara y grande
+                    (la X de arriba es pequeña y muchos clientes no la ven). */}
+                <Button
+                  onClick={() => setOpen(false)}
+                  variant="outline"
+                  size="lg"
+                  className="w-full border-primary/40 text-primary hover:bg-primary/5"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Seguir pidiendo
+                </Button>
 
                 {closed ? (
                   <div className="rounded-2xl bg-cherry/10 border border-cherry/30 p-4 text-center space-y-1">
