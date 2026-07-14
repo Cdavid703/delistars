@@ -6,6 +6,7 @@ import {
 import {
   db, storage, createOrderWithNumber,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
+  restoreLoyaltyRedemption,
 } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
@@ -1053,6 +1054,29 @@ function ClientOrderDetail({ order, onClose }) {
   const [payMixtoTr,   setPayMixtoTr]   = useState('')
   const [payError,     setPayError]     = useState('')
   const [savingPay,    setSavingPay]    = useState(false)
+  const [cancelling,   setCancelling]   = useState(false)
+
+  // El cliente puede cancelar su propio pedido ANTES de que un domiciliario lo
+  // tome (estados pending/quoted). Si había canjeado un premio de fidelización,
+  // se le devuelve. Después de asignado, debe coordinar por el chat/WhatsApp.
+  const canClientCancel = ['pending', 'quoted'].includes(order.status)
+  const cancelOrder = async () => {
+    if (!canClientCancel) return
+    if (!window.confirm('¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.')) return
+    setCancelling(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status:       'cancelled',
+        cancelReason: 'Cancelado por el cliente',
+        cancelledAt:  serverTimestamp(),
+        updatedAt:    serverTimestamp(),
+      })
+      // Devuelve el premio de fidelización si lo había canjeado (best-effort).
+      if (order.loyaltyRedemption?.rewardIds?.length) restoreLoyaltyRedemption(order).catch(() => {})
+    } catch (_) {
+      setCancelling(false)
+    }
+  }
 
   const confirmPaymentMethod = async () => {
     if (!payMethod) { setPayError('Selecciona cómo vas a pagar'); return }
@@ -1688,6 +1712,22 @@ function ClientOrderDetail({ order, onClose }) {
                   {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Cancelar pedido — solo antes de que un domiciliario lo tome */}
+          {canClientCancel && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <button
+                onClick={cancelOrder}
+                disabled={cancelling}
+                className="w-full py-2.5 rounded-xl border border-pepper/40 text-pepper font-body text-sm font-semibold hover:bg-pepper/5 transition-colors disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelando…' : '✕ Cancelar pedido'}
+              </button>
+              <p className="font-body text-[11px] text-coal/45 text-center">
+                Puedes cancelar mientras la caja no lo haya despachado. ¿Solo quieres cambiar algo? Escríbele por el chat de arriba.
+              </p>
             </div>
           )}
         </div>
