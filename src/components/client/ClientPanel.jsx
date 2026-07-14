@@ -629,7 +629,36 @@ export default function ClientPanel() {
       {selected && <ClientOrderDetail order={selected} onClose={() => setSelectedId(null)} />}
 
       {/* History modal */}
-      {showHistory && <ClientHistoryModal orders={orders} onClose={() => setShowHistory(false)} onSelect={o => { setShowHistory(false); openOrderDetail(o.id) }} />}
+      {showHistory && (
+        <ClientHistoryModal
+          orders={orders}
+          onClose={() => setShowHistory(false)}
+          onSelect={o => { setShowHistory(false); openOrderDetail(o.id) }}
+          onReorder={o => {
+            // "Volver a pedir": prellena el checkout con los datos del pedido
+            // anterior (productos + dirección) y lo abre para que el cliente
+            // confirme y reenvíe. El precio se vuelve a cotizar (pudo cambiar).
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({
+              savedAt: Date.now(),
+              form: {
+                name:         o.name || o.clientName || '',
+                phone:        o.phone || '',
+                deliveryMode: o.deliveryMode || 'delivery',
+                fullAddress:  o.fullAddress || '',
+                addrLat:      o.addrLat ?? null,
+                addrLng:      o.addrLng ?? null,
+                barrio:       o.barrio || '',
+                reference:    o.reference || '',
+                items:        o.items || '',
+                notes:        o.notes || '',
+              },
+            }))
+            localStorage.removeItem('ds_cart_handoff')
+            setShowHistory(false)
+            setShowForm(true)
+          }}
+        />
+      )}
 
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
@@ -1737,7 +1766,7 @@ function ClientOrderDetail({ order, onClose }) {
 }
 
 // ─── Client history modal ─────────────────────────────────────────────────────
-function ClientHistoryModal({ orders, onClose, onSelect }) {
+function ClientHistoryModal({ orders, onClose, onSelect, onReorder }) {
   const [search,     setSearch]     = useState('')
   const [filterDate, setFilterDate] = useState('')
 
@@ -1825,23 +1854,33 @@ function ClientHistoryModal({ orders, onClose, onSelect }) {
             filtered.map(o => {
               const isDelivered = DELIVERED_STATUSES.includes(o.status)
               return (
-                <button key={o.id} onClick={() => onSelect(o)}
-                  className="card w-full text-left flex items-center gap-3 hover:bg-smoked/50 transition-colors">
-                  <span className="text-2xl flex-shrink-0">{isDelivered ? '✅' : '❌'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {o.orderNumber && <span className="font-display text-base text-cherry">#{o.orderNumber}</span>}
-                      <span className="font-body text-xs text-coal/40">{fmtDate(o.createdAt)}</span>
-                      {o.rating > 0 && <span className="text-xs">{'⭐'.repeat(o.rating)}</span>}
+                <div key={o.id} className="card w-full flex items-center gap-3">
+                  <button onClick={() => onSelect(o)}
+                    className="flex-1 min-w-0 text-left flex items-center gap-3 hover:opacity-80 transition-opacity">
+                    <span className="text-2xl flex-shrink-0">{isDelivered ? '✅' : '❌'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {o.orderNumber && <span className="font-display text-base text-cherry">#{o.orderNumber}</span>}
+                        <span className="font-body text-xs text-coal/40">{fmtDate(o.createdAt)}</span>
+                        {o.rating > 0 && <span className="text-xs">{'⭐'.repeat(o.rating)}</span>}
+                      </div>
+                      <p className="font-body text-sm text-coal/70 truncate">{o.items}</p>
+                      {o.totalPrice > 0 && (
+                        <p className="font-body text-xs font-semibold text-tangelo mt-0.5">
+                          ${Number(o.totalPrice).toLocaleString('es-CO')}
+                        </p>
+                      )}
                     </div>
-                    <p className="font-body text-sm text-coal/70 truncate">{o.items}</p>
-                    {o.totalPrice > 0 && (
-                      <p className="font-body text-xs font-semibold text-tangelo mt-0.5">
-                        ${Number(o.totalPrice).toLocaleString('es-CO')}
-                      </p>
-                    )}
-                  </div>
-                </button>
+                  </button>
+                  {onReorder && isDelivered && o.items && (
+                    <button onClick={() => onReorder(o)}
+                      className="flex-shrink-0 flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl bg-cherry/10 border border-cherry/25 text-cherry hover:bg-cherry/20 transition-colors"
+                      title="Volver a pedir">
+                      <span className="text-lg leading-none">🔁</span>
+                      <span className="font-body text-[10px] font-bold uppercase tracking-wide">Volver<br/>a pedir</span>
+                    </button>
+                  )}
+                </div>
               )
             })
           )}
