@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import {
   collection, query, where, onSnapshot, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
@@ -13,6 +13,8 @@ import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
+// Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
+const LiveDriverMap = lazy(() => import('./LiveDriverMap'))
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -1567,11 +1569,20 @@ function ClientOrderDetail({ order, onClose }) {
               )}
               {order.status === 'in_transit' && (
                 order.driverLat ? (
-                  <button onClick={openDriverMap} className="btn-primary btn-sm w-full">
-                    <Navigation size={14} /> Ver ubicación del domiciliario
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <Suspense fallback={<div className="h-[240px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
+                      <LiveDriverMap
+                        driverLat={order.driverLat} driverLng={order.driverLng}
+                        destLat={order.addrLat} destLng={order.addrLng}
+                      />
+                    </Suspense>
+                    <p className="font-body text-[11px] text-coal/50 text-center">🛵 Tu domiciliario · 🏠 Tu dirección — el mapa se actualiza solo</p>
+                    <button onClick={openDriverMap} className="btn-secondary btn-sm w-full">
+                      <Navigation size={14} /> Abrir en Google Maps
+                    </button>
+                  </div>
                 ) : (
-                  <p className="font-body text-xs text-coal/50">Obteniendo ubicación…</p>
+                  <p className="font-body text-xs text-coal/50">Obteniendo ubicación del domiciliario…</p>
                 )
               )}
             </div>
