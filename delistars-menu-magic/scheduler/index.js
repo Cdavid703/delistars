@@ -10,7 +10,8 @@ const cron = require('node-cron')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
 const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
-const { getFirestore: getAdminFirestore } = require('firebase-admin/firestore')
+const { getFirestore: getAdminFirestore, FieldValue } = require('firebase-admin/firestore')
+const { getMessaging } = require('firebase-admin/messaging')
 let adminDb = null // se inicializa en main() si hay credenciales
 
 const TIMEZONE = 'America/Bogota'
@@ -91,6 +92,79 @@ async function updateEtaStats() {
   }
 }
 
+// ─── Notificaciones push al cliente (FCM) ─────────────────────────────────────
+// Mensaje según el nuevo estado del pedido. Devuelve null si ese estado no
+// amerita notificación.
+function notifyFor(o) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  switch (o.status) {
+    case 'quoted':
+      return { title: '💰 ¡Ya cotizamos tu pedido!', body: `Tu pedido${n} está cotizado. Entra para elegir cómo pagar.` }
+    case 'in_transit':
+      return { title: '🛵 Tu pedido va en camino', body: `El domiciliario salió con tu pedido${n}. ¡Ya casi!` }
+    case 'arrived':
+      return { title: '📍 El domiciliario llegó', body: `Tu pedido${n} está en tu puerta.` }
+    case 'delivered_paid':
+    case 'delivered_cash':
+    case 'pending_cuadre':
+    case 'completed':
+      return { title: '✅ ¡Pedido entregado!', body: `Tu pedido${n} fue entregado. ¡Gracias por pedir en DeliStars! 🎉` }
+    case 'rejected':
+      return { title: 'Tu pedido no se pudo tomar', body: `Lo sentimos, tu pedido${n} fue rechazado. Escríbenos si tienes dudas.` }
+    default:
+      return null
+  }
+}
+
+async function sendPushForOrder(orderId, o) {
+  if (!o.clientUid) return
+  const msg = notifyFor(o)
+  if (!msg) return
+  const cust = await adminDb.doc(`customers/${o.clientUid}`).get()
+  const tokens = cust.exists ? (cust.data().fcmTokens || []) : []
+  if (!tokens.length) return
+  const res = await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: { title: msg.title, body: msg.body },
+    data:    { orderId: String(orderId), url: 'https://delistars.com/domicilios/' },
+    webpush: { fcmOptions: { link: 'https://delistars.com/domicilios/' } },
+  })
+  // Limpia tokens que ya no sirven (dispositivo desinstaló, permiso revocado…).
+  const bad = []
+  res.responses.forEach((r, i) => {
+    const code = r.error?.code || ''
+    if (!r.success && (code.includes('registration-token-not-registered') || code.includes('invalid-argument'))) {
+      bad.push(tokens[i])
+    }
+  })
+  if (bad.length) {
+    await adminDb.doc(`customers/${o.clientUid}`)
+      .update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
+  }
+  console.log(`[scheduler] push enviado (${o.status}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
+}
+
+// Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
+// un estado relevante (cotizado / en camino / llegó / entregado / rechazado).
+function watchOrdersForPush() {
+  const seen = new Map() // orderId -> último estado visto
+  let baseline = true    // en la primera carga NO se notifica (solo se toma foto)
+  adminDb.collection('orders').orderBy('createdAt', 'desc').limit(150)
+    .onSnapshot((snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') { seen.delete(chg.doc.id); continue }
+        const id = chg.doc.id
+        const o  = chg.doc.data()
+        const prev = seen.get(id)
+        seen.set(id, o.status)
+        if (baseline || prev === o.status) continue
+        sendPushForOrder(id, o).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+      }
+      baseline = false
+    }, (err) => console.error('[scheduler] watch pedidos error:', err?.message || err))
+  console.log('[scheduler] push FCM activo (vigilando cambios de estado de pedidos)')
+}
+
 async function main() {
   // Reintenta el login inicial — si el contenedor arranca antes de que la
   // red esté lista, no debe morir, solo seguir intentando.
@@ -115,6 +189,9 @@ async function main() {
       cron.schedule('*/30 17-23 * * *', updateEtaStats, { timezone: TIMEZONE })
       updateEtaStats() // una vez al arrancar
       console.log('[scheduler] eta_stats activo (cada 30 min en horario de servicio)')
+      // Notificaciones push al cliente (usa la misma SA; requiere permiso FCM).
+      try { watchOrdersForPush() }
+      catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
     } catch (err) {
       console.error('[scheduler] eta_stats deshabilitado:', err?.message || err)
     }

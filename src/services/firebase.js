@@ -2,9 +2,10 @@ import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
 import {
   getFirestore, runTransaction, doc,
-  collection, getDocs, addDoc, updateDoc, serverTimestamp, Timestamp,
+  collection, getDocs, addDoc, updateDoc, setDoc, serverTimestamp, Timestamp, arrayUnion,
 } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,6 +24,61 @@ export const provider = new GoogleAuthProvider()
 export const loginAnon = () => signInAnonymously(auth)
 
 provider.setCustomParameters({ prompt: 'select_account' })
+
+// ─── Notificaciones push (FCM) ────────────────────────────────────────────────
+// Clave pública VAPID del proyecto (no es secreta: se entrega al navegador).
+export const VAPID_KEY = 'BLUoTFw_6LKPI6f8_7DJMTsEVAynKnwsmZBb0qRsE_1GQZcjKZaCG-yfhYuI2Jy1XmEbwlAuBdbp2LlD3rl1Ymo'
+
+// Registra el service worker de FCM (bajo /domicilios/) pasándole la config
+// pública por query-params, para no tener que hornearla en el archivo estático.
+function registerFcmSw() {
+  const p = new URLSearchParams({
+    apiKey:            firebaseConfig.apiKey || '',
+    projectId:         firebaseConfig.projectId || '',
+    messagingSenderId: firebaseConfig.messagingSenderId || '',
+    appId:             firebaseConfig.appId || '',
+  })
+  // Scope propio (sub-ruta) para NO reemplazar al service worker de la PWA que
+  // ya vive en /domicilios/. El push en segundo plano no depende del scope.
+  return navigator.serviceWorker.register(
+    `${import.meta.env.BASE_URL}firebase-messaging-sw.js?${p.toString()}`,
+    { scope: `${import.meta.env.BASE_URL}fcm/` },
+  )
+}
+
+// Estado del permiso de notificaciones ('default' | 'granted' | 'denied' | 'unsupported').
+export function pushPermission() {
+  return ('Notification' in window) ? Notification.permission : 'unsupported'
+}
+
+// Pide permiso, obtiene el token FCM del dispositivo y lo guarda en el perfil
+// del cliente (customers/{uid}.fcmTokens). Devuelve { ok, reason }.
+export async function enablePush(uid) {
+  try {
+    if (!uid || !('Notification' in window) || !(await isSupported())) {
+      return { ok: false, reason: 'unsupported' }
+    }
+    const perm = await Notification.requestPermission()
+    if (perm !== 'granted') return { ok: false, reason: perm === 'denied' ? 'denied' : 'dismissed' }
+    const swReg = await registerFcmSw()
+    const token = await getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg })
+    if (!token) return { ok: false, reason: 'no-token' }
+    await setDoc(doc(db, 'customers', uid),
+      { fcmTokens: arrayUnion(token), updatedAt: serverTimestamp() }, { merge: true })
+    return { ok: true, token }
+  } catch (e) {
+    console.error('[push] enablePush error:', e)
+    return { ok: false, reason: 'error' }
+  }
+}
+
+// Notificaciones con la app ABIERTA (por si el cliente la tiene en primer plano).
+export async function listenForegroundPush(cb) {
+  try {
+    if (!(await isSupported())) return () => {}
+    return onMessage(getMessaging(app), cb)
+  } catch { return () => {} }
+}
 
 // Fecha del día en HORA COLOMBIA (America/Bogota), formato YYYY-MM-DD.
 // ⚠️ Antes se usaba la fecha UTC: en Colombia el día UTC cambia a las 7:00 PM,

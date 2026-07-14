@@ -6,7 +6,7 @@ import {
 import {
   db, storage, createOrderWithNumber,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
-  restoreLoyaltyRedemption,
+  restoreLoyaltyRedemption, enablePush, pushPermission,
 } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
@@ -1064,6 +1064,33 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   )
 }
 
+// Botón opt-in de notificaciones push. Solo aparece si el navegador las soporta
+// y el cliente aún no decidió; una vez concedido, desaparece.
+function PushOptIn({ uid, className = '' }) {
+  const [perm, setPerm] = useState(() => pushPermission())
+  const [busy, setBusy] = useState(false)
+  if (perm === 'granted' || perm === 'unsupported') return null
+  if (perm === 'denied') {
+    return (
+      <p className={`font-body text-[11px] text-coal/45 ${className}`}>
+        🔕 Los avisos están bloqueados en tu navegador. Actívalos en los ajustes del sitio si quieres recibir la cotización en tu celular.
+      </p>
+    )
+  }
+  const activar = async () => {
+    setBusy(true)
+    await enablePush(uid)
+    setPerm(pushPermission())
+    setBusy(false)
+  }
+  return (
+    <button onClick={activar} disabled={busy || !uid}
+      className={`w-full py-2.5 rounded-xl bg-cherry/10 border border-cherry/30 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors disabled:opacity-50 ${className}`}>
+      {busy ? 'Activando…' : '🔔 Avísame en mi celular cuando esté listo'}
+    </button>
+  )
+}
+
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
   const { user } = useAuth()
@@ -1277,6 +1304,7 @@ function ClientOrderDetail({ order, onClose }) {
                 <span>🔔</span>
                 <span>Te avisaremos <strong>aquí mismo</strong> y en el chat apenas cotice — puedes dejar esta pantalla abierta.</span>
               </p>
+              <PushOptIn uid={user?.uid} />
               <div className="bg-cream/60 rounded-xl px-4 py-3 flex items-center gap-2">
                 <span className="text-lg">🔒</span>
                 <p className="font-body text-xs text-coal/70 leading-relaxed">
