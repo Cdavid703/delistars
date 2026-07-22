@@ -107,6 +107,11 @@ export default function CashierPanel() {
   const [editPhone,       setEditPhone]      = useState('')
   const [platformActive,  setPlatformActive] = useState(null)
   const [newOrderAlert,   setNewOrderAlert]  = useState(null)
+  // Aviso cuando un CLIENTE cancela un pedido que la caja tenía activo — sin
+  // esto el pedido "desaparece" de Activos sin explicación y la caja queda
+  // buscándolo (pasó en producción el mismo día que se habilitó cancelar).
+  const [cancelAlert,     setCancelAlert]    = useState(null)
+  const prevStatusRef = useRef(new Map())
   const [alarmActive,     setAlarmActive]    = useState(false)
   const [showManual,      setShowManual]     = useState(false)
   const [showCuadreTurno, setShowCuadreTurno] = useState(false)
@@ -221,6 +226,21 @@ export default function CashierPanel() {
           }
         })
       }
+
+      // Cliente canceló un pedido que estaba en curso → avisar a la caja.
+      // (En la primera carga solo se toma la foto de estados, sin avisar.)
+      const ACTIVE_BEFORE_CANCEL = ['pending', 'quoted', 'assigned', 'accepted', 'preparing']
+      const firstLoad = prevStatusRef.current.size === 0 && docs.length > 0
+      docs.forEach(o => {
+        const prev = prevStatusRef.current.get(o.id)
+        if (!firstLoad && prev && prev !== o.status &&
+            o.status === 'cancelled' && ACTIVE_BEFORE_CANCEL.includes(prev)) {
+          playMessageSound()
+          setCancelAlert(o)
+        }
+        prevStatusRef.current.set(o.id, o.status)
+      })
+
       setOrders(docs)
     })
   }, [sede])
@@ -256,7 +276,9 @@ export default function CashierPanel() {
     if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && !isPickup(o) && isToday(o.createdAt)
     if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status) && isToday(o.createdAt)
     if (tab === 'completed') {
-      if (!COMPLETE_STATUSES.includes(o.status)) return false
+      // Los cancelados por el cliente también se listan aquí (con su ❌) para
+      // que no "desaparezcan" sin rastro; se excluyen de las sumas del día.
+      if (!COMPLETE_STATUSES.includes(o.status) && o.status !== 'cancelled') return false
       const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
       if (!o.createdAt?.toDate) return false
       return o.createdAt.toDate().toDateString() === target.toDateString()
@@ -548,7 +570,7 @@ export default function CashierPanel() {
       {/* Summary for completed tab */}
       {tab === 'completed' && filteredOrders.length > 0 && (
         <EntregadosSummary
-          orders={filteredOrders}
+          orders={filteredOrders.filter(o => o.status !== 'cancelled')}
           sedeName={sede?.name || ''}
           fecha={historyDate
             ? format(new Date(historyDate + 'T00:00:00'), "EEEE dd 'de' MMMM yyyy", { locale: es })
@@ -690,6 +712,34 @@ export default function CashierPanel() {
               </button>
               <button onClick={() => { dismissAlert(); openOrderDetail(newOrderAlert?.id ?? null) }} className="flex-1 btn-primary">
                 <BellRing size={16} /> Ver pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso: el cliente canceló un pedido que estaba en curso */}
+      {cancelAlert && (
+        <div className="fixed inset-x-0 top-0 z-[95] p-3 animate-fade-in">
+          <div className="mx-auto max-w-lg bg-coal text-cream rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+            <span className="text-2xl leading-none">🚫</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-display text-base tracking-wide">
+                Pedido{cancelAlert.orderNumber ? ` #${cancelAlert.orderNumber}` : ''} CANCELADO por el cliente
+              </p>
+              <p className="font-body text-xs text-cream/70 mt-0.5">
+                {cancelAlert.name || cancelAlert.clientName || 'Cliente'} canceló antes del despacho.
+                No hay que prepararlo — queda en "Entregados" con su ❌.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5 flex-shrink-0">
+              <button onClick={() => { const id = cancelAlert.id; setCancelAlert(null); openOrderDetail(id) }}
+                className="px-3 py-1.5 rounded-lg bg-cream/15 text-cream font-body text-xs font-semibold hover:bg-cream/25 transition-colors">
+                Ver
+              </button>
+              <button onClick={() => setCancelAlert(null)}
+                className="px-3 py-1.5 rounded-lg text-cream/60 font-body text-xs font-semibold hover:text-cream transition-colors">
+                Entendido
               </button>
             </div>
           </div>
