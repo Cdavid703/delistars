@@ -27,6 +27,7 @@ type CartCtx = {
   removeItem: (uid: string) => void;
   updateQty: (uid: string, qty: number) => void;
   clear: () => void;
+  reconcilePrices: (products: ApiProduct[]) => void;
   total: number;
   count: number;
   isOpen: boolean;
@@ -94,11 +95,34 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     setItems((p) => p.map((x) => (x.uid === uid ? { ...x, quantity: Math.max(1, qty) } : x)));
   const clear = () => setItems([]);
 
+  // Re-cotiza el carrito contra el menú VIGENTE. El carrito persistido guarda
+  // unitPrice congelado al momento de agregar; si el admin cambió un precio,
+  // un carrito restaurado viajaría con el precio viejo hasta la caja. Se llama
+  // cada vez que el menú carga sus productos frescos de la API.
+  const reconcilePrices: CartCtx["reconcilePrices"] = (products) => {
+    setItems((prev) => prev.map((it) => {
+      const p = products.find((x) => x.id_producto === it.product.id_producto);
+      if (!p) return it; // producto ya no existe en el menú: se deja tal cual (visible para el cliente)
+      let base: number;
+      let presentation = it.presentation;
+      if (presentation) {
+        const fresh = p.presentations?.find((x) => x.id_presentacion === presentation!.id_presentacion);
+        if (fresh) presentation = { ...presentation, precio_venta: fresh.precio_venta };
+        base = presentation.precio_venta;
+      } else {
+        base = parseFloat(p.precio_venta);
+      }
+      if (!Number.isFinite(base)) return it;
+      const unitPrice = base + it.addons.reduce((s, a) => s + a.price, 0);
+      return { ...it, product: p, presentation, unitPrice };
+    }));
+  };
+
   const total = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const count = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <Ctx.Provider value={{ items, addItem, removeItem, updateQty, clear, total, count, isOpen, setOpen, sede, setSede }}>
+    <Ctx.Provider value={{ items, addItem, removeItem, updateQty, clear, reconcilePrices, total, count, isOpen, setOpen, sede, setSede }}>
       {children}
     </Ctx.Provider>
   );

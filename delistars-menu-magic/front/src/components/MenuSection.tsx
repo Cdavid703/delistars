@@ -17,7 +17,7 @@ const EMOJI_MAP: Record<string, string> = {
 };
 
 export const MenuSection = () => {
-  const { sede } = useCart();
+  const { sede, reconcilePrices } = useCart();
   const [selected, setSelected] = useState<ApiProduct | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -34,7 +34,10 @@ export const MenuSection = () => {
         
         setCategories(cats);
         setProducts(prods);
-        
+        // Un carrito restaurado de una sesión anterior puede traer precios
+        // congelados: se re-cotiza contra el menú recién cargado.
+        reconcilePrices(prods);
+
         console.log('✅ Categorías cargadas:', cats.length);
         console.log('✅ Productos cargados:', prods.length);
       } catch (error) {

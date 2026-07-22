@@ -729,22 +729,36 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     try {
       const raw = localStorage.getItem('ds_cart_handoff')
       if (!raw) return
-      const { items: cartItems, total } = JSON.parse(raw)
+      const { items: cartItems, total, savedAt } = JSON.parse(raw)
       if (!Array.isArray(cartItems) || cartItems.length === 0) return
+      // Un handoff viejo trae precios que ya no son confiables (el handoff solo
+      // se borraba al crear el pedido, así que podía sobrevivir DÍAS y precargar
+      // un total desactualizado que llegaba tal cual a la caja). Se descarta y
+      // el cliente arma su carrito de nuevo con precios vigentes.
+      if (!savedAt || Date.now() - savedAt > 6 * 60 * 60 * 1000) {
+        localStorage.removeItem('ds_cart_handoff')
+        return
+      }
       const lines = cartItems.map(it => {
         let line = `${it.quantity}x ${it.name}`
         if (it.addons?.length) line += ` (${it.addons.join(', ')})`
         if (it.salsas?.length) line += ` | Salsas: ${it.salsas.join(', ')}`
         if (it.cebollas?.length) line += ` | Cebolla: ${it.cebollas.join(', ')}`
         if (it.notes) line += ` — "${it.notes}"`
+        // Precio de la línea (cant × unitario) para que la CAJA pueda verificar
+        // la suma ítem por ítem, en vez de recibir solo un total ciego.
+        const lineTotal = (Number(it.unitPrice) || 0) * (it.quantity || 1)
+        if (lineTotal > 0) line += ` (= $${lineTotal.toLocaleString('es-CO')})`
         return line
       })
+      // El total se RECALCULA de los ítems; el total guardado queda de respaldo.
+      const computed = cartItems.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (it.quantity || 1), 0)
       setForm(f => ({
         ...f,
         items: lines.join('\n'),
       }))
       setFromMenu(true)
-      setMenuTotal(total || 0)
+      setMenuTotal(computed > 0 ? computed : (total || 0))
     } catch (_) {}
   }, [])
 

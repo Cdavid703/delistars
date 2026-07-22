@@ -41,6 +41,9 @@ export const CartSheet = () => {
       total,
       // El slug de la sede es la única fuente de verdad (definido en data/menu.ts).
       sedeId: SEDES.find((s) => s.id === sede)?.slug ?? null,
+      // Fecha de creación: domicilios descarta handoffs viejos (los precios de
+      // un carrito de hace días ya no son confiables).
+      savedAt: Date.now(),
     };
     localStorage.setItem("ds_cart_handoff", JSON.stringify(handoff));
     window.location.href = "/domicilios/";
