@@ -92,6 +92,118 @@ async function updateEtaStats() {
   }
 }
 
+// ─── WhatsApp del negocio (CallMeBot) ─────────────────────────────────────────
+// Envía avisos al WhatsApp del dueño: resumen diario y pedidos sin cotizar.
+// CallMeBot es gratuito y solo puede escribirle al número que se registró con
+// él (una activación única desde ese mismo WhatsApp genera el apikey).
+const WA_PHONE  = process.env.WHATSAPP_ALERT_PHONE || '573122275039'
+const WA_APIKEY = process.env.CALLMEBOT_APIKEY || ''
+
+async function sendWhatsApp(text) {
+  if (!WA_APIKEY) { console.log('[scheduler] WhatsApp omitido (falta CALLMEBOT_APIKEY):', text.slice(0, 60)); return }
+  try {
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${WA_PHONE}&apikey=${encodeURIComponent(WA_APIKEY)}&text=${encodeURIComponent(text)}`
+    const res = await fetch(url)
+    console.log(`[scheduler] WhatsApp → ${WA_PHONE}: HTTP ${res.status}`)
+  } catch (err) {
+    console.error('[scheduler] WhatsApp error:', err?.message || err)
+  }
+}
+
+const fmtCOP = (n) => `$${Math.round(n || 0).toLocaleString('es-CO')}`
+// Efectivo real cobrado (misma regla que src/utils/payments.js del panel).
+const cashAmount = (o) =>
+  (o.payment === 'Mixto' && o.mixtoEfectivo != null && o.mixtoEfectivo !== '')
+    ? (Number(o.mixtoEfectivo) || 0)
+    : (o.totalPrice || 0)
+
+// Medianoche de HOY en hora Colombia (UTC-5 fijo, sin horario de verano).
+function bogotaDayStart() {
+  const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date())
+  return new Date(`${ymd}T00:00:00-05:00`)
+}
+
+// ─── Resumen diario del negocio (11:45 PM) ────────────────────────────────────
+const DELIVERED = ['delivered_paid', 'delivered_cash', 'pending_cuadre', 'completed']
+
+async function sendDailySummary() {
+  try {
+    const start = bogotaDayStart()
+    const snap = await adminDb.collection('orders')
+      .where('createdAt', '>=', start).get()
+    const orders = snap.docs.map((d) => d.data())
+
+    const delivered = orders.filter((o) => DELIVERED.includes(o.status))
+    const ventas    = delivered.reduce((s, o) => s + (o.totalPrice || 0), 0)
+    const domis     = delivered.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+    const ticket    = delivered.length ? ventas / delivered.length : 0
+
+    const porSede = {}
+    delivered.forEach((o) => {
+      const k = o.sedeName || 'Sin sede'
+      porSede[k] = porSede[k] || { total: 0, count: 0 }
+      porSede[k].total += o.totalPrice || 0
+      porSede[k].count++
+    })
+
+    const cuadre = orders
+      .filter((o) => o.status === 'pending_cuadre')
+      .reduce((s, o) => s + cashAmount(o), 0)
+    const cancelados = orders.filter((o) => ['rejected', 'cancelled'].includes(o.status)).length
+
+    const funnelSnap = await adminDb.collection('metrics_funnel').where('at', '>=', start).get()
+    const checkouts    = funnelSnap.size
+    const clientOrders = orders.filter((o) => !o.cashierId).length
+    const abandono = checkouts > 0 ? Math.round(Math.max(0, checkouts - clientOrders) / checkouts * 100) : null
+
+    const rated  = orders.filter((o) => Number(o.rating) > 0)
+    const rating = rated.length ? (rated.reduce((s, o) => s + Number(o.rating), 0) / rated.length).toFixed(1) : null
+
+    const fecha = new Intl.DateTimeFormat('es-CO', { timeZone: TIMEZONE, day: '2-digit', month: 'short' }).format(new Date())
+    const lines = [
+      `🌟 DeliStars — Resumen del ${fecha}`,
+      `💰 Ventas: ${fmtCOP(ventas)} (${delivered.length} pedidos · ticket ${fmtCOP(ticket)})`,
+      ...Object.entries(porSede).map(([s, v]) => `   • ${s}: ${fmtCOP(v.total)} (${v.count})`),
+      `🛵 Domicilios cobrados: ${fmtCOP(domis)}`,
+      `💵 Efectivo pendiente de cuadre: ${fmtCOP(cuadre)}`,
+      ...(abandono !== null ? [`🛒 Embudo: ${checkouts} checkouts → ${clientOrders} enviados (${abandono}% abandono)`] : []),
+      ...(rating ? [`⭐ Calificación de hoy: ${rating} (${rated.length} votos)`] : []),
+      ...(cancelados ? [`❌ Rechazados/cancelados: ${cancelados}`] : []),
+    ]
+    await sendWhatsApp(lines.join('\n'))
+    console.log('[scheduler] resumen diario enviado')
+  } catch (err) {
+    console.error('[scheduler] Error en resumen diario:', err?.message || err)
+  }
+}
+
+// ─── Alerta: pedido sin cotizar hace más de 10 minutos ───────────────────────
+const STUCK_AFTER_MS = 10 * 60 * 1000
+const stuckAlerted = new Set() // ids ya avisados (en memoria; tras reinicio puede repetir una vez)
+
+async function checkStuckOrders() {
+  try {
+    const start = bogotaDayStart()
+    const snap = await adminDb.collection('orders')
+      .where('createdAt', '>=', start).get()
+    const now = Date.now()
+    for (const d of snap.docs) {
+      const o = d.data()
+      if (o.status !== 'pending' || stuckAlerted.has(d.id)) continue
+      const created = o.createdAt?.toMillis ? o.createdAt.toMillis() : 0
+      if (!created || now - created < STUCK_AFTER_MS) continue
+      stuckAlerted.add(d.id)
+      const mins = Math.round((now - created) / 60000)
+      await sendWhatsApp(
+        `⚠️ Pedido${o.orderNumber ? ` #${o.orderNumber}` : ''} de ${o.sedeName || 'sede ?'} lleva ${mins} min SIN COTIZAR.\nCliente: ${o.name || o.clientName || '—'}. Revisa la caja.`,
+      )
+      console.log(`[scheduler] alerta pedido atascado ${d.id} (${mins} min)`)
+    }
+  } catch (err) {
+    console.error('[scheduler] Error en chequeo de atascados:', err?.message || err)
+  }
+}
+
 // ─── Notificaciones push al cliente (FCM) ─────────────────────────────────────
 // Mensaje según el nuevo estado del pedido. Devuelve null si ese estado no
 // amerita notificación.
@@ -192,6 +304,11 @@ async function main() {
       // Notificaciones push al cliente (usa la misma SA; requiere permiso FCM).
       try { watchOrdersForPush() }
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
+      // Resumen del día al WhatsApp del dueño (11:45 PM, antes del cierre).
+      cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
+      // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
+      cron.schedule('*/3 17-23 * * *', checkStuckOrders, { timezone: TIMEZONE })
+      console.log(`[scheduler] WhatsApp ${WA_APIKEY ? 'ACTIVO' : 'pendiente de CALLMEBOT_APIKEY'} → ${WA_PHONE} (resumen 11:45pm + alertas de pedidos atascados)`)
     } catch (err) {
       console.error('[scheduler] eta_stats deshabilitado:', err?.message || err)
     }

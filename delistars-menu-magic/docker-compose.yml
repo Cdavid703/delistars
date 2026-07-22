@@ -148,6 +148,10 @@ services:
       AUTO_OPEN_BOT_PASSWORD: ${AUTO_OPEN_BOT_PASSWORD}
       # SA de SOLO LECTURA (la del backup) para calcular tiempos de entrega.
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/firestore-backup-key.json
+      # WhatsApp del negocio (CallMeBot): resumen diario + alertas de pedidos
+      # sin cotizar. Sin CALLMEBOT_APIKEY los avisos solo se loguean.
+      WHATSAPP_ALERT_PHONE: ${WHATSAPP_ALERT_PHONE:-573122275039}
+      CALLMEBOT_APIKEY: ${CALLMEBOT_APIKEY:-}
     volumes:
       - /opt/delistars/secrets:/secrets:ro
     networks:

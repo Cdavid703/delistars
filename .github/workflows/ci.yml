@@ -17,6 +17,8 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run check:emails
+      # Pruebas del flujo crítico: handoff menú→caja y matemática de pagos.
+      - run: npm test
       - run: npm run build
       - run: npm run build:turnos
       - run: npm run build:vacantes
