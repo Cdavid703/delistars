@@ -9,6 +9,7 @@ import { optimizeImage } from "@/lib/utils";
 import {
   Star, Clock, MapPin, FileText, CreditCard, Headset, CalendarClock,
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
+  Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
 } from "lucide-react";
 
 const BROCHURE_URL = "/brochure-delistars-empresas.docx";
@@ -27,7 +28,7 @@ const DIFERENCIALES = [
   { icon: Star, title: "Frescura y sabor", desc: "Ingredientes frescos y salsas de la casa en cada pedido — la misma calidad que nos dio 4.5★." },
   { icon: Clock, title: "Puntualidad", desc: "Entregas coordinadas para tu hora exacta, con seguimiento en vivo del domiciliario." },
   { icon: FileText, title: "Factura electrónica", desc: "Facturamos electrónicamente a tu empresa, con NIT y todos los soportes." },
-  { icon: CreditCard, title: "Todas las formas de pago", desc: "Efectivo, transferencia, Nequi y pagos digitales — como tu empresa prefiera." },
+  { icon: CreditCard, title: "Todas las formas de pago", desc: "Efectivo, tarjeta débito y crédito, transferencia, Nequi y demás pagos digitales." },
   { icon: Headset, title: "Atención dedicada", desc: "Un canal directo para empresas: cotizamos y coordinamos contigo cada pedido." },
   { icon: MapPin, title: "Cobertura amplia", desc: "Comunas 11 (Laureles), 12 (La América) y 13 (San Javier) y alrededores." },
 ];
@@ -37,6 +38,20 @@ const SOLUCIONES = [
   { icon: PartyPopper, title: "Eventos y celebraciones", desc: "Cumpleaños, integraciones y fin de año con comida que a todos les encanta.", color: "text-tangelo" },
   { icon: Presentation, title: "Reuniones y capacitaciones", desc: "Snacks y almuerzos para tus jornadas de trabajo, sin que nadie tenga que salir.", color: "text-mustard" },
   { icon: RefreshCw, title: "Pedidos recurrentes", desc: "¿Piden seguido? Coordinamos un plan a la medida de tu empresa.", color: "text-mint" },
+];
+
+const PAGOS = [
+  { icon: Banknote, label: "Efectivo" },
+  { icon: CreditCard, label: "Tarjeta débito y crédito" },
+  { icon: Landmark, label: "Transferencia bancaria" },
+  { icon: Smartphone, label: "Nequi y pagos digitales" },
+];
+
+const WEB_VENTAJAS = [
+  { icon: MonitorSmartphone, title: "Pide en línea", desc: "Menú completo con fotos y precios en www.delistars.com — sin llamadas ni esperas." },
+  { icon: MapPin, title: "Seguimiento en vivo", desc: "Tu equipo ve el estado del pedido y la ubicación del domiciliario en tiempo real." },
+  { icon: RefreshCw, title: "Volver a pedir", desc: "Historial de pedidos y repetición con un toque — ideal para pedidos frecuentes." },
+  { icon: Gift, title: "Fidelización", desc: "Cada 10 domicilios entregados, una Hamburguesa Especial gratis. Tus empleados acumulan al pedir." },
 ];
 
 const PASOS = [
@@ -183,6 +198,55 @@ export default function Empresas() {
         </div>
       </section>
 
+      {/* BENEFICIO PARA EMPLEADOS */}
+      <section className="container px-4 sm:px-6 py-14">
+        <div className="rounded-3xl bg-gradient-to-br from-mint to-[#0f6f65] text-cream p-8 md:p-12 shadow-glow">
+          <div className="grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
+            <div>
+              <p className="inline-flex items-center gap-2 bg-cream/20 rounded-full px-3 py-1 text-sm font-semibold mb-4">
+                <IdCard className="w-4 h-4" /> Convenio empresarial
+              </p>
+              <h2 className="font-display text-3xl md:text-4xl mb-3">Un beneficio delicioso para tus empleados</h2>
+              <p className="text-cream/90 leading-relaxed">
+                Vincula a tu empresa con DeliStars y tu equipo obtiene descuentos permanentes presentando el
+                <strong> carnet de la empresa</strong>. Un beneficio de bienestar que no te cuesta nada y tus colaboradores agradecen.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-cream/15 rounded-2xl p-5 text-center">
+                <p className="font-display text-5xl">15%</p>
+                <p className="text-sm mt-1 text-cream/90">de descuento<br/>para el empleado</p>
+              </div>
+              <div className="bg-cream/15 rounded-2xl p-5 text-center">
+                <p className="font-display text-5xl">7.5%</p>
+                <p className="text-sm mt-1 text-cream/90">para su acompañante<br/>familiar</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-cream/70 text-xs mt-6">
+            * Descuentos aplicables presentando el carnet de la empresa vinculada, para el empleado y un acompañante familiar en el momento de la compra.
+          </p>
+        </div>
+      </section>
+
+      {/* PLATAFORMA WEB */}
+      <section className="container px-4 sm:px-6 py-8 pb-14">
+        <div className="text-center mb-10">
+          <Globe className="w-8 h-8 text-cherry mx-auto mb-2" />
+          <h2 className="font-display text-3xl md:text-4xl text-coal mb-2">Todo desde delistars.com</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto">Nuestra plataforma propia hace que pedir para tu empresa sea rápido y transparente.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {WEB_VENTAJAS.map((w) => (
+            <div key={w.title} className="bg-card border border-border rounded-2xl p-6 shadow-card text-center">
+              <w.icon className="w-8 h-8 text-primary mx-auto mb-3" />
+              <h3 className="font-display text-lg text-coal mb-1.5">{w.title}</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">{w.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* MENÚ */}
       {featured.length > 0 && (
         <section className="container px-4 sm:px-6 py-14">
@@ -234,6 +298,21 @@ export default function Empresas() {
           Cobertura en Comuna 12 (La América), Comuna 13 (San Javier), Comuna 11 (Laureles) y alrededores.
           Para pedidos corporativos coordinamos la entrega según tu ubicación y horario.
         </p>
+
+        {/* Formas de pago */}
+        <div className="mt-10 max-w-3xl mx-auto text-center">
+          <h3 className="font-display text-xl text-coal mb-4">Aceptamos todas las formas de pago</h3>
+          <div className="flex flex-wrap justify-center gap-3">
+            {PAGOS.map((pg) => (
+              <span key={pg.label} className="inline-flex items-center gap-2 bg-cream/70 rounded-full px-4 py-2 text-sm font-medium text-coal shadow-card">
+                <pg.icon className="w-4 h-4 text-cherry" /> {pg.label}
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-2 bg-cream/70 rounded-full px-4 py-2 text-sm font-medium text-coal shadow-card">
+              <FileText className="w-4 h-4 text-cherry" /> Factura electrónica
+            </span>
+          </div>
+        </div>
       </section>
 
       {/* FORMULARIO DE COTIZACIÓN */}
