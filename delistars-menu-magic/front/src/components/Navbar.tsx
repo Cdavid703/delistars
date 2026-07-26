@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase } from "lucide-react";
+import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.svg";
 import { useCart } from "@/context/CartContext";
@@ -93,6 +93,10 @@ export const Navbar = () => {
               {l.label}
             </a>
           ))}
+          {/* Empresas — público */}
+          <a href="/empresas" className="font-display font-medium text-foreground/80 hover:text-primary transition-smooth flex items-center gap-1.5">
+            <Building2 className="w-4 h-4" /> Empresas
+          </a>
           {/* Vacantes — público */}
           <a href="/vacantes/" className="font-display font-medium text-foreground/80 hover:text-primary transition-smooth flex items-center gap-1.5">
             <Briefcase className="w-4 h-4" /> Trabaja con nosotros
@@ -193,6 +197,10 @@ export const Navbar = () => {
               </a>
             ))}
 
+            {/* Empresas — público */}
+            <a href="/empresas" onClick={() => setMobile(false)} className="font-display py-2 text-foreground hover:text-primary transition-smooth flex items-center gap-2">
+              <Building2 className="w-4 h-4" /> Empresas
+            </a>
             {/* Vacantes — público */}
             <a href="/vacantes/" onClick={() => setMobile(false)} className="font-display py-2 text-foreground hover:text-primary transition-smooth flex items-center gap-2">
               <Briefcase className="w-4 h-4" /> Trabaja con nosotros

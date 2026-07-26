@@ -204,6 +204,29 @@ async function checkStuckOrders() {
   }
 }
 
+// ─── Prospectos corporativos (página /empresas) → WhatsApp del negocio ───────
+function watchCorporateLeads() {
+  let baseline = true
+  adminDb.collection('corporate_leads').orderBy('createdAt', 'desc').limit(30)
+    .onSnapshot((snap) => {
+      snap.docChanges().forEach((chg) => {
+        if (chg.type !== 'added' || baseline) return
+        const l = chg.doc.data()
+        const lines = [
+          '🏢 NUEVA COTIZACIÓN EMPRESA',
+          `Empresa: ${l.empresa || '—'}`,
+          `Contacto: ${l.nombre || '—'}${l.cargo ? ' (' + l.cargo + ')' : ''}`,
+          `Tel: ${l.telefono || '—'}${l.correo ? ' · ' + l.correo : ''}`,
+          `Tipo: ${l.tipo || '—'}${l.personas ? ' · ' + l.personas + ' pers.' : ''}${l.fecha ? ' · ' + l.fecha : ''}`,
+          ...(l.mensaje ? [`Mensaje: ${l.mensaje}`] : []),
+        ]
+        sendWhatsApp(lines.join('\n')).catch((e) => console.error('[scheduler] lead WA error:', e?.message || e))
+      })
+      baseline = false
+    }, (err) => console.error('[scheduler] watch corporate_leads error:', err?.message || err))
+  console.log('[scheduler] prospectos corporativos activos (aviso por WhatsApp)')
+}
+
 // ─── Notificaciones push al cliente (FCM) ─────────────────────────────────────
 // Mensaje según el nuevo estado del pedido. Devuelve null si ese estado no
 // amerita notificación.
@@ -308,6 +331,8 @@ async function main() {
       cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
       // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
       cron.schedule('*/3 17-23 * * *', checkStuckOrders, { timezone: TIMEZONE })
+      // Prospectos de la página /empresas → aviso inmediato por WhatsApp.
+      try { watchCorporateLeads() } catch (err) { console.error('[scheduler] leads corp deshabilitado:', err?.message || err) }
       console.log(`[scheduler] WhatsApp ${WA_APIKEY ? 'ACTIVO' : 'pendiente de CALLMEBOT_APIKEY'} → ${WA_PHONE} (resumen 11:45pm + alertas de pedidos atascados)`)
     } catch (err) {
       console.error('[scheduler] eta_stats deshabilitado:', err?.message || err)
