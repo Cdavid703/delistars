@@ -18,6 +18,7 @@ const Layout = () => {
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Clientes', path: '/clientes', icon: '👤' },
     { label: 'Empleados', path: '/usuarios', icon: '🧑‍🍳' },
+    { label: 'Correo', path: '/correo', icon: '✉️' },
     { label: 'Turnos', path: '/turnos', icon: '🗓️' },
     { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]

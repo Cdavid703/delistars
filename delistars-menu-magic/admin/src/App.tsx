@@ -10,6 +10,7 @@ import Domicilios from '@/pages/Domicilios'
 import Reportes from '@/pages/Reportes'
 import Clientes from '@/pages/Clientes'
 import Usuarios from '@/pages/Usuarios'
+import Correo from '@/pages/Correo'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
 import Layout from '@/components/Layout'
@@ -52,6 +53,7 @@ function App() {
               <Route path="cuadre" element={<Navigate to="/domicilios" replace />} />
               <Route path="calificaciones" element={<Navigate to="/clientes" replace />} />
               <Route path="usuarios" element={<Usuarios />} />
+              <Route path="correo" element={<Correo />} />
               <Route path="turnos" element={<Turnos />} />
               <Route path="vacantes" element={<Vacantes />} />
             </Route>

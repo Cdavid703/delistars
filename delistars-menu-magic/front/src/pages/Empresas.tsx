@@ -10,9 +10,10 @@ import {
   Star, Clock, MapPin, FileText, CreditCard, Headset, CalendarClock,
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
   Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
+  Utensils, ShieldCheck, Users, Timer,
 } from "lucide-react";
 
-const BROCHURE_URL = "/brochure-delistars-empresas.docx";
+const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
 const WA_EMPRESAS = "573122275039";
 const WA_TEXT = encodeURIComponent("Hola DeliStars 👋 Quiero cotizar un pedido para mi empresa.");
 
@@ -52,6 +53,18 @@ const WEB_VENTAJAS = [
   { icon: MapPin, title: "Seguimiento en vivo", desc: "Tu equipo ve el estado del pedido y la ubicación del domiciliario en tiempo real." },
   { icon: RefreshCw, title: "Volver a pedir", desc: "Historial de pedidos y repetición con un toque — ideal para pedidos frecuentes." },
   { icon: Gift, title: "Fidelización", desc: "Cada 10 domicilios entregados, una Hamburguesa Especial gratis. Tus empleados acumulan al pedir." },
+];
+
+const PAQUETES = [
+  { emoji: "🍔", title: "Almuerzo ejecutivo", desc: "Hamburguesa o perro + papas + bebida. Ideal para el almuerzo diario del equipo." },
+  { emoji: "🎉", title: "Paquete evento", desc: "Variedad de perros, hamburguesas y salchipapas para compartir, con bebidas. Para integraciones y celebraciones." },
+  { emoji: "🥤", title: "Snack de reunión", desc: "Salchipapas, chuzos y bebidas para picar durante jornadas y capacitaciones." },
+];
+
+const GARANTIAS = [
+  { icon: ShieldCheck, title: "Calidad e higiene", desc: "Preparamos cada pedido al momento, con ingredientes frescos y buenas prácticas de manipulación de alimentos." },
+  { icon: Users, title: "Grupos de cualquier tamaño", desc: "Desde equipos pequeños hasta eventos grandes — cuéntanos cuántos son y lo coordinamos." },
+  { icon: Timer, title: "Respuesta rápida", desc: "Te contactamos para afinar tu cotización y confirmar disponibilidad para tu fecha." },
 ];
 
 const PASOS = [
@@ -263,6 +276,31 @@ export default function Empresas() {
         </section>
       )}
 
+      {/* PAQUETES DE EJEMPLO */}
+      <section className="bg-cream/40 py-14">
+        <div className="container px-4 sm:px-6">
+          <div className="text-center mb-10">
+            <Utensils className="w-8 h-8 text-cherry mx-auto mb-2" />
+            <h2 className="font-display text-3xl md:text-4xl text-coal mb-2">Paquetes de ejemplo</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Un punto de partida — armamos el menú exacto contigo según tu presupuesto y el gusto de tu equipo.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-6">
+            {PAQUETES.map((pk) => (
+              <div key={pk.title} className="bg-card rounded-2xl p-6 shadow-card border border-border">
+                <p className="text-3xl mb-2">{pk.emoji}</p>
+                <h3 className="font-display text-xl text-coal mb-1.5">{pk.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{pk.desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-muted-foreground text-sm mt-6">
+            Cotización a la medida · Sin precios fijos: se ajusta al número de personas y al menú elegido.
+          </p>
+        </div>
+      </section>
+
       {/* CÓMO FUNCIONA */}
       <section className="bg-coal text-cream py-14">
         <div className="container px-4 sm:px-6">
@@ -312,6 +350,19 @@ export default function Empresas() {
               <FileText className="w-4 h-4 text-cherry" /> Factura electrónica
             </span>
           </div>
+        </div>
+      </section>
+
+      {/* GARANTÍAS */}
+      <section className="container px-4 sm:px-6 pb-14">
+        <div className="grid sm:grid-cols-3 gap-6">
+          {GARANTIAS.map((g) => (
+            <div key={g.title} className="bg-card border border-border rounded-2xl p-6 shadow-card text-center">
+              <g.icon className="w-8 h-8 text-mint mx-auto mb-3" />
+              <h3 className="font-display text-lg text-coal mb-1.5">{g.title}</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">{g.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
