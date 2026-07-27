@@ -5,6 +5,7 @@ import { type Order, DELIVERED_STATUSES, isToday, fmtCOP, fmtDateTime, statusInf
 import { OrderDetailModal } from '@/components/OrderDetailModal'
 import { PageTabs } from '@/components/PageTabs'
 import Cuadre from './Cuadre'
+import PedidosPorRevisar from './PedidosPorRevisar'
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b))
@@ -355,21 +356,38 @@ function DomiciliosPedidos() {
   )
 }
 
-// Sección "Domicilios" del panel: agrupa los pedidos y el cuadre de caja en
-// pestañas (antes eran dos ítems separados del menú lateral).
+// Sección "Domicilios" del panel: agrupa los pedidos, el cuadre de caja y los
+// pedidos que quedaron abiertos (antes eran ítems separados del menú lateral,
+// y la alerta de atascados vivía en el Resumen, donde no se podía gestionar).
 export default function Domicilios() {
   const [tab, setTab] = useState('pedidos')
+  const [porRevisar, setPorRevisar] = useState(0)
+
+  // Contador para el badge de la pestaña: pedidos que siguen abiertos.
+  useEffect(() => {
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
+    return onSnapshot(q, (snap) => {
+      const abiertos = snap.docs.filter((d) =>
+        ['pending', 'quoted', 'assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
+          .includes((d.data() as Order).status))
+      setPorRevisar(abiertos.length)
+    }, () => {})
+  }, [])
+
   return (
     <div>
       <PageTabs
         tabs={[
           { key: 'pedidos', label: '🛵 Domicilios' },
           { key: 'cuadre',  label: '💵 Cuadre de caja' },
+          { key: 'revisar', label: `⚠️ Por revisar${porRevisar > 0 ? ` (${porRevisar})` : ''}` },
         ]}
         active={tab}
         onChange={setTab}
       />
-      {tab === 'pedidos' ? <DomiciliosPedidos /> : <Cuadre />}
+      {tab === 'pedidos' ? <DomiciliosPedidos />
+        : tab === 'cuadre' ? <Cuadre />
+        : <PedidosPorRevisar />}
     </div>
   )
 }

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, query, orderBy, limit, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
+import { Link } from 'react-router-dom'
+import { collection, doc, onSnapshot, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
-import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo, statusLabel } from '@/lib/orders'
+import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo } from '@/lib/orders'
 import { toast } from 'sonner'
-import { Power, Trash2 } from 'lucide-react'
+import { Power } from 'lucide-react'
 
 const StatCard = ({ icon, color, label, value }: { icon: string; color: string; label: string; value: string | number }) => (
   <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center gap-4">
@@ -60,16 +61,6 @@ export default function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const deleteStale = async (o: Order) => {
-    if (!window.confirm(`¿Eliminar el pedido de ${o.name || o.clientName || 'este cliente'}? Esta acción no se puede deshacer.`)) return
-    try {
-      await deleteDoc(doc(db, 'orders', o.id))
-      toast.success('Pedido eliminado')
-    } catch {
-      toast.error('No se pudo eliminar el pedido')
-    }
-  }
-
   const togglePlatform = async () => {
     if (platformActive === null) return
     setToggling(true)
@@ -88,18 +79,22 @@ export default function Dashboard() {
   }
 
   const today = orders.filter((o) => isToday(o.createdAt))
-  const activos = orders.filter((o) => ACTIVE_STATUSES.includes(o.status) || ['pending', 'quoted'].includes(o.status))
+  const abiertos = orders.filter((o) => ACTIVE_STATUSES.includes(o.status) || ['pending', 'quoted'].includes(o.status))
+  // "Activos" cuenta SOLO los de hoy: antes incluía pedidos de días pasados que
+  // habían quedado sin cerrar, y el resumen del día mostraba cifras infladas.
+  const activos = abiertos.filter((o) => isToday(o.createdAt))
+  const abiertosViejos = abiertos.filter((o) => !isToday(o.createdAt))
   const entregadosHoy = today.filter((o) => DELIVERED_STATUSES.includes(o.status))
   const cuadre = orders.filter((o) => o.status === 'pending_cuadre')
   const ingresosHoy = entregadosHoy.reduce((s, o) => s + (o.totalPrice || 0), 0)
 
-  const stuck = activos
-    .map((o) => ({ o, mins: minutesSince(o) }))
-    .filter(({ o, mins }) => {
-      const limitMins = STUCK_THRESHOLDS[o.status]
-      return limitMins != null && mins != null && mins >= limitMins
-    })
-    .sort((a, b) => (b.mins || 0) - (a.mins || 0))
+  // Pedidos de hoy que llevan demasiado tiempo sin avanzar. El detalle y las
+  // acciones viven en Domicilios → "Por revisar"; aquí solo se avisa.
+  const stuckHoy = activos.filter((o) => {
+    const limitMins = STUCK_THRESHOLDS[o.status]
+    const mins = minutesSince(o)
+    return limitMins != null && mins != null && mins >= limitMins
+  }).length
 
   return (
     <div>
@@ -125,32 +120,28 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Pedidos atascados — llevan demasiado tiempo sin avanzar */}
-      {stuck.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
-          <p className="font-semibold text-red-800 text-sm mb-2">
-            ⚠️ {stuck.length} pedido{stuck.length > 1 ? 's llevan' : ' lleva'} demasiado tiempo sin avanzar
+      {/* Aviso compacto: el detalle y las acciones viven en Domicilios → "Por
+          revisar" (aquí sólo se avisa, para no convertir el resumen del día en
+          una lista de pendientes de otros días). */}
+      {(stuckHoy > 0 || abiertosViejos.length > 0) && (
+        <Link
+          to="/domicilios"
+          className="block bg-red-50 border border-red-200 rounded-lg p-4 mb-8 hover:bg-red-100 transition-colors"
+        >
+          <p className="font-semibold text-red-800 text-sm flex items-center gap-2">
+            ⚠️
+            {abiertosViejos.length > 0 && (
+              <span>{abiertosViejos.length} pedido{abiertosViejos.length > 1 ? 's' : ''} de días anteriores sin cerrar</span>
+            )}
+            {abiertosViejos.length > 0 && stuckHoy > 0 && <span>·</span>}
+            {stuckHoy > 0 && (
+              <span>{stuckHoy} de hoy sin avanzar</span>
+            )}
           </p>
-          <div className="space-y-1.5">
-            {stuck.map(({ o, mins }) => (
-              <div key={o.id} className="flex items-center justify-between gap-3 text-sm bg-white border border-red-100 rounded px-3 py-1.5">
-                <span className="text-coal truncate">
-                  {o.orderNumber && <span className="text-cherry font-semibold mr-1.5">#{o.orderNumber}</span>}
-                  {o.name || o.clientName || '—'}{o.sedeName ? ` · ${o.sedeName}` : ''}
-                  {o.driverName ? ` · 🛵 ${o.driverName}` : ''}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-red-700 font-semibold">
-                    {statusLabel(o.status)} hace {mins} min
-                  </span>
-                  <button onClick={() => deleteStale(o)} title="Eliminar pedido" className="text-red-600 hover:bg-red-100 rounded p-1">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          <p className="text-xs text-red-700/80 mt-1">
+            Ábrelos en <strong>Domicilios → Por revisar</strong> para marcarlos entregados o cancelarlos. →
+          </p>
+        </Link>
       )}
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
