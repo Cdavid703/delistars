@@ -10,7 +10,7 @@ import {
   Star, Clock, MapPin, FileText, CreditCard, Headset, CalendarClock,
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
   Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
-  ShieldCheck, Moon, Trophy, Cake, ChevronDown, Quote, LayoutGrid, MessageCircle,
+  ShieldCheck, Moon, Trophy, Cake, ChevronDown, Quote, LayoutGrid, MessageCircle, Ticket,
 } from "lucide-react";
 
 const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
@@ -66,7 +66,7 @@ const PAQUETES = [
   { nombre: "Almuerzo ejecutivo", incluye: "Hamburguesa o perro + papas + bebida", ideal: "Equipos en jornada de trabajo" },
   { nombre: "Celebración", incluye: "Combos surtidos + bebidas + adiciones", ideal: "Cumpleaños e integraciones" },
   { nombre: "Turno nocturno", incluye: "Salchipapas o Papastars para compartir + bebidas", ideal: "Equipos de noche y horas extra" },
-  { nombre: "A tu medida", incluye: "Armamos el menú contigo, con precio cerrado por persona", ideal: "Eventos con presupuesto definido" },
+  { nombre: "A tu medida", incluye: "Armamos el menú contigo según lo que necesites para tu evento", ideal: "Eventos con requerimientos particulares" },
 ];
 
 const WEB_VENTAJAS = [
@@ -267,6 +267,41 @@ export default function Empresas() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Bonos de regalo corporativos — sección destacada, no es una
+                tarjetita más: se explica cómo funciona para la empresa. */}
+            <div className="mt-10 rounded-3xl bg-gradient-to-br from-mustard to-cherry text-cream p-8 md:p-10 shadow-glow">
+              <div className="grid md:grid-cols-[auto_1fr] gap-6 items-start">
+                <div className="w-16 h-16 rounded-2xl bg-cream/20 flex items-center justify-center shrink-0">
+                  <Ticket className="w-8 h-8" />
+                </div>
+                <div>
+                  <p className="inline-flex items-center gap-2 bg-cream/20 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide mb-3">
+                    Nuevo · Para premiar empleados
+                  </p>
+                  <h3 className="font-display text-2xl md:text-3xl mb-3">Bonos de regalo corporativos digitales</h3>
+                  <p className="text-cream/90 leading-relaxed mb-4">
+                    Tu empresa compra bonos DeliStars por el valor que decidas y se los entrega a tus empleados como
+                    reconocimiento — un código digital que cada quien canjea cuando quiera, pidiendo lo que más se le
+                    antoje del menú. Nada de coordinar un pedido grupal ni adivinar gustos: cada empleado elige el suyo.
+                  </p>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    <div className="bg-cream/15 rounded-xl p-3">
+                      <p className="font-display text-sm font-semibold mb-0.5">🎯 Ideal para</p>
+                      <p className="text-xs text-cream/90 leading-relaxed">Reconocimientos, cumpleaños individuales, cierre de año, incentivos de desempeño.</p>
+                    </div>
+                    <div className="bg-cream/15 rounded-xl p-3">
+                      <p className="font-display text-sm font-semibold mb-0.5">📱 Cómo llega</p>
+                      <p className="text-xs text-cream/90 leading-relaxed">Un código digital que se envía por WhatsApp o correo — sin tarjetas físicas que imprimir ni repartir.</p>
+                    </div>
+                    <div className="bg-cream/15 rounded-xl p-3">
+                      <p className="font-display text-sm font-semibold mb-0.5">🧾 Para la empresa</p>
+                      <p className="text-xs text-cream/90 leading-relaxed">Una sola compra por el valor y la cantidad que necesites, con factura electrónica.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Paquetes de ejemplo */}
