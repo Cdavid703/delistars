@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth, loginAnon } from "@/services/firebase";
@@ -10,7 +10,7 @@ import {
   Star, Clock, MapPin, FileText, CreditCard, Headset, CalendarClock,
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
   Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
-  ShieldCheck, Moon, Trophy, Cake, ChevronDown, Quote, LayoutGrid, MessageCircle, Ticket,
+  ShieldCheck, Moon, Trophy, Cake, ChevronDown, LayoutGrid, MessageCircle, Ticket,
 } from "lucide-react";
 
 const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
@@ -28,7 +28,7 @@ const NUMEROS = [
   { icon: CalendarClock, big: "2015", small: "Operando desde" },
   { icon: MapPin, big: "2", small: "Sedes con servicio a empresas" },
   { icon: Star, big: "4.5★", small: "Calificación de clientes" },
-  { icon: Building2, big: "Área Metro", small: "Cobertura" },
+  { icon: Building2, big: "Área Metropolitana", small: "Cobertura" },
 ];
 
 const DIFERENCIALES = [
@@ -75,7 +75,6 @@ const WEB_VENTAJAS = [
   { icon: MapPin, title: "Seguimiento en vivo", desc: "Tu equipo ve el estado del pedido y la ubicación del domiciliario en tiempo real." },
   { icon: RefreshCw, title: "Volver a pedir", desc: "Historial y repetición del pedido con un toque, ideal para pedidos frecuentes." },
   { icon: MessageCircle, title: "Chat directo con la caja", desc: "Cualquier ajuste se resuelve escribiendo en la misma plataforma, sin llamadas." },
-  { icon: Gift, title: "Fidelización", desc: "Cada 10 domicilios entregados, una Hamburguesa Especial gratis para quien pide." },
 ];
 
 const PASOS = [
@@ -83,13 +82,6 @@ const PASOS = [
   ["2", "Confirmamos", "Armamos contigo el menú y la logística, y te enviamos la cotización a la medida."],
   ["3", "Entregamos", "Llevamos tu pedido caliente y puntual a la hora acordada, con seguimiento en vivo."],
   ["4", "Facturamos", "Recibes tu factura electrónica con todos los soportes para tu empresa."],
-];
-
-// Calificaciones reales de clientes registradas en la plataforma.
-const TESTIMONIOS = [
-  { nombre: "Jennifer Cabrera", texto: "Excelente servicio." },
-  { nombre: "Jorge Humberto Henao", texto: "Todo muy bien" },
-  { nombre: "Raul Herrera", texto: "Muchas gracias" },
 ];
 
 // Colecciones del menú: el cliente despliega la que le interesa y ve TODOS los
@@ -115,15 +107,36 @@ const TABS = [
   { key: "cotizar",    label: "Cotizar" },
 ];
 
+// Salto suave a una sección. Todo el contenido vive siempre en la página (para
+// quien prefiere hacer scroll libre); las pestañas son un atajo que lleva
+// directo a la sección, no un interruptor que oculta el resto.
+const scrollToSection = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
 export default function Empresas() {
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => apiService.getProducts() });
-  const [tab, setTab] = useState("porque");
-  const [openCol, setOpenCol] = useState<string | null>("hamburguesas");
+  // Ninguna colección del menú viene desplegada por defecto: el visitante
+  // elige cuál abrir.
+  const [openCol, setOpenCol] = useState<string | null>(null);
+  // Solo para resaltar la pestaña de la sección visible mientras se hace scroll.
+  const [active, setActive] = useState("porque");
 
-  const irACotizar = () => {
-    setTab("cotizar");
-    setTimeout(() => document.getElementById("contenido")?.scrollIntoView({ behavior: "smooth" }), 50);
-  };
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => { if (entry.isIntersecting) setActive(entry.target.id); });
+      },
+      { rootMargin: "-120px 0px -70% 0px", threshold: 0 },
+    );
+    TABS.forEach((t) => {
+      const el = document.getElementById(t.key);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const irACotizar = () => scrollToSection("cotizar");
 
   return (
     <div className="min-h-screen bg-background">
@@ -189,14 +202,14 @@ export default function Empresas() {
         </div>
       </section>
 
-      {/* PESTAÑAS */}
+      {/* PESTAÑAS — saltan a la sección; también puedes hacer scroll libre */}
       <div className="sticky top-[57px] z-30 bg-background/95 backdrop-blur-md border-y border-border">
         <div className="container px-2 sm:px-6">
           <div className="flex gap-1 overflow-x-auto scrollbar-none">
             {TABS.map((t) => (
-              <button key={t.key} onClick={() => setTab(t.key)}
+              <button key={t.key} onClick={() => scrollToSection(t.key)}
                 className={`px-4 py-3 text-sm font-display font-medium whitespace-nowrap border-b-2 transition-smooth ${
-                  tab === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"
+                  active === t.key ? "border-primary text-primary" : "border-transparent text-foreground/60 hover:text-foreground"
                 }`}>
                 {t.label}
               </button>
@@ -205,55 +218,28 @@ export default function Empresas() {
         </div>
       </div>
 
-      <div id="contenido" className="container px-4 sm:px-6 py-12 min-h-[50vh]">
+      {/* Todo el contenido va siempre visible, uno detrás de otro — las
+          pestañas de arriba solo saltan a la sección, no ocultan las demás. */}
+      <div className="container px-4 sm:px-6 py-12">
 
         {/* ── POR QUÉ DELISTARS ── */}
-        {tab === "porque" && (
-          <div className="animate-fade-in">
-            <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">¿Por qué DeliStars para tu empresa?</h2>
-            <div className="w-20 h-1 bg-gradient-hero rounded-full mx-auto mb-10" />
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {DIFERENCIALES.map((d) => (
-                <div key={d.title} className="bg-card border border-border rounded-2xl p-6 shadow-card hover:shadow-glow transition-smooth">
-                  <d.icon className="w-8 h-8 text-primary mb-3" />
-                  <h3 className="font-display text-xl text-coal mb-1.5">{d.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{d.desc}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Testimonios reales de clientes */}
-            <div className="mt-14">
-              <h3 className="font-display text-2xl text-center text-coal mb-2">Lo que dicen nuestros clientes</h3>
-              <p className="text-center text-muted-foreground text-sm mb-8">
-                Calificaciones reales registradas en nuestra plataforma
-              </p>
-              <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-                <div className="bg-gradient-to-br from-mustard to-tangelo text-cream rounded-2xl p-6 flex flex-col items-center justify-center text-center lg:w-64 shrink-0 shadow-card">
-                  <p className="font-display text-5xl">4.5★</p>
-                  <p className="text-sm mt-2 text-cream/90">promedio en 34 calificaciones de clientes</p>
-                </div>
-                <div className="grid sm:grid-cols-3 gap-4 flex-1">
-                  {TESTIMONIOS.map((t) => (
-                    <div key={t.nombre} className="bg-card border border-border rounded-2xl p-5 shadow-card flex flex-col">
-                      <Quote className="w-6 h-6 text-cherry/40 mb-2" />
-                      <p className="text-coal text-sm leading-relaxed flex-1">"{t.texto}"</p>
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs font-semibold text-coal">{t.nombre}</p>
-                        <p className="text-[11px] text-mustard">★★★★★</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        <section id="porque" className="scroll-mt-[112px] animate-fade-in">
+          <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">¿Por qué DeliStars para tu empresa?</h2>
+          <div className="w-20 h-1 bg-gradient-hero rounded-full mx-auto mb-10" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {DIFERENCIALES.map((d) => (
+              <div key={d.title} className="bg-card border border-border rounded-2xl p-6 shadow-card hover:shadow-glow transition-smooth">
+                <d.icon className="w-8 h-8 text-primary mb-3" />
+                <h3 className="font-display text-xl text-coal mb-1.5">{d.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{d.desc}</p>
               </div>
-            </div>
+            ))}
           </div>
-        )}
+        </section>
 
         {/* ── SOLUCIONES ── */}
-        {tab === "soluciones" && (
-          <div className="animate-fade-in">
-            <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">Soluciones corporativas</h2>
+        <section id="soluciones" className="scroll-mt-[112px] animate-fade-in mt-20">
+          <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">Soluciones corporativas</h2>
             <p className="text-center text-muted-foreground mb-10 max-w-xl mx-auto">
               Nos adaptamos a lo que tu equipo necesita — del almuerzo del día a día a la cena de fin de año.
             </p>
@@ -332,12 +318,10 @@ export default function Empresas() {
                 ))}
               </div>
             </div>
-          </div>
-        )}
+        </section>
 
         {/* ── MENÚ POR COLECCIONES ── */}
-        {tab === "menu" && (
-          <div className="animate-fade-in">
+        <section id="menu" className="scroll-mt-[112px] animate-fade-in mt-20">
             <div className="text-center mb-8">
               <LayoutGrid className="w-8 h-8 text-cherry mx-auto mb-2" />
               <h2 className="font-display text-3xl md:text-4xl text-coal mb-2">Nuestro menú completo</h2>
@@ -383,20 +367,23 @@ export default function Empresas() {
             <p className="text-center text-muted-foreground text-sm mt-6">
               Además: adiciones (queso, tocineta, carne, pollo) y salsas de la casa sin costo — guacamole, mayochipotle, BBQ, piña, tártara y más.
             </p>
-          </div>
-        )}
+        </section>
 
         {/* ── BENEFICIOS ── */}
-        {tab === "beneficios" && (
-          <div className="animate-fade-in space-y-14">
-            {/* Convenio empleados */}
+        <section id="beneficios" className="scroll-mt-[112px] animate-fade-in mt-20 space-y-14">
+            <div className="text-center">
+              <h2 className="font-display text-3xl md:text-4xl text-coal mb-2">Beneficios para tu empresa y tu equipo</h2>
+              <p className="text-muted-foreground max-w-xl mx-auto">Tres formas distintas en las que DeliStars premia a quienes trabajan contigo.</p>
+            </div>
+
+            {/* 1. Convenio de descuento */}
             <div className="rounded-3xl bg-gradient-to-br from-mint to-[#0f6f65] text-cream p-8 md:p-12 shadow-glow">
               <div className="grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
                 <div>
                   <p className="inline-flex items-center gap-2 bg-cream/20 rounded-full px-3 py-1 text-sm font-semibold mb-4">
-                    <IdCard className="w-4 h-4" /> Convenio empresarial
+                    <IdCard className="w-4 h-4" /> Beneficio 1 · Convenio de descuento
                   </p>
-                  <h2 className="font-display text-3xl md:text-4xl mb-3">Un beneficio delicioso para tus empleados</h2>
+                  <h3 className="font-display text-2xl md:text-3xl mb-3">Descuento permanente con el carnet</h3>
                   <p className="text-cream/90 leading-relaxed">
                     Vincula a tu empresa con DeliStars y tu equipo obtiene descuentos permanentes presentando el
                     <strong> carnet de la empresa</strong>. Un beneficio de bienestar que no te cuesta nada y tus colaboradores agradecen.
@@ -413,21 +400,47 @@ export default function Empresas() {
                   </div>
                 </div>
               </div>
+              <p className="text-cream/70 text-xs mt-6">
+                * Presentando el carnet de la empresa vinculada, para el empleado y un acompañante familiar en el momento de la compra.
+              </p>
+            </div>
 
-              {/* Fidelización, además del descuento */}
-              <div className="mt-8 bg-cream/15 rounded-2xl p-6">
-                <p className="font-display text-2xl flex items-center gap-2 mb-2">🎁 Y encima, come gratis</p>
-                <p className="text-cream/90 leading-relaxed">
-                  El descuento no es el único premio. Cada empleado acumula sus domicilios en la plataforma y
-                  <strong> al llegar a 10 entregados se gana una Hamburguesa Especial completamente gratis</strong> —
-                  la misma que se lleva los aplausos: carne jugosa, queso derretido en cantidad y nuestro guacamole de la casa.
-                  Se acumula solo, sin tarjetas de papel ni sellos que se pierden, y su premio queda visible en su cuenta.
+            {/* 2. Fidelización + 3. Bono de regalo corporativo — dos beneficios
+                claramente separados, cada uno con su propia identidad. */}
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div className="bg-card border border-border rounded-2xl p-7 shadow-card">
+                <p className="inline-flex items-center gap-2 bg-cherry/10 text-cherry rounded-full px-3 py-1 text-xs font-semibold mb-4">
+                  Beneficio 2 · Fidelización
+                </p>
+                <Gift className="w-9 h-9 text-cherry mb-3" />
+                <h3 className="font-display text-xl text-coal mb-2">Con cada pedido, se acerca a comer gratis</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Cada empleado acumula sus domicilios en la plataforma y al llegar a
+                  <strong className="text-coal"> 10 entregados se gana una Hamburguesa Especial completamente gratis</strong> —
+                  carne jugosa, queso derretido en cantidad y nuestro guacamole de la casa. Se acumula solo, sin tarjetas
+                  de papel ni sellos que se pierden, y el premio queda visible en su cuenta.
+                </p>
+                <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
+                  * 10 domicilios entregados por sede, iniciando sesión con su cuenta.
                 </p>
               </div>
-              <p className="text-cream/70 text-xs mt-6">
-                * Descuentos presentando el carnet de la empresa vinculada, para el empleado y un acompañante familiar en el momento de la compra.
-                Fidelización: 10 domicilios entregados por sede, iniciando sesión con su cuenta.
-              </p>
+
+              <div className="bg-card border border-border rounded-2xl p-7 shadow-card">
+                <p className="inline-flex items-center gap-2 bg-mustard/10 text-mustard rounded-full px-3 py-1 text-xs font-semibold mb-4">
+                  Beneficio 3 · Bono de regalo corporativo
+                </p>
+                <Ticket className="w-9 h-9 text-mustard mb-3" />
+                <h3 className="font-display text-xl text-coal mb-2">Un código digital para premiar a quien tú quieras</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Tu empresa compra bonos DeliStars y se los entrega a tus empleados como reconocimiento — cada quien
+                  lo canjea cuando quiera, pidiendo lo que más se le antoje. Ideal para cumpleaños individuales,
+                  cierre de año o incentivos de desempeño.
+                </p>
+                <button onClick={() => scrollToSection("soluciones")}
+                  className="text-xs font-semibold text-mustard underline underline-offset-2 mt-4 pt-4 border-t border-border block">
+                  Ver cómo funciona en Soluciones →
+                </button>
+              </div>
             </div>
 
             {/* Plataforma web */}
@@ -449,12 +462,10 @@ export default function Empresas() {
                 ))}
               </div>
             </div>
-          </div>
-        )}
+        </section>
 
         {/* ── COBERTURA Y PAGOS ── */}
-        {tab === "cobertura" && (
-          <div className="animate-fade-in">
+        <section id="cobertura" className="scroll-mt-[112px] animate-fade-in mt-20">
             <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">Cobertura y sedes</h2>
             <p className="text-center text-muted-foreground mb-10 max-w-2xl mx-auto">
               Atendemos empresas en <strong>Medellín y todo el Área Metropolitana del Valle de Aburrá</strong>:
@@ -503,11 +514,12 @@ export default function Empresas() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
+        </section>
 
         {/* ── COTIZAR ── */}
-        {tab === "cotizar" && <SeccionCotizar />}
+        <section id="cotizar" className="scroll-mt-[112px] animate-fade-in mt-20">
+          <SeccionCotizar />
+        </section>
       </div>
 
       {/* CTA final */}
