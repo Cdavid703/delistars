@@ -186,16 +186,27 @@ export default function CashierPanel() {
     alarm.stop(); setAlarmActive(false); setNewOrderAlert(null)
   }, [])
 
-  // Marcar mensajes del cliente como vistos al abrir el pedido
+  // Marca los mensajes del cliente como vistos. Se usa al abrir el pedido por
+  // cualquier vía (detalle o pantalla de asignación), porque en ambas se puede
+  // leer y responder el chat.
+  const markChatSeen = (orderId) => {
+    const o = orders.find(x => x.id === orderId)
+    if (!o) return
+    const count = (o.clientMessages || []).filter(m => m.role === 'client').length
+    const updated = { ...cashierSeenCounts, [orderId]: count }
+    setCashierSeenCounts(updated)
+    try { localStorage.setItem('ds_cashier_chat_seen', JSON.stringify(updated)) } catch {}
+  }
+
+  const openAssign = (order) => {
+    if (!order) return
+    markChatSeen(order.id)
+    setAssigning(order)
+  }
+
   const openOrderDetail = (orderId) => {
     if (!orderId) return
-    const o = orders.find(x => x.id === orderId)
-    if (o) {
-      const count = (o.clientMessages || []).filter(m => m.role === 'client').length
-      const updated = { ...cashierSeenCounts, [orderId]: count }
-      setCashierSeenCounts(updated)
-      try { localStorage.setItem('ds_cashier_chat_seen', JSON.stringify(updated)) } catch {}
-    }
+    markChatSeen(orderId)
     setSelectedId(orderId)
   }
 
@@ -247,6 +258,10 @@ export default function CashierPanel() {
 
   // Derivar el pedido seleccionado desde el array en vivo (así el modal refleja cambios en tiempo real)
   const selected = selectedId ? orders.find(o => o.id === selectedId) ?? null : null
+  // Igual que `selected`: se toma la versión EN VIVO del pedido que se está
+  // asignando, para que el chat con el cliente se actualice ahí mismo si el
+  // cliente escribe mientras la caja tiene abierta esta pantalla.
+  const assigningLive = assigning ? (orders.find(o => o.id === assigning.id) ?? assigning) : null
 
   useEffect(() => () => alarm.stop(), [])
 
@@ -598,7 +613,7 @@ export default function CashierPanel() {
             key={order.id}
             order={order}
             unreadCount={unreadChatMap[order.id] || 0}
-            onClick={() => tab === 'assign' ? setAssigning(order) : openOrderDetail(order.id)}
+            onClick={() => tab === 'assign' ? openAssign(order) : openOrderDetail(order.id)}
           />
         ))}
       </main>
@@ -660,15 +675,16 @@ export default function CashierPanel() {
           alarmActive={alarmActive}
           onDismissAlarm={dismissAlert}
           unreadClientMsgs={unreadChatMap[selected.id] || 0}
-          onReassign={order => { setSelectedId(null); setAssigning(order) }}
+          onReassign={order => { setSelectedId(null); openAssign(order) }}
         />
       )}
 
       {/* Assign delivery modal */}
-      {assigning && (
+      {assigningLive && (
         <AssignDeliveryDetail
-          order={assigning}
+          order={assigningLive}
           drivers={drivers}
+          unreadClientMsgs={unreadChatMap[assigningLive.id] || 0}
           onClose={() => setAssigning(null)}
         />
       )}

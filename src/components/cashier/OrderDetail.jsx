@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import { db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD } from '../../services/firebase'
+import ClientChat from './ClientChat'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
@@ -46,9 +47,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [editingPrice,      setEditingPrice]      = useState(false)
   const [editQuotedPrice,   setEditQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
   const [editDeliveryPrice, setEditDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
-  const [clientMsgText,     setClientMsgText]     = useState('')
-  const [sendingClientMsg,  setSendingClientMsg]  = useState(false)
-  const [chatError,         setChatError]         = useState('')
 
   // Quote form state (for pending orders)
   const [localOrderNumber,   setLocalOrderNumber]   = useState(order.orderNumber   || '')
@@ -348,26 +346,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     } finally { setLoading(false) }
   }
 
-  const sendClientMessage = async () => {
-    if (!clientMsgText.trim()) return
-    setChatError('')
-    setSendingClientMsg(true)
-    try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        clientMessages: arrayUnion({
-          role: 'cashier',
-          name: user?.displayName || user?.email || 'Cajero',
-          text: clientMsgText.trim(),
-          ts:   Date.now(),
-        }),
-        updatedAt: serverTimestamp(),
-      })
-      setClientMsgText('')
-    } catch (err) {
-      console.error('Error al enviar mensaje:', err)
-      setChatError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
-    } finally { setSendingClientMsg(false) }
-  }
 
   const distColor = distanceKm === null ? 'text-coal/40'
     : distanceKm < 0 ? 'text-coal/30'
@@ -489,50 +467,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Chat con el cliente — disponible DESDE que entra el pedido (pending),
               justo debajo de sus datos para que el cajero pueda escribirle sin
               tener que cotizar primero ni bajar hasta el fondo del detalle. */}
-          <div className={`card flex flex-col gap-3 ${unreadClientMsgs > 0 ? 'border-2 border-cherry bg-cherry/5' : 'border border-cherry/15'}`}>
-            <div className="flex items-center gap-2">
-              <MessageSquare size={15} className="text-cherry" />
-              <p className="font-display text-sm tracking-wide text-coal">Chat con el cliente</p>
-              {unreadClientMsgs > 0 && (
-                <span className="ml-auto inline-flex items-center gap-1 bg-cherry text-cream rounded-full px-2 py-0.5 text-[10px] font-body font-bold uppercase tracking-wider">
-                  {unreadClientMsgs} nuevo{unreadClientMsgs > 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-
-            {(order.clientMessages?.length > 0) ? (
-              <div className="flex flex-col gap-2">
-                {[...order.clientMessages].sort((a,b) => a.ts - b.ts).map((m, i) => (
-                  <div key={i} className={`rounded-xl px-3 py-2 ${m.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 ml-4' : 'bg-cherry/5 border border-cherry/20 mr-4'}`}>
-                    <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
-                      {m.role === 'cashier' ? '🧾 Cajero' : '🛍️ Cliente'} · {m.name}
-                    </p>
-                    <p className="font-body text-sm text-coal">{m.text}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="font-body text-xs text-coal/40">Sin mensajes aún — escríbele al cliente apenas entra su pedido si necesitas confirmar algo</p>
-            )}
-
-            {!['rejected','cancelled','completed'].includes(order.status) && (
-              <div className="flex flex-col gap-1">
-                <div className="flex gap-2">
-                  <textarea
-                    className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                    placeholder="Mensaje para el cliente (ej: tu pedido está casi listo…)"
-                    value={clientMsgText}
-                    onChange={e => setClientMsgText(e.target.value)}
-                  />
-                  <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
-                    className="btn-primary px-3 self-end">
-                    <Send size={16} />
-                  </button>
-                </div>
-                {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
-              </div>
-            )}
-          </div>
+          <ClientChat order={order} unreadCount={unreadClientMsgs} />
 
           {/* Recoger en sede — sin dirección de entrega */}
           {pickup && (

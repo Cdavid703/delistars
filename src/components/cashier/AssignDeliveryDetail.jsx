@@ -6,12 +6,13 @@ import {
   Hash, AlertCircle
 } from 'lucide-react'
 import StatusBadge from '../common/StatusBadge'
+import ClientChat from './ClientChat'
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 // Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
-export default function AssignDeliveryDetail({ order, drivers, onClose }) {
+export default function AssignDeliveryDetail({ order, drivers, onClose, unreadClientMsgs = 0 }) {
   const [quotedPrice,   setQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
   const [deliveryPrice, setDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
   const [orderNumber,   setOrderNumber]   = useState(order.orderNumber || '')
@@ -112,6 +113,11 @@ export default function AssignDeliveryDetail({ order, drivers, onClose }) {
               <p className="font-body text-xs font-semibold text-coal">{order.payment}</p>
             </div>
           </div>
+
+          {/* Chat con el cliente — disponible también al asignar: el pedido ya
+              cotizado se abre en esta pantalla, y aquí es donde la caja veía el
+              aviso de "mensaje nuevo" sin poder leerlo ni responder. */}
+          <ClientChat order={order} unreadCount={unreadClientMsgs} compact />
 
           {/* Cashier notes (from quote) */}
           {order.cashierNotes && (
