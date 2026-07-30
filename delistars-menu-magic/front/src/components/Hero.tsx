@@ -74,7 +74,7 @@ export const Hero = () => {
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-display leading-tight">
             <span className="text-foreground block">Perros, hamburguesas</span>
             <span className="text-foreground block mb-1">y mucho más</span>
-            <span className="font-script text-primary text-5xl sm:text-6xl md:text-7xl block mt-1">deliciosos</span>
+            <span className="font-display text-primary text-5xl sm:text-6xl md:text-7xl block mt-1 tracking-wide">deliciosos</span>
           </h1>
           <p className="text-lg text-muted-foreground max-w-md">
             Hechos con ingredientes frescos, salsas de la casa y un toque de magia.
