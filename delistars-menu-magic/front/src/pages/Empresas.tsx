@@ -6,6 +6,7 @@ import { apiService, type Product } from "@/services/api";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { optimizeImage } from "@/lib/utils";
+import logo from "@/assets/logo.svg";
 import {
   Star, Clock, MapPin, FileText, CreditCard, Headset, CalendarClock,
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
@@ -143,9 +144,12 @@ export default function Empresas() {
       {/* Barra superior */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="container flex items-center justify-between py-3 px-4 sm:px-6">
-          <a href="/" className="flex items-center gap-2 hover-scale">
-            <span className="font-display text-base tracking-widest text-foreground">DELISTARS</span>
-            <span className="hidden sm:inline text-xs text-muted-foreground">· Empresas</span>
+          <a href="/" className="flex items-center gap-2.5 hover-scale">
+            <img src={logo} alt="DeliStars" className="w-11 h-11 object-contain" />
+            <span className="flex flex-col leading-none">
+              <span className="font-display text-base tracking-widest text-foreground">DELISTARS</span>
+              <span className="text-xs text-muted-foreground">Empresas</span>
+            </span>
           </a>
           <div className="flex items-center gap-2">
             <a href="/" className="hidden sm:inline text-sm font-medium text-foreground/70 hover:text-primary transition-smooth">Ver el menú</a>
@@ -159,6 +163,7 @@ export default function Empresas() {
       <section className="relative overflow-hidden bg-gradient-to-br from-cherry to-tangelo text-cream">
         <div className="container px-4 sm:px-6 py-14 md:py-20 grid md:grid-cols-2 gap-10 items-center">
           <div className="space-y-5">
+            <img src={logo} alt="DeliStars" className="w-20 h-20 md:w-24 md:h-24 object-contain drop-shadow-lg" />
             <p className="font-display tracking-widest text-cream/80 text-sm">·Tasty &amp; Cool · Para Empresas·</p>
             <h1 className="font-display text-4xl md:text-6xl leading-tight">Alimenta a tu equipo con sabor que brilla</h1>
             <p className="text-cream/90 text-lg max-w-md">
@@ -416,8 +421,8 @@ export default function Empresas() {
                 <h3 className="font-display text-xl text-coal mb-2">Con cada pedido, se acerca a comer gratis</h3>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   Cada empleado acumula sus domicilios en la plataforma y al llegar a
-                  <strong className="text-coal"> 10 entregados se gana una Hamburguesa Especial completamente gratis</strong> —
-                  carne jugosa, queso derretido en cantidad y nuestro guacamole de la casa. Se acumula solo, sin tarjetas
+                  <strong className="text-coal"> 10 entregados se gana un Perro Grande con tocineta y una Hamburguesa Especial, completamente gratis</strong> —
+                  con queso derretido en cantidad y nuestro guacamole de la casa. Se acumula solo, sin tarjetas
                   de papel ni sellos que se pierden, y el premio queda visible en su cuenta.
                 </p>
                 <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
@@ -590,6 +595,9 @@ function SeccionCotizar() {
         <a href={`https://wa.me/${WA_EMPRESAS}?text=${WA_TEXT}`} target="_blank" rel="noreferrer">
           <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0">Escribir por WhatsApp</Button>
         </a>
+        <p className="text-sm text-muted-foreground mt-4">
+          También puedes escribirnos a <a href={`mailto:${CORREO}`} className="text-cherry font-semibold hover:underline">{CORREO}</a>
+        </p>
       </div>
     );
   }
@@ -612,6 +620,10 @@ function SeccionCotizar() {
           <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0">WhatsApp empresas</Button>
         </a>
       </div>
+
+      <p className="text-center text-sm text-muted-foreground mb-8">
+        También por correo: <a href={`mailto:${CORREO}`} className="text-cherry font-semibold hover:underline">{CORREO}</a>
+      </p>
 
       <p className="text-center text-sm text-muted-foreground mb-4">— o déjanos tus datos —</p>
 
