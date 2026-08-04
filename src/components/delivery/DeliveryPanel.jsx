@@ -18,6 +18,7 @@ import {
   Send, Radio, Route, Target
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
+import CashChangeNotice from '../common/CashChangeNotice'
 import { cashAmount } from '../../utils/payments'
 
 const TABS = [
@@ -869,26 +870,13 @@ function DriverOrderDetail({ order, onClose }) {
                   <span className="font-bold">TOTAL:</span>
                   <span className="font-bold text-cherry">{fmt(order.totalPrice)}</span>
                 </div>
-                {/* Cash handling info */}
-                {(order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto') && (
-                  <div className="mt-1 bg-mustard/10 rounded-lg p-2">
-                    {order.payExact ? (
-                      <p className="font-body text-xs text-coal font-semibold">✓ El cliente paga exacto</p>
-                    ) : (
-                      <>
-                        <p className="font-body text-xs text-coal">
-                          El cliente paga: <strong>{fmt(order.payAmount)}</strong>
-                        </p>
-                        <p className="font-body text-xs text-coal">
-                          Cambio a dar: <strong className="text-mustard">{fmt(order.change)}</strong>
-                        </p>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
+
+          {/* Billete y cambio — bloque propio y destacado para que el
+              domiciliario salga sabiendo cuánto cambio llevar. */}
+          <CashChangeNotice order={order} />
 
           {/* Comments */}
           <div className="card border border-coal/10 flex flex-col gap-3">

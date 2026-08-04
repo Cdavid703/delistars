@@ -981,16 +981,24 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           placeholder="Sin cebolla, extra salsa, timbre 2B…" />
       </div>
 
-      {/* Aviso: el domicilio se cotiza después; el pago se elige luego */}
+      {/* Aviso: el domicilio se cotiza después; el pago se elige luego.
+          En "recoger en sede" no hay domicilio que cotizar. */}
       <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex items-start gap-3">
         <span className="text-2xl leading-none">⏳</span>
         <div className="flex flex-col gap-1">
-          <p className="font-display text-base tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+          <p className="font-display text-base tracking-wide text-tangelo">
+            {form.deliveryMode === 'pickup' ? 'La caja confirmará tu pedido' : 'Falta cotizar tu domicilio'}
+          </p>
           <p className="font-body text-xs text-coal/70 leading-relaxed">
-            Al enviar tu pedido, la caja revisará si puede entregarlo y te enviará el
-            <strong> valor del domicilio</strong>. El método de pago lo eliges
-            <strong> después de la cotización</strong> — así evitas pagar por un pedido
-            que luego no podamos entregar.
+            {form.deliveryMode === 'pickup' ? (
+              <>Como vas a <strong>recoger en sede</strong>, no se cobra domicilio. La caja
+                confirma tu pedido y lo pasa a preparación; te avisamos cuando esté listo.</>
+            ) : (
+              <>Al enviar tu pedido, la caja revisará si puede entregarlo y te enviará el
+                <strong> valor del domicilio</strong>. El método de pago lo eliges
+                <strong> después de la cotización</strong> — así evitas pagar por un pedido
+                que luego no podamos entregar.</>
+            )}
           </p>
         </div>
       </div>
@@ -1283,7 +1291,9 @@ function ClientOrderDetail({ order, onClose }) {
             <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-3xl leading-none">⏳</span>
-                <p className="font-display text-xl tracking-wide text-tangelo">Falta cotizar tu domicilio</p>
+                <p className="font-display text-xl tracking-wide text-tangelo">
+                  {order.deliveryMode === 'pickup' ? 'Esperando confirmación de la caja' : 'Falta cotizar tu domicilio'}
+                </p>
               </div>
               {/* Confirmación de que el pedido SÍ llegó — tranquiliza al cliente */}
               <div className="bg-mint/15 border border-mint/40 rounded-xl px-3 py-2 flex items-center gap-2">
@@ -1293,8 +1303,9 @@ function ClientOrderDetail({ order, onClose }) {
                 </p>
               </div>
               <p className="font-body text-sm text-coal/80 leading-relaxed">
-                La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te
-                enviará el <strong>valor del domicilio</strong>. Normalmente responde en pocos minutos.
+                {order.deliveryMode === 'pickup'
+                  ? <>Como vas a <strong>recoger en sede</strong>, no hay domicilio que cotizar. La caja confirma tu pedido y lo pasa a preparación. Normalmente responde en pocos minutos.</>
+                  : <>La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te enviará el <strong>valor del domicilio</strong>. Normalmente responde en pocos minutos.</>}
               </p>
               <p className="font-body text-xs text-tangelo flex items-start gap-1.5">
                 <span>🔔</span>

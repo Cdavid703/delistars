@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import { db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD } from '../../services/firebase'
 import ClientChat from './ClientChat'
+import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import StatusBadge from '../common/StatusBadge'
@@ -603,22 +604,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 )}
               </div>
             )}
-            {/* Billete con el que pagará el cliente (lo envía desde su panel) */}
-            {(order.payment === 'Efectivo' || order.payment === 'Mixto') && order.cashBillAmount != null && (
-              <div className="mt-2 bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1">
-                <div className="flex justify-between text-sm font-body">
-                  <span className="text-coal/60">💵 Paga con billete de:</span>
-                  <span className="font-semibold text-coal">{fmt(order.cashBillAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-body">
-                  <span className="text-coal/60">🔁 Cambio a llevar:</span>
-                  <span className="font-display text-base text-tangelo">
-                    {order.cashChange > 0 ? fmt(order.cashChange) : 'Paga exacto'}
-                  </span>
-                </div>
-              </div>
-            )}
           </Section>
+
+          {/* Billete y cambio — bloque propio y destacado (antes iba dentro de
+              la sección de pago y solo si el cliente había indicado billete). */}
+          <CashChangeNotice order={order} />
 
           {/* Transfer receipt */}
           {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) && order.transferReceiptUrl && (
@@ -711,9 +701,18 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* ── COTIZACIÓN FORM (only for pending orders) ── */}
           {order.status === 'pending' && !rejecting && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">📋 Cotizar pedido al cliente</p>
+              {/* En "Recoger en sede" no hay domicilio que cotizar: el pedido
+                  solo se confirma para preparación. */}
+              <p className="font-display text-lg text-coal tracking-wide">
+                {pickup ? '🏪 Confirmar pedido para preparación' : '📋 Cotizar pedido al cliente'}
+              </p>
+              {pickup && (
+                <p className="font-body text-xs text-coal/60">
+                  El cliente <strong>recoge en sede</strong>: no se cotiza domicilio. Confirma el valor del pedido y pasa a preparación.
+                </p>
+              )}
 
-              {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
+              {!pickup && distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
                 <div className="flex items-center gap-2 bg-pepper/10 border border-pepper/30 rounded-xl px-3 py-2">
                   <AlertTriangle size={14} className="text-pepper flex-shrink-0" />
                   <p className="font-body text-xs text-pepper">
@@ -787,7 +786,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </button>
                 <button onClick={sendQuote} disabled={loading || !localOrderNumber.trim()} className="btn-primary flex-1">
                   <CheckCircle2 size={16} />
-                  {loading ? 'Enviando…' : 'Enviar cotización al cliente'}
+                  {loading ? 'Enviando…' : pickup ? 'Confirmar pedido' : 'Enviar cotización al cliente'}
                 </button>
               </div>
             </div>
@@ -837,8 +836,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </Section>
           )}
 
-          {/* Reasignar domiciliario — solo cuando está asignado pero el driver no ha aceptado */}
-          {order.status === 'assigned' && onReassign && (
+          {/* Reasignar domiciliario — solo cuando está asignado pero el driver no ha aceptado.
+              Nunca en "recoger en sede": ahí no hay domiciliario. */}
+          {!pickup && order.status === 'assigned' && onReassign && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-3">
               <p className="font-display text-base tracking-wide text-tangelo">🔄 Reasignar domiciliario</p>
               <p className="font-body text-xs text-coal/60">

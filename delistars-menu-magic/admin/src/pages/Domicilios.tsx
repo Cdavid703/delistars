@@ -156,8 +156,11 @@ function DomiciliosPedidos() {
       rs.addRow(['Rango', rangoActivo ? `${desde || '…'} a ${hasta || 'hoy'}` : (soloHoy ? 'Hoy' : 'Todo (últimos 500)')])
       rs.addRow(['Filtros activos', activeFilters])
       rs.addRow(['Pedidos (filtrados)', filtered.length])
-      rs.addRow(['Total domicilios', totalDomi]).getCell(2).numFmt = '"$"#,##0'
-      rs.addRow(['Total ventas', totalVenta]).getCell(2).numFmt = '"$"#,##0'
+      rs.addRow(['Total consolidado', totalVenta]).getCell(2).numFmt = '"$"#,##0'
+      rs.addRow(['(−) Domicilios cobrados', totalDomi]).getCell(2).numFmt = '"$"#,##0'
+      const netoRow = rs.addRow(['(=) Venta sin domicilios', totalVenta - totalDomi])
+      netoRow.font = { bold: true }
+      netoRow.getCell(2).numFmt = '"$"#,##0'
       rs.addRow([])
 
       const byDriver = Object.entries(filtered.reduce((acc, o) => {
@@ -288,19 +291,27 @@ function DomiciliosPedidos() {
         </div>
       </div>
 
-      {/* Resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      {/* Resumen: total consolidado y, aparte, cuánto queda al descontar los
+          domicilios (el domicilio no es venta de producto). */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <p className="text-sm text-muted-fg">Pedidos</p>
           <p className="text-2xl font-display font-bold text-coal">{filtered.length}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Ingresos (entregados)</p>
+          <p className="text-sm text-muted-fg">Total consolidado</p>
           <p className="text-2xl font-display font-bold text-mint">{fmtCOP(ingresos)}</p>
+          <p className="text-[11px] text-muted-fg mt-0.5">Entregados, con domicilio incluido</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Domicilios cobrados</p>
+          <p className="text-sm text-muted-fg">− Domicilios cobrados</p>
           <p className="text-2xl font-display font-bold text-tangelo">{fmtCOP(domicilios)}</p>
+          <p className="text-[11px] text-muted-fg mt-0.5">Valor que se descuenta abajo</p>
+        </div>
+        <div className="bg-mint/10 border-2 border-mint/40 rounded-lg p-4">
+          <p className="text-sm text-coal font-semibold">= Venta sin domicilios</p>
+          <p className="text-2xl font-display font-bold text-coal">{fmtCOP(ingresos - domicilios)}</p>
+          <p className="text-[11px] text-muted-fg mt-0.5">Solo productos</p>
         </div>
       </div>
 

@@ -218,6 +218,11 @@ export default function CashierPanel() {
     })
   )
   const totalUnreadChat = Object.values(unreadChatMap).reduce((s, n) => s + n, 0)
+  // Pedidos con mensajes del cliente sin leer, sin importar en qué pestaña
+  // estén: el aviso debe llevar al pedido aunque no sea la pestaña actual.
+  const ordersConMensajes = orders
+    .filter(o => (unreadChatMap[o.id] || 0) > 0)
+    .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
 
   useEffect(() => {
     if (!sede) return
@@ -534,18 +539,31 @@ export default function CashierPanel() {
         ))}
       </div>
 
-      {/* Banner global de mensajes sin leer del cliente */}
-      {totalUnreadChat > 0 && (
-        <div className="mx-4 mt-2 bg-cherry/10 border border-cherry/30 rounded-2xl px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
-            <MessageCircle size={18} className="text-cream" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-body text-sm font-semibold text-cherry">
-              {totalUnreadChat === 1 ? '1 mensaje sin leer de un cliente' : `${totalUnreadChat} mensajes sin leer de clientes`}
-            </p>
-            <p className="font-body text-xs text-coal/50">Toca el pedido resaltado para responder</p>
-          </div>
+      {/* Mensajes sin leer del cliente. El banner ABRE el pedido directamente:
+          antes solo decía "toca el pedido resaltado", pero si ese pedido estaba
+          en otra pestaña (p. ej. ya cotizado → "Asignar") el cajero no lo
+          encontraba y el mensaje quedaba sin responder. */}
+      {ordersConMensajes.length > 0 && (
+        <div className="mx-4 mt-2 flex flex-col gap-1.5">
+          {ordersConMensajes.map(o => (
+            <button key={o.id}
+              onClick={() => o.status === 'quoted' && o.deliveryMode !== 'pickup' ? openAssign(o) : openOrderDetail(o.id)}
+              className="w-full bg-cherry/10 border border-cherry/30 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-cherry/20 transition-colors text-left">
+              <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
+                <MessageCircle size={18} className="text-cream" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-cherry">
+                  {unreadChatMap[o.id] === 1 ? '1 mensaje nuevo' : `${unreadChatMap[o.id]} mensajes nuevos`}
+                  {o.orderNumber ? ` · Pedido #${o.orderNumber}` : ''} · {o.name || o.clientName || 'Cliente'}
+                </p>
+                <p className="font-body text-xs text-coal/60 truncate">
+                  “{[...(o.clientMessages || [])].filter(m => m.role === 'client').slice(-1)[0]?.text || ''}”
+                </p>
+              </div>
+              <span className="font-body text-xs font-bold text-cherry flex-shrink-0">Responder →</span>
+            </button>
+          ))}
         </div>
       )}
 
