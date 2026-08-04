@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot } from 'firebase/firestore'
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth'
 import { auth, db, provider } from '../services/firebase'
 import { format, addWeeks, startOfWeek, addDays, getISOWeek } from 'date-fns'
@@ -9,12 +9,16 @@ import { LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
 import Logo from '../components/common/Logo'
 
 // ─── Empleados ────────────────────────────────────────────────────────────────
-const EMPLOYEES = [
+// Plantilla base con los datos propios del cuadro de turnos (nombre corto y si
+// es personal "regular" o de "servicios"), que no viven en la base de datos.
+// La lista REAL se filtra contra las bajas del panel de administración
+// (colección roles_disabled): al eliminar un empleado en el admin, desaparece
+// solo de aquí — antes había que editar este archivo y volver a desplegar.
+const EMPLOYEES_BASE = [
   { id: 'joseluis',   email: 'lluis02martinez@gmail.com',           name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular'   },
   { id: 'sara',       email: 'monsalvesara1124@gmail.com',          name: 'Sara Castaño Monsalve',          short: 'Sara',        type: 'regular'   },
   { id: 'valentina',  email: 'vvillegasmazo@gmail.com',             name: 'Valentina Villegas Mazo',        short: 'Valentina',   type: 'regular'   },
   { id: 'josemanuel', email: 'josemanuellondonorivillas@gmail.com', name: 'Jose Manuel Londoño Rivillas',   short: 'Jose Manuel', type: 'regular'   },
-  { id: 'juandiego',  email: 'jotade.rodmar@gmail.com',             name: 'Juan Diego Rodríguez Martínez', short: 'Juan Diego',  type: 'regular'   },
   { id: 'gendelson',  email: 'tikdash17@gmail.com',                 name: 'Gendelson González Blanco',      short: 'Gendelson',   type: 'regular'   },
   { id: 'deisy',      email: 'deisyhenao670@gmail.com',             name: 'Deisy Henao Grisales',           short: 'Deisy',       type: 'servicios' },
 ]
@@ -53,9 +57,9 @@ const getCell    = (value, type) => {
 }
 
 // ─── Auto-rotación ────────────────────────────────────────────────────────────
-function generarRotacion() {
-  const regulares = EMPLOYEES.filter(e => e.type === 'regular')
-  const deisy     = EMPLOYEES.find(e => e.type === 'servicios')
+function generarRotacion(empleados) {
+  const regulares = empleados.filter(e => e.type === 'regular')
+  const deisy     = empleados.find(e => e.type === 'servicios')
   const keys      = DAYS.map(d => d.key)
   const shuffled  = [...keys].sort(() => Math.random() - 0.5)
   const sched     = {}
@@ -95,7 +99,7 @@ function WeekSelector({ weekOffset, setWeekOffset }) {
 }
 
 // ─── Tabla de turnos ─────────────────────────────────────────────────────────
-function ScheduleTable({ schedule, monday, isAdmin, myEmployeeId, picker, setPicker, setCelda }) {
+function ScheduleTable({ empleados, schedule, monday, isAdmin, myEmployeeId, picker, setPicker, setCelda }) {
   return (
     <div className="bg-white rounded-2xl shadow-soft overflow-hidden">
       <div className="overflow-x-auto">
@@ -112,7 +116,7 @@ function ScheduleTable({ schedule, monday, isAdmin, myEmployeeId, picker, setPic
             </tr>
           </thead>
           <tbody>
-            {EMPLOYEES.map((emp, ei) => {
+            {empleados.map((emp, ei) => {
               const isMe = emp.id === myEmployeeId
               return (
                 <tr key={emp.id}
@@ -171,14 +175,14 @@ function ScheduleTable({ schedule, monday, isAdmin, myEmployeeId, picker, setPic
 }
 
 // ─── Resumen de descansos ─────────────────────────────────────────────────────
-function DescansosSummary({ schedule }) {
+function DescansosSummary({ empleados, schedule }) {
   if (Object.keys(schedule).length === 0) return null
   return (
     <div className="bg-white rounded-2xl shadow-soft p-4">
       <p className="font-display text-base tracking-wide text-coal mb-3">Descansos de la semana</p>
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {DAYS.map(day => {
-          const descansando = EMPLOYEES.filter(e => schedule[e.id]?.[day.key] === 'descanso')
+          const descansando = empleados.filter(e => schedule[e.id]?.[day.key] === 'descanso')
           return (
             <div key={day.key} className="bg-smoked/40 rounded-xl p-2.5">
               <p className="font-display text-[11px] tracking-wide text-coal/60 mb-1.5">{day.label}</p>
@@ -345,12 +349,24 @@ export default function TurnosPage() {
   const [saving,     setSaving]     = useState(false)
   const [savedOk,    setSavedOk]    = useState(false)
   const [picker,     setPicker]     = useState(null)
+  // Empleados dados de baja desde el panel de administración (roles_disabled).
+  // Se escucha EN VIVO: al eliminar a alguien en el admin desaparece del cuadro
+  // sin tener que editar el código ni volver a desplegar.
+  const [disabledEmails, setDisabledEmails] = useState([])
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'roles_disabled'),
+      snap => setDisabledEmails(snap.docs.map(d => d.id.toLowerCase())),
+      () => {})
+  }, [])
+
+  const empleados = EMPLOYEES_BASE.filter(e => !disabledEmails.includes(e.email.toLowerCase()))
 
   const monday  = getMonday(weekOffset)
   const wid     = weekId(monday)
   const userEmail = user?.email?.toLowerCase() ?? ''
   const isAdmin   = ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail)
-  const myEmployee = EMPLOYEES.find(e => e.email.toLowerCase() === userEmail) ?? null
+  const myEmployee = empleados.find(e => e.email.toLowerCase() === userEmail) ?? null
   const isEmployee = myEmployee !== null
   const dirty      = JSON.stringify(schedule) !== JSON.stringify(saved)
 
@@ -402,7 +418,7 @@ export default function TurnosPage() {
   }
   const logout = () => { signOut(auth); setPicker(null) }
 
-  const rotar = () => { setSchedule(generarRotacion()); setPicker(null) }
+  const rotar = () => { setSchedule(generarRotacion(empleados)); setPicker(null) }
 
   const guardar = async () => {
     setSaving(true)
@@ -481,9 +497,10 @@ export default function TurnosPage() {
         ) : (
           <>
             <ScheduleTable
+              empleados={empleados}
               schedule={schedule} monday={monday} isAdmin={true}
               picker={picker} setPicker={setPicker} setCelda={setCelda} />
-            <DescansosSummary schedule={schedule} />
+            <DescansosSummary empleados={empleados} schedule={schedule} />
           </>
         )}
 
@@ -513,10 +530,10 @@ export default function TurnosPage() {
             {/* Grid completo (lectura) */}
             <div>
               <p className="font-display text-base tracking-wide text-coal mb-2 px-1">Turnos del equipo</p>
-              <ScheduleTable schedule={schedule} monday={monday} isAdmin={false} myEmployeeId={myEmployee.id} />
+              <ScheduleTable empleados={empleados} schedule={schedule} monday={monday} isAdmin={false} myEmployeeId={myEmployee.id} />
             </div>
 
-            <DescansosSummary schedule={schedule} />
+            <DescansosSummary empleados={empleados} schedule={schedule} />
           </>
         )}
 
