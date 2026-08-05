@@ -353,14 +353,46 @@ export default function TurnosPage() {
   // Se escucha EN VIVO: al eliminar a alguien en el admin desaparece del cuadro
   // sin tener que editar el código ni volver a desplegar.
   const [disabledEmails, setDisabledEmails] = useState([])
+  // Empleados creados desde el admin con datos de turnos (shiftType/shortName).
+  const [extraEmployees, setExtraEmployees] = useState([])
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'roles_disabled'),
+    const unsubDis = onSnapshot(collection(db, 'roles_disabled'),
       snap => setDisabledEmails(snap.docs.map(d => d.id.toLowerCase())),
       () => {})
+    // Un empleado puede estar en cajeros y/o domiciliarios: se juntan ambos.
+    const acc = {}
+    const watch = (col) => onSnapshot(collection(db, col), snap => {
+      snap.docs.forEach(d => {
+        acc[d.id.toLowerCase()] = { ...acc[d.id.toLowerCase()], ...d.data(), email: d.id.toLowerCase() }
+      })
+      setExtraEmployees(Object.values(acc))
+    }, () => {})
+    const unsubC = watch('roles_cashiers')
+    const unsubD = watch('roles_drivers')
+    return () => { unsubDis(); unsubC(); unsubD() }
   }, [])
 
-  const empleados = EMPLOYEES_BASE.filter(e => !disabledEmails.includes(e.email.toLowerCase()))
+  // Plantilla base + altas del admin, menos las bajas.
+  const empleados = (() => {
+    const baja = new Set(disabledEmails)
+    const out = EMPLOYEES_BASE.filter(e => !baja.has(e.email.toLowerCase()))
+    const ya = new Set(out.map(e => e.email.toLowerCase()))
+    extraEmployees.forEach(e => {
+      const email = (e.email || '').toLowerCase()
+      if (!email || baja.has(email) || ya.has(email)) return
+      if (e.shiftType !== 'regular' && e.shiftType !== 'servicios') return
+      const nombre = e.name || email
+      out.push({
+        id:    email.split('@')[0].replace(/[^a-z0-9]/g, '') || email,
+        email, name: nombre,
+        short: e.shortName || nombre.split(' ')[0],
+        type:  e.shiftType,
+      })
+      ya.add(email)
+    })
+    return out
+  })()
 
   const monday  = getMonday(weekOffset)
   const wid     = weekId(monday)

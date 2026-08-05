@@ -31,6 +31,9 @@ export default function Usuarios() {
   const [newPhone, setNewPhone] = useState('')
   const [newCashier, setNewCashier] = useState(true)
   const [newDriver, setNewDriver] = useState(false)
+  // Datos para el cuadro de turnos ('' = no participa en turnos)
+  const [newShiftType, setNewShiftType] = useState<'' | 'regular' | 'servicios'>('')
+  const [newShort, setNewShort] = useState('')
 
   const [editing, setEditing] = useState<string | null>(null)
   const [editEmail, setEditEmail] = useState('')
@@ -54,6 +57,10 @@ export default function Usuarios() {
         ...Object.keys(DEFAULT_DRIVERS).map((e) => e.toLowerCase()),
         ...dynCashiers.keys(),
         ...dynDrivers.keys(),
+        // Los dados de baja también se listan (marcados como tal) para poder
+        // reactivarlos; si no, quien ya no tiene ningún rol desaparecía del
+        // panel y quedaba fuera de alcance.
+        ...disabled,
       ])
 
       const list: Employee[] = Array.from(emails).map((email) => {
@@ -91,13 +98,21 @@ export default function Usuarios() {
     if (!email) { toast.error('El correo es obligatorio'); return }
     if (!newCashier && !newDriver) { toast.error('Elige al menos un rol (cajero o domiciliario)'); return }
     try {
-      const payload = { email, name: newName.trim() || email, phone: newPhone.trim() || null, addedAt: serverTimestamp() }
+      const nombre = newName.trim() || email
+      const payload = {
+        email, name: nombre, phone: newPhone.trim() || null, addedAt: serverTimestamp(),
+        // Datos del cuadro de turnos: si shiftType queda vacío, el empleado no
+        // aparece en turnos (p. ej. personal que no entra en la rotación).
+        shiftType: newShiftType || null,
+        shortName: newShiftType ? (newShort.trim() || nombre.split(' ')[0]) : null,
+      }
       if (newCashier) await setDoc(doc(db, 'roles_cashiers', email), payload)
       if (newDriver) await setDoc(doc(db, 'roles_drivers', email), payload)
       // Por si estaba dado de baja, reactivarlo al re-agregarlo.
       await deleteDoc(doc(db, 'roles_disabled', email)).catch(() => {})
       toast.success(`${email} agregado`)
       setNewEmail(''); setNewName(''); setNewPhone(''); setNewCashier(true); setNewDriver(false)
+      setNewShiftType(''); setNewShort('')
       load()
     } catch {
       toast.error('Error al agregar el empleado')
@@ -235,6 +250,36 @@ export default function Usuarios() {
               <input type="checkbox" checked={newDriver} onChange={(e) => setNewDriver(e.target.checked)} /> Domiciliario
             </label>
           </div>
+
+          {/* Cuadro de turnos: sin esto el empleado no aparece en Turnos */}
+          <div className="border-t border-gray-200 pt-3 mt-1">
+            <p className="text-xs font-semibold text-coal mb-2">Cuadro de turnos</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                className="border rounded px-3 py-2 text-sm flex-1"
+                value={newShiftType}
+                onChange={(e) => setNewShiftType(e.target.value as '' | 'regular' | 'servicios')}
+              >
+                <option value="">No aparece en turnos</option>
+                <option value="regular">Regular (rota entre sedes)</option>
+                <option value="servicios">Servicios generales</option>
+              </select>
+              {newShiftType && (
+                <input
+                  className="border rounded px-3 py-2 text-sm flex-1"
+                  placeholder="Nombre corto en el cuadro (ej. José Luis)"
+                  value={newShort}
+                  onChange={(e) => setNewShort(e.target.value)}
+                />
+              )}
+            </div>
+            {newShiftType && (
+              <p className="text-[11px] text-muted-fg mt-1">
+                Si lo dejas vacío se usa el primer nombre. Aparecerá en Turnos al guardar.
+              </p>
+            )}
+          </div>
+
           <button onClick={addUser} className="bg-primary text-white rounded px-4 py-2 text-sm font-medium">Agregar</button>
         </div>
       </div>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
-import { EMPLOYEES } from '@/lib/team'
+import { buildShiftEmployees, type ShiftEmployee } from '@/lib/team'
 
 const DAYS = [
   { key: 'lun', label: 'Lunes' }, { key: 'mar', label: 'Martes' }, { key: 'mie', label: 'Miércoles' },
@@ -52,9 +52,9 @@ const getCell = (value: string, type: string) => {
   return opts.find((o) => o.value === value) || { label: '—', color: 'bg-gray-50 text-coal/20 border-gray-100' }
 }
 
-function generarRotacion(): Schedule {
-  const regulares = EMPLOYEES.filter((e) => e.type === 'regular')
-  const deisy = EMPLOYEES.find((e) => e.type === 'servicios')
+function generarRotacion(empleados: ShiftEmployee[]): Schedule {
+  const regulares = empleados.filter((e) => e.type === 'regular')
+  const deisy = empleados.find((e) => e.type === 'servicios')
   const keys = DAYS.map((d) => d.key)
   const shuffled = [...keys].sort(() => Math.random() - 0.5)
   const sched: Schedule = {}
@@ -81,6 +81,31 @@ export default function Turnos() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [picker, setPicker] = useState<Picker>(null)
+  // Empleados del cuadro: plantilla base + los que se crean desde Empleados con
+  // datos de turnos, menos los dados de baja. Todo en vivo desde Firestore.
+  const [empleados, setEmpleados] = useState<ShiftEmployee[]>(() => buildShiftEmployees([], []))
+
+  useEffect(() => {
+    let bajas: string[] = []
+    let extra: { email: string; name?: string; shortName?: string; shiftType?: string }[] = []
+    const recalc = () => setEmpleados(buildShiftEmployees(extra, bajas))
+
+    const unsubDis = onSnapshot(collection(db, 'roles_disabled'), (snap) => {
+      bajas = snap.docs.map((d) => d.id.toLowerCase()); recalc()
+    }, () => {})
+    // Un empleado puede estar en cajeros y/o domiciliarios: se juntan ambos.
+    const acc: Record<string, { email: string; name?: string; shortName?: string; shiftType?: string }> = {}
+    const watch = (col: string) => onSnapshot(collection(db, col), (snap) => {
+      snap.docs.forEach((d) => {
+        const v = d.data() as { name?: string; shortName?: string; shiftType?: string }
+        acc[d.id.toLowerCase()] = { ...acc[d.id.toLowerCase()], ...v, email: d.id.toLowerCase() }
+      })
+      extra = Object.values(acc); recalc()
+    }, () => {})
+    const unsubC = watch('roles_cashiers')
+    const unsubD = watch('roles_drivers')
+    return () => { unsubDis(); unsubC(); unsubD() }
+  }, [])
 
   const monday = getMonday(weekOffset)
   const wid = weekId(monday)
@@ -129,7 +154,7 @@ export default function Turnos() {
           <p className="text-muted-fg mt-1">Horario semanal del equipo</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setSchedule(generarRotacion()); setPicker(null) }}
+          <button onClick={() => { setSchedule(generarRotacion(empleados)); setPicker(null) }}
             className="text-sm font-semibold px-4 py-2 rounded-lg bg-tangelo/10 hover:bg-tangelo/20 text-tangelo border border-tangelo/30">
             Sugerir rotación
           </button>
@@ -171,7 +196,7 @@ export default function Turnos() {
               </tr>
             </thead>
             <tbody>
-              {EMPLOYEES.map((emp, ei) => (
+              {empleados.map((emp, ei) => (
                 <tr key={emp.id} className={`border-b border-gray-100 ${ei % 2 ? 'bg-gray-50/40' : 'bg-white'}`}>
                   <td className="px-4 py-2.5">
                     <p className="font-semibold text-sm text-coal leading-tight">{emp.short}</p>

@@ -24,16 +24,58 @@ export const isSuperAdminEmail = (email?: string | null): boolean =>
   !!email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())
 
 // Empleados del equipo — usados en la grilla de Turnos.
-export const EMPLOYEES = [
-  { id: 'joseluis',   name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular' },
-  { id: 'yency',      name: 'Yency Torres Parra',            short: 'Yency',       type: 'regular' },
-  { id: 'sara',       name: 'Sara Castaño Monsalve',         short: 'Sara',        type: 'regular' },
-  { id: 'valentina',  name: 'Valentina Villegas Mazo',       short: 'Valentina',   type: 'regular' },
-  { id: 'josemanuel', name: 'Jose Manuel Londoño Rivillas',  short: 'Jose Manuel', type: 'regular' },
-  { id: 'juandiego',  name: 'Juan Diego Rodríguez Martínez', short: 'Juan Diego',  type: 'regular' },
-  { id: 'gendelson',  name: 'Gendelson González Blanco',     short: 'Gendelson',   type: 'regular' },
-  { id: 'deisy',      name: 'Deisy Henao Grisales',          short: 'Deisy',       type: 'servicios' },
-] as const
+// Plantilla base del cuadro de turnos. Lleva EMAIL para poder cruzarla con las
+// bajas del panel (roles_disabled) y con los empleados creados desde el admin:
+// quien se da de baja desaparece del cuadro sin tocar código.
+export interface ShiftEmployee {
+  id: string
+  email: string
+  name: string
+  short: string
+  type: 'regular' | 'servicios'
+}
+
+export const EMPLOYEES: ShiftEmployee[] = [
+  { id: 'joseluis',   email: 'lluis02martinez@gmail.com',           name: 'José Luis Martínez Villegas',  short: 'José Luis',   type: 'regular' },
+  { id: 'sara',       email: 'monsalvesara1124@gmail.com',          name: 'Sara Castaño Monsalve',        short: 'Sara',        type: 'regular' },
+  { id: 'valentina',  email: 'vvillegasmazo@gmail.com',             name: 'Valentina Villegas Mazo',      short: 'Valentina',   type: 'regular' },
+  { id: 'josemanuel', email: 'josemanuellondonorivillas@gmail.com', name: 'Jose Manuel Londoño Rivillas', short: 'Jose Manuel', type: 'regular' },
+  { id: 'gendelson',  email: 'tikdash17@gmail.com',                 name: 'Gendelson González Blanco',    short: 'Gendelson',   type: 'regular' },
+  { id: 'deisy',      email: 'deisyhenao670@gmail.com',             name: 'Deisy Henao Grisales',         short: 'Deisy',       type: 'servicios' },
+]
+
+// Id estable para un empleado creado desde el admin (a partir de su correo).
+export const shiftIdFromEmail = (email: string) =>
+  email.toLowerCase().split('@')[0].replace(/[^a-z0-9]/g, '') || email.toLowerCase()
+
+/**
+ * Lista final del cuadro de turnos: la plantilla base más los empleados que el
+ * admin haya marcado para turnos, quitando los que estén dados de baja.
+ * `extra` son los empleados de Firestore que tengan shiftType configurado.
+ */
+export function buildShiftEmployees(
+  extra: { email: string; name?: string; shortName?: string; shiftType?: string }[],
+  disabledEmails: string[],
+): ShiftEmployee[] {
+  const baja = new Set(disabledEmails.map((e) => e.toLowerCase()))
+  const out = EMPLOYEES.filter((e) => !baja.has(e.email.toLowerCase()))
+  const yaEsta = new Set(out.map((e) => e.email.toLowerCase()))
+
+  extra.forEach((e) => {
+    const email = (e.email || '').toLowerCase()
+    if (!email || baja.has(email) || yaEsta.has(email)) return
+    if (e.shiftType !== 'regular' && e.shiftType !== 'servicios') return
+    out.push({
+      id: shiftIdFromEmail(email),
+      email,
+      name: e.name || email,
+      short: e.shortName || (e.name || email).split(' ')[0],
+      type: e.shiftType,
+    })
+    yaEsta.add(email)
+  })
+  return out
+}
 
 // Roles por defecto en Firestore para la app de domicilios.
 // Mirror de src/services/roles.js en el repo raíz.
