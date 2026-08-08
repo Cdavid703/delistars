@@ -45,3 +45,52 @@ export function parseHandoff(raw, now = Date.now()) {
     total: computed > 0 ? computed : (Number(total) || 0),
   }
 }
+
+// El carrito del menú (localStorage 'ds_cart_items') guarda el objeto completo
+// del producto; el handoff guarda solo lo que la caja necesita. Esta función
+// traduce de uno a otro para poder RESCATAR el pedido cuando el handoff falta
+// o caducó pero el carrito del menú sigue vivo — el caso del cliente que arma
+// su carrito antes de que abra la plataforma y vuelve horas después.
+export const CART_TTL_MS = 12 * 60 * 60 * 1000 // igual que el menú
+
+function cartItemToHandoffItem(it) {
+  const p = it.product || {}
+  let name = p.nombre_producto || ''
+  if (it.presentation) {
+    const { sabor, tamano, base } = it.presentation
+    name = `${name} (${sabor}, ${tamano}${base ? `, ${base}` : ''})`
+  } else if (it.selectedDrink) {
+    name = `${name} + ${it.selectedDrink}`
+  } else if (it.selectedOption) {
+    name = `${name} (${it.selectedOption})`
+  }
+  return {
+    name,
+    quantity:  it.quantity || 1,
+    unitPrice: Number(it.unitPrice) || 0,
+    addons:    (it.addons   || []).map(a => `Adición + ${a.name}`),
+    salsas:    (it.salsas   || []).map(s => s.name),
+    cebollas:  (it.cebollas || []).map(c => c.name),
+    notes:     it.notes || '',
+  }
+}
+
+// Parsea el carrito del menú con el mismo formato de salida que parseHandoff.
+export function parseMenuCart(raw, now = Date.now()) {
+  if (!raw) return null
+  let data
+  try { data = JSON.parse(raw) } catch { return null }
+  const items = data?.items
+  if (!Array.isArray(items) || items.length === 0) return null
+  if (now - (data.savedAt || 0) > CART_TTL_MS) return null
+
+  const conv = items.map(cartItemToHandoffItem).filter(i => i.name)
+  if (conv.length === 0) return null
+  const lines = conv.map(handoffItemLine)
+  return {
+    lines,
+    itemsText: lines.join('\n'),
+    total: conv.reduce((s, it) => s + it.unitPrice * it.quantity, 0),
+    recovered: true, // vino del carrito del menú, no del handoff
+  }
+}

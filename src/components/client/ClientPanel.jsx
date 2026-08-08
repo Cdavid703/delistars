@@ -14,7 +14,7 @@ import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
-import { parseHandoff } from '../../utils/handoff'
+import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
 const LiveDriverMap = lazy(() => import('./LiveDriverMap'))
 import { format } from 'date-fns'
@@ -84,6 +84,16 @@ function readOrderDraft() {
   } catch { return null }
 }
 
+// ¿El cliente llega con un pedido a medio armar? Puede venir del paquete del
+// menú, de un borrador, o —si esos caducaron— del carrito del menú, que dura
+// más. Se consulta en un solo lugar para que las tres rutas coincidan y el
+// checkout nunca quede vacío teniendo un carrito disponible.
+function hayPedidoPendiente() {
+  return !!localStorage.getItem('ds_cart_handoff')
+      || !!readOrderDraft()
+      || !!parseMenuCart(localStorage.getItem('ds_cart_items'))
+}
+
 function playMessageSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -106,11 +116,11 @@ export default function ClientPanel() {
   const [orders,         setOrders]         = useState([])
   const [ordersLoaded,   setOrdersLoaded]   = useState(false)
   const [selectedId,     setSelectedId]     = useState(null)
-  const [showForm,       setShowForm]       = useState(() => !!localStorage.getItem('ds_cart_handoff') || !!readOrderDraft())
+  const [showForm,       setShowForm]       = useState(hayPedidoPendiente)
   // ¿El cliente entró con contexto (carrito del menú o un borrador de pedido
   // sin terminar)? Si no, no debe quedarse en el panel de domicilios: se le
   // envía al menú a escoger productos.
-  const enteredWithCart = useRef(!!localStorage.getItem('ds_cart_handoff') || !!readOrderDraft())
+  const enteredWithCart = useRef(hayPedidoPendiente())
   const [platformActive, setPlatformActive] = useState(null)
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
@@ -208,7 +218,7 @@ export default function ClientPanel() {
     if (enteredWithCart.current || showForm) return
     // Nunca expulsar a quien tiene un pedido a medio hacer (carrito entregado
     // por el menú o borrador del formulario): perdería todo su pedido.
-    if (localStorage.getItem('ds_cart_handoff') || readOrderDraft()) return
+    if (hayPedidoPendiente()) return
     if (ordersLoaded && orders.length === 0) {
       // Resetea "ver como cliente" para que el equipo no quede atrapado: al
       // volver a /domicilios/ recupera su panel en vez de re-redirigirse.
@@ -730,14 +740,19 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     try {
       // Reglas de caducidad, precio por línea y total recalculado viven en
       // src/utils/handoff.js (módulo puro con pruebas en tests/).
-      const parsed = parseHandoff(localStorage.getItem('ds_cart_handoff'))
-      if (!parsed) return
-      if (parsed.stale) {
-        // Handoff viejo: sus precios ya no son confiables. Se descarta y el
-        // cliente arma su carrito de nuevo con los precios vigentes.
+      let parsed = parseHandoff(localStorage.getItem('ds_cart_handoff'))
+      if (parsed?.stale) {
+        // El paquete del checkout caducó. Antes se descartaba sin más y el
+        // cliente llegaba a un formulario VACÍO aunque su carrito del menú
+        // siguiera lleno (el carrito dura 12 h y el paquete 6 h): pasaba con
+        // quien arma el pedido antes de que abra la plataforma. Ahora se
+        // reconstruye desde el carrito del menú, que es la misma información.
         localStorage.removeItem('ds_cart_handoff')
-        return
+        parsed = null
       }
+      if (!parsed) parsed = parseMenuCart(localStorage.getItem('ds_cart_items'))
+      if (!parsed) return
+
       setForm(f => ({ ...f, items: parsed.itemsText }))
       setFromMenu(true)
       setMenuTotal(parsed.total)
