@@ -53,12 +53,13 @@ export default function App() {
   useEffect(() => {
     if (!user || sede) return
     try {
-      // Sede del carrito entregado por el menú, o del borrador de pedido en
-      // curso (para que una recarga a mitad del formulario no mande al
-      // cliente a elegir sede otra vez).
+      // Sede del carrito entregado por el menú, del borrador en curso o —si
+      // esos caducaron y el pedido se rescata— del carrito del menú. Así el
+      // cliente no tiene que volver a elegir sede.
       const handoff = JSON.parse(localStorage.getItem('ds_cart_handoff') || 'null')
       const draft   = JSON.parse(localStorage.getItem('ds_order_draft') || 'null')
-      const sedeId  = handoff?.sedeId || draft?.sedeId
+      const cart    = JSON.parse(localStorage.getItem('ds_cart_items') || 'null')
+      const sedeId  = handoff?.sedeId || draft?.sedeId || cart?.sedeId
       if (sedeId && SEDES[sedeId]) selectSede(SEDES[sedeId])
     } catch (_) {}
   }, [user, sede])

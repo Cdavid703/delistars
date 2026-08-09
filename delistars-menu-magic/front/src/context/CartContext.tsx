@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import type { Addon, Salsa, Cebolla, Product as ApiProduct } from "@/services/api";
+import { SEDES } from "@/data/menu";
 
 export type CartItem = {
   uid: string;
@@ -66,14 +67,20 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [sede, setSedeState] = useState<number | null>(null);
 
   // Persiste el carrito ante cualquier cambio (agregar, quitar, cantidad).
+  // Se guarda también el slug de la sede: si el checkout tiene que rescatar el
+  // pedido desde aquí, no debe volver a preguntarla.
   useEffect(() => {
     try {
       if (items.length === 0) localStorage.removeItem(CART_KEY);
-      else localStorage.setItem(CART_KEY, JSON.stringify({ items, savedAt: Date.now() }));
+      else localStorage.setItem(CART_KEY, JSON.stringify({
+        items,
+        savedAt: Date.now(),
+        sedeId: SEDES.find((s) => s.id === sede)?.slug ?? null,
+      }));
     } catch {
       /* almacenamiento lleno o no disponible: el carrito sigue en memoria */
     }
-  }, [items]);
+  }, [items, sede]);
 
   const setSede = (s: number | null) => {
     setSedeState(s);
