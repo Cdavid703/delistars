@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
+import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
 const MapPicker = lazy(() => import('./MapPicker'))
@@ -11,7 +12,6 @@ const VIA_TIPOS = [
   'Calle', 'Carrera', 'Diagonal', 'Transversal',
   'Avenida', 'Avenida Calle', 'Avenida Carrera', 'Circular', 'Autopista',
 ]
-const LETRAS        = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
 const ORIENTACIONES = ['', 'Sur', 'Este']
 
 const LABEL_PRESETS = [
@@ -32,22 +32,10 @@ const EMPTY = {
 
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
-// "Calle 44B Sur #70A-23"
-function buildFormatted(p) {
-  const via   = [p.tipoVia, `${p.viaNum}${p.viaLetra || ''}`, p.viaOrient].filter(Boolean).join(' ')
-  const cruce = `${p.cruceNum || ''}${p.cruceLetra || ''}`
-  return `${via} #${cruce}-${p.placa || ''}`.trim()
-}
-
-// Texto que ve la caja / el domiciliario (dirección + complemento)
-function fullAddressOf(p) {
-  return [buildFormatted(p), p.complemento?.trim()].filter(Boolean).join(', ')
-}
-
 // Geocodifica la dirección armada para obtener el pin exacto (best-effort).
 async function geocode(p, sede) {
   try {
-    const q = `${buildFormatted(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
+    const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
     const lat = sede?.coords?.lat ?? 6.24, lon = sede?.coords?.lng ?? -75.58
     const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lat=${lat}&lon=${lon}`)
     if (!res.ok) return null
@@ -175,7 +163,7 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
               <span className="font-display text-lg text-coal/40">#</span>
               <input className="input-field flex-1" inputMode="numeric" value={p.cruceNum}
                 onChange={e => setAddr('cruceNum', onlyDigits(e.target.value))} placeholder="70" />
-              <select className="input-field w-16" value={p.cruceLetra} onChange={e => setAddr('cruceLetra', e.target.value)}>
+              <select className="input-field w-20" value={p.cruceLetra} onChange={e => setAddr('cruceLetra', e.target.value)}>
                 {LETRAS.map(l => <option key={l} value={l}>{l || '–'}</option>)}
               </select>
               <span className="font-display text-lg text-coal/40">–</span>

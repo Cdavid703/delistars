@@ -184,6 +184,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         totalPrice:    localTotal,
         cashierNotes:  localCashierNotes.trim(),
         quotedAt:      serverTimestamp(),
+        needsRequote:  false, // el aviso de "el cliente agregó productos" ya quedó atendido
         updatedAt:     serverTimestamp(),
       })
       onClose()
@@ -573,6 +574,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
           {/* Order items */}
           <Section title="Pedido">
+            {/* El cliente sumó algo después de mandar el pedido: las líneas que
+                empiezan con "+" son las nuevas y hay que volver a cotizar. */}
+            {order.needsRequote && (
+              <div className="bg-mustard/20 border border-mustard/50 rounded-xl p-3 mb-2">
+                <p className="font-body text-sm text-coal font-semibold">
+                  ⚠️ El cliente agregó productos (líneas con “+”). Recalcula el valor y vuelve a cotizar.
+                </p>
+              </div>
+            )}
             <div className="bg-smoked/60 rounded-xl p-3">
               <p className="font-body text-sm text-coal whitespace-pre-wrap">{order.items}</p>
             </div>

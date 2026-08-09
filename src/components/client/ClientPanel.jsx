@@ -1130,6 +1130,45 @@ function ClientOrderDetail({ order, onClose }) {
   const [payError,     setPayError]     = useState('')
   const [savingPay,    setSavingPay]    = useState(false)
   const [cancelling,   setCancelling]   = useState(false)
+  // Agregar otro producto después de haber mandado el pedido a la caja
+  const [addingItem,  setAddingItem]  = useState(false)
+  const [extraItem,   setExtraItem]   = useState('')
+  const [extraError,  setExtraError]  = useState('')
+  const [savingExtra, setSavingExtra] = useState(false)
+
+  // Mientras la caja no lo haya despachado, el cliente puede sumar algo más al
+  // pedido —pasa seguido: ya cotizado, se antojan de una bebida o un adicional—.
+  // Si ya estaba cotizado vuelve a 'pending': el total cambió y la caja tiene
+  // que recotizar antes de seguir.
+  const canAddItems = ['pending', 'quoted'].includes(order.status)
+  const addExtraItem = async () => {
+    const txt = extraItem.trim()
+    if (!txt) { setExtraError('Escribe qué quieres agregar'); return }
+    setExtraError('')
+    setSavingExtra(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        items: `${order.items || ''}\n+ ${txt}`.trim(),
+        needsRequote: true,
+        ...(order.status === 'quoted'
+          // El billete que había elegido puede no alcanzar con el nuevo total:
+          // se limpia y lo vuelve a escoger cuando llegue la nueva cotización.
+          ? { status: 'pending', cashBillAmount: null, cashChange: null }
+          : {}),
+        clientMessages: arrayUnion({
+          role: 'client',
+          name: user?.displayName || 'Cliente',
+          text: `➕ Quiero agregar a mi pedido: ${txt}`,
+          ts:   Date.now(),
+        }),
+        updatedAt: serverTimestamp(),
+      })
+      setExtraItem('')
+      setAddingItem(false)
+    } catch (_) {
+      setExtraError('No se pudo agregar. Revisa tu conexión e intenta de nuevo.')
+    } finally { setSavingExtra(false) }
+  }
 
   // El cliente puede cancelar su propio pedido ANTES de que un domiciliario lo
   // tome (estados pending/quoted). Si había canjeado un premio de fidelización,
@@ -1789,6 +1828,52 @@ function ClientOrderDetail({ order, onClose }) {
                     </button>
                   </div>
                   {chatError && <p className="font-body text-xs text-pepper">{chatError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Agregar otro producto — mientras la caja no lo haya despachado */}
+          {canAddItems && (
+            <div className="pt-1">
+              {!addingItem ? (
+                <button
+                  onClick={() => setAddingItem(true)}
+                  className="w-full py-2.5 rounded-xl border border-cherry/40 text-cherry font-body text-sm font-semibold hover:bg-cherry/5 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={16} /> Agregar otro producto
+                </button>
+              ) : (
+                <div className="bg-white rounded-2xl border border-cherry/25 p-3 flex flex-col gap-2">
+                  <p className="font-display text-sm text-coal tracking-wide">¿Qué le agregamos?</p>
+                  <textarea
+                    className="textarea-field h-16 scroll-custom text-sm"
+                    placeholder="Ej: 1 Perro DeliStar con tocineta y una Coca-Cola personal"
+                    value={extraItem}
+                    onChange={e => setExtraItem(e.target.value)}
+                    autoFocus
+                  />
+                  <p className="font-body text-[11px] text-coal/50">
+                    {order.status === 'quoted'
+                      ? 'La caja volverá a cotizarte con el producto nuevo y te llegará el total actualizado.'
+                      : 'Se suma a tu pedido antes de que la caja te cotice.'}
+                  </p>
+                  {extraError && <p className="font-body text-xs text-pepper">{extraError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setAddingItem(false); setExtraItem(''); setExtraError('') }}
+                      className="flex-1 py-2 rounded-xl border border-coal/15 text-coal/60 font-body text-sm hover:bg-coal/5 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={addExtraItem}
+                      disabled={savingExtra || !extraItem.trim()}
+                      className="btn-primary flex-1 py-2 text-sm disabled:opacity-50"
+                    >
+                      {savingExtra ? 'Enviando…' : 'Agregar al pedido'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -45,6 +45,15 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         </div>
       )}
 
+      {/* El cliente agregó productos después de enviarlo: hay que recotizar */}
+      {order.needsRequote && (
+        <div className="mb-2 flex items-center gap-1.5 bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-semibold text-coal">
+            ➕ El cliente agregó productos — vuelve a cotizar
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
