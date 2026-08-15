@@ -723,7 +723,7 @@ function DriverOrderDetail({ order, onClose }) {
             <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
               <p className="font-display text-base tracking-wide text-mint">🎁 Incluye premio de fidelización</p>
               <p className="font-body text-sm text-coal/80 mt-1">
-                Este pedido lleva {order.loyaltyRedemption.count}x Hamburguesa Especial GRATIS — ya está cubierta, no es parte del cobro.
+                Este pedido lleva {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta) — ya está cubierto, no es parte del cobro.
               </p>
             </div>
           )}

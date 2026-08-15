@@ -65,7 +65,7 @@ export const LoyaltySection = () => {
             <div className="flex items-start gap-3">
               <Gift className="w-6 h-6 text-primary shrink-0 mt-0.5" />
               <p className="text-sm text-foreground">
-                <strong>Hamburguesa Especial GRATIS</strong> cada 10 domicilios entregados, en cada sede.
+                <strong>Hamburguesa Especial + Perro Grande con tocineta GRATIS</strong> cada 10 domicilios entregados, en cada sede.
               </p>
             </div>
             <div className="flex items-start gap-3">
@@ -98,14 +98,14 @@ export const LoyaltySection = () => {
     <section className="container px-4 sm:px-6 py-8">
       <div className="bg-gradient-soft border border-border rounded-3xl p-6 sm:p-8 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <h2 className="font-display text-2xl sm:text-3xl text-foreground">🍔 Tu fidelización</h2>
+          <h2 className="font-display text-2xl sm:text-3xl text-foreground">🍔🌭 Tu fidelización</h2>
           <a href="/domicilios/"
             className="text-sm font-medium text-primary underline underline-offset-4 hover:opacity-80">
             Ver mis pedidos →
           </a>
         </div>
         <p className="text-sm text-muted-foreground mb-5">
-          Cada 10 domicilios entregados te regalamos una <strong>Hamburguesa Especial</strong> ($20.000) — el progreso es independiente en cada sede.
+          Cada 10 domicilios entregados te regalamos una <strong>Hamburguesa Especial</strong> y un <strong>Perro Grande con tocineta</strong> ($39.000 en total) — el progreso es independiente en cada sede.
         </p>
 
         {liveRewards.length > 0 && (
@@ -142,7 +142,7 @@ export const LoyaltySection = () => {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
                   {count}/10 domicilios entregados
-                  {inCycle === 9 && " — ¡el próximo te regala tu Hamburguesa Especial! 🎉"}
+                  {inCycle === 9 && " — ¡el próximo te regala tu hamburguesa y tu perro! 🎉"}
                 </p>
                 {(loy.totalDelivered ?? 0) > 0 && (
                   <p className="text-[11px] text-muted-foreground mt-0.5">{loy.totalDelivered} entregados en total</p>

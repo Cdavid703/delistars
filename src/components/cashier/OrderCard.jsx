@@ -29,7 +29,7 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {order.loyaltyRedemption?.count > 0 && (
         <div className="mb-2 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
           <p className="font-body text-xs font-bold text-mint">
-            🎁 Incluye {order.loyaltyRedemption.count}x Hamburguesa Especial GRATIS — NO cobrar
+            🎁 Incluye {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta) — NO cobrar
           </p>
         </div>
       )}

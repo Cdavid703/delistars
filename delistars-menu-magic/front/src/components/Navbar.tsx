@@ -162,7 +162,7 @@ export const Navbar = () => {
                     <div className="px-2 pt-1.5 pb-2 mb-1 border-b border-border">
                       <p className="text-xs font-semibold text-foreground flex items-center gap-1">🎁 Programa de fidelización</p>
                       <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                        Inicia con <strong>Google</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial gratis</strong>. Como invitado no acumulas.
+                        Inicia con <strong>Google</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
                       </p>
                     </div>
                     <button onClick={doLogin} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
@@ -231,7 +231,7 @@ export const Navbar = () => {
                 <div className="bg-secondary/40 rounded-lg px-2.5 py-2 mb-1">
                   <p className="text-xs font-semibold text-foreground">🎁 Programa de fidelización</p>
                   <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                    Inicia con <strong>Google</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial gratis</strong>. Como invitado no acumulas.
+                    Inicia con <strong>Google</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
                   </p>
                 </div>
                 <button onClick={doLogin} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">

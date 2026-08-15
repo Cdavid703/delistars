@@ -17,7 +17,8 @@ const SEDES = [
   { id: 'santa_teresita', name: 'Santa Teresita' },
 ]
 
-const LOYALTY_REWARD_NAME = 'Hamburguesa Especial'
+// Debe coincidir con LOYALTY_REWARD.name de src/services/firebase.js (domicilios)
+const LOYALTY_REWARD_NAME = 'Hamburguesa Especial + Perro Grande con tocineta'
 const LOYALTY_EXPIRY_MS = 60 * 24 * 60 * 60 * 1000
 
 type SedeLoyalty = { count?: number; totalDelivered?: number; lastCountedDate?: string }

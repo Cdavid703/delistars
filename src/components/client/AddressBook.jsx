@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'fi
 import { db } from '../../services/firebase'
 import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
 import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
+import useBackClose from '../../hooks/useBackClose'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
 const MapPicker = lazy(() => import('./MapPicker'))
@@ -47,6 +48,7 @@ async function geocode(p, sede) {
 
 // ─── Formulario estructurado (agregar/editar una dirección) ────────────────────
 function AddressBuilder({ sede, initial, onSave, onCancel }) {
+  useBackClose(true, onCancel) // "atrás" cierra el formulario, no sale de la app
   const [p, setP]           = useState(initial || EMPTY)
   const [customLabel, setCustom] = useState(
     initial && !LABEL_PRESETS.some(l => l.label === initial.label) ? initial.label : '',

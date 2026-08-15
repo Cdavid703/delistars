@@ -131,11 +131,14 @@ export async function createOrderWithNumber(sedeId, orderData) {
 // solo domicilios — no recoger en sede) gana 1 premio. Tope de 3 premios
 // disponibles a la vez por sede: al llegar a 30 el progreso se reinicia a 0.
 // Los premios sin usar caducan 60 días después de ganarse.
+// El premio son DOS productos, no uno: la Hamburguesa Especial ($20.000) y el
+// Perro Grande con tocineta ($19.000). El `type` se queda como estaba porque
+// va grabado en los premios ya otorgados y nada lo consulta.
 export const LOYALTY_REWARD = {
   type:        'hamburguesa_especial',
-  name:        'Hamburguesa Especial',
-  price:       20000,
-  description: 'Nuestra receta estrella elaborada con ingredientes seleccionados para brindar una experiencia de sabor superior, incluye queso y tocineta.',
+  name:        'Hamburguesa Especial + Perro Grande con tocineta',
+  price:       39000,
+  description: 'Nuestra Hamburguesa Especial —receta estrella con queso y tocineta— junto a un Perro Grande con tocineta premium.',
 }
 const LOYALTY_GOAL       = 10
 const LOYALTY_CYCLE      = 30

@@ -27,7 +27,7 @@ function parseItems(items?: string): { name: string; qty: number }[] {
       .replace(/—\s*".*?"/g, '')   // notas — "sin cebolla"
       .replace(/\s+/g, ' ')
       .trim()
-    if (!name || /premio fidelización/i.test(line)) name = '🎁 Hamburguesa Especial (premio)'
+    if (!name || /premio fidelización/i.test(line)) name = '🎁 Premio fidelización (hamburguesa + perro)'
     out.push({ name, qty: Number(m[1]) || 1 })
   }
   return out

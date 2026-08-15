@@ -151,7 +151,7 @@ export function OrderDetailModal({ order, onClose }: { order: Order; onClose: ()
         <div className="p-5 flex flex-col gap-4">
           {order.loyaltyRedemption && (order.loyaltyRedemption.count || 0) > 0 && (
             <div className="bg-mint/15 border border-mint/40 rounded-lg px-3 py-2 text-sm text-coal">
-              🎁 Incluye {order.loyaltyRedemption.count}x Hamburguesa Especial GRATIS (premio fidelización — no se cobra)
+              🎁 Incluye {order.loyaltyRedemption.count}x premio GRATIS: Hamburguesa Especial + Perro Grande con tocineta (fidelización — no se cobra)
             </div>
           )}
 

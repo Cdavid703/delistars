@@ -14,6 +14,7 @@ import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
+import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
 const LiveDriverMap = lazy(() => import('./LiveDriverMap'))
@@ -463,7 +464,7 @@ export default function ClientPanel() {
           <div className="card bg-white shadow-soft border border-mustard/30">
             <div className="flex items-center justify-between mb-2">
               <p className="font-display text-sm tracking-wide text-coal flex items-center gap-1.5">
-                🍔 Fidelización {sede?.name}
+                🍔🌭 Fidelización {sede?.name}
               </p>
               {availableForSede.length > 0 && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-mint/20 text-mint">
@@ -479,7 +480,7 @@ export default function ClientPanel() {
             </div>
             <p className="font-body text-xs text-coal/60 mt-1.5">
               {sedeLoyalty.count}/10 domicilios entregados
-              {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial gratis! 🎉'}
+              {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial y un Perro Grande con tocineta gratis! 🎉'}
             </p>
           </div>
         </div>
@@ -532,6 +533,16 @@ export default function ClientPanel() {
           </div>
         </div>
       </div>
+
+      {/* Avisos al celular — solo si hay un pedido en curso que seguir. Antes
+          esto vivía enterrado dentro del detalle del pedido y solo mientras
+          estaba "pendiente": casi nadie llegaba a verlo y por eso los clientes
+          no se enteraban de los cambios de estado. */}
+      {activeOrders.length > 0 && (
+        <div className="mx-4 mt-3">
+          <PushOptIn uid={user?.uid} />
+        </div>
+      )}
 
       {/* Active orders */}
       <div className="px-4 mt-4">
@@ -1088,31 +1099,70 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
 function PushOptIn({ uid, className = '' }) {
   const [perm, setPerm] = useState(() => pushPermission())
   const [busy, setBusy] = useState(false)
-  if (perm === 'granted' || perm === 'unsupported') return null
+  const [error, setError] = useState('')
+  const [listo, setListo] = useState(false)
+
+  if (listo) {
+    return (
+      <p className={`font-body text-xs text-mint font-semibold ${className}`}>
+        ✅ Listo, te avisamos en este celular cada vez que tu pedido cambie.
+      </p>
+    )
+  }
+  if (perm === 'granted') return null
+  // En iPhone los avisos solo funcionan si la página está instalada en la
+  // pantalla de inicio; en el navegador suelto no hay forma de activarlos.
+  if (perm === 'unsupported' || (isIOS && !isStandalone)) {
+    if (!isIOS) return null
+    return (
+      <div className={`bg-mustard/10 border border-mustard/30 rounded-xl px-3 py-2.5 ${className}`}>
+        <p className="font-body text-xs text-coal/75 leading-relaxed">
+          🔔 <strong>¿Quieres que te avisemos en el celular</strong> cuando tu pedido cambie?
+          En iPhone hay que instalar DeliStars primero: pulsa <strong>Compartir → Agregar a inicio</strong>,
+          ábrela desde ahí y actívalos.
+        </p>
+      </div>
+    )
+  }
   if (perm === 'denied') {
     return (
-      <p className={`font-body text-[11px] text-coal/45 ${className}`}>
-        🔕 Los avisos están bloqueados en tu navegador. Actívalos en los ajustes del sitio si quieres recibir la cotización en tu celular.
-      </p>
+      <div className={`bg-coal/5 border border-coal/15 rounded-xl px-3 py-2.5 ${className}`}>
+        <p className="font-body text-xs text-coal/70 leading-relaxed">
+          🔕 Tienes los avisos <strong>bloqueados</strong> para esta página, por eso no te llegan los
+          cambios de tu pedido. Actívalos en el candado 🔒 de la barra de direcciones → Notificaciones.
+        </p>
+      </div>
     )
   }
   const activar = async () => {
     setBusy(true)
-    await enablePush(uid)
+    setError('')
+    const res = await enablePush(uid)
     setPerm(pushPermission())
+    if (res?.ok) setListo(true)
+    else if (res?.reason === 'dismissed') setError('No alcanzaste a aceptar el aviso del navegador. Intenta otra vez y pulsa "Permitir".')
+    else if (res?.reason !== 'denied') setError('No se pudieron activar los avisos en este dispositivo. Igual te avisamos aquí en la app y por el chat.')
     setBusy(false)
   }
   return (
-    <button onClick={activar} disabled={busy || !uid}
-      className={`w-full py-2.5 rounded-xl bg-cherry/10 border border-cherry/30 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors disabled:opacity-50 ${className}`}>
-      {busy ? 'Activando…' : '🔔 Avísame en mi celular cuando esté listo'}
-    </button>
+    <div className={className}>
+      <button onClick={activar} disabled={busy || !uid}
+        className="w-full py-2.5 rounded-xl bg-cherry/10 border border-cherry/30 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors disabled:opacity-50">
+        {busy ? 'Activando…' : '🔔 Avísame en el celular cuando mi pedido cambie'}
+      </button>
+      {error
+        ? <p className="font-body text-[11px] text-pepper mt-1 leading-relaxed">{error}</p>
+        : <p className="font-body text-[11px] text-coal/45 mt-1 leading-relaxed">
+            Te llega la cotización, cuando salga el domiciliario y cuando llegue — sin tener que dejar la app abierta.
+          </p>}
+    </div>
   )
 }
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
   const { user } = useAuth()
+  useBackClose(true, onClose) // "atrás" cierra el detalle, no saca de la app
   const [elapsed,          setElapsed]         = useState(null)
   const [uploadProgress,   setUploadProgress]  = useState(null)
   const [uploadError,      setUploadError]     = useState('')
@@ -1904,6 +1954,7 @@ function ClientOrderDetail({ order, onClose }) {
 function ClientHistoryModal({ orders, onClose, onSelect, onReorder }) {
   const [search,     setSearch]     = useState('')
   const [filterDate, setFilterDate] = useState('')
+  useBackClose(true, onClose)
 
   const historical = orders
     .filter(o => [...DELIVERED_STATUSES, ...CLOSED_STATUSES].includes(o.status))
@@ -2036,11 +2087,14 @@ function LoyaltyCelebrationModal({ rewards, onClose }) {
       <div className="bg-cream rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl animate-fade-in">
         <p className="text-5xl mb-2">🎉</p>
         <p className="font-display text-2xl text-cherry tracking-wide leading-tight">
-          ¡Ganaste {count > 1 ? `${count} Hamburguesas Especiales` : 'una Hamburguesa Especial'} gratis!
+          ¡Ganaste {count > 1 ? `${count} premios` : 'un premio'} gratis!
+        </p>
+        <p className="font-body text-sm text-coal/80 mt-1 font-body">
+          {count > 1 ? `${count}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta
         </p>
         <p className="font-body text-sm text-coal/70 mt-2 leading-relaxed">
-          Por tus domicilios entregados en <strong>{sedeNames.join(' y ') || 'tu sede'}</strong>. La puedes usar ahora
-          o guardarla para tu próximo pedido — tú decides cuándo.
+          Por tus domicilios entregados en <strong>{sedeNames.join(' y ') || 'tu sede'}</strong>. Lo puedes usar ahora
+          o guardarlo para tu próximo pedido — tú decides cuándo.
         </p>
         {resetting && (
           <p className="font-body text-xs text-tangelo mt-3 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2">
@@ -2274,6 +2328,7 @@ function ClientHelpSection({ section }) {
 }
 
 function ClientHelpModal({ onClose }) {
+  useBackClose(true, onClose)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>

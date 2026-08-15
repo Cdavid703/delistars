@@ -436,7 +436,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           <p className="font-body text-xs text-coal/40">{time}</p>
 
           {/* Premio de fidelización canjeado — bloque MUY visible para que la caja
-              no se confunda al ver una hamburguesa que no aparece en el precio. */}
+              no se confunda al ver productos que no aparecen en el precio. */}
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
               <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
@@ -444,8 +444,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               </p>
               <p className="font-body text-sm text-coal/80 mt-1.5 leading-relaxed">
                 Este pedido incluye <strong>{order.loyaltyRedemption.count}x {LOYALTY_REWARD.name} GRATIS</strong>.
-                {' '}<strong>No la cobres</strong> — el cliente la ganó por 10 domicilios entregados en esta sede.
-                Avísale a cocina que la incluya igual.
+                {' '}<strong>No lo cobres</strong> — el cliente lo ganó por 10 domicilios entregados en esta sede.
+                Avísale a cocina que incluya los dos productos igual.
               </p>
             </div>
           )}
