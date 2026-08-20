@@ -1,0 +1,79 @@
+{
+  "ensalada": ["Ensalada dulce de repollo"],
+  "ensaladaNota": "Es una ensalada dulce de repollo, no lleva lechuga. Va incluida en las hamburguesas y en los perros.",
+  "salsas": ["Guacamole de la casa", "Mayochipotle", "BBQ", "Piña", "Tártara", "Ajo", "Rosada"],
+  "cebollas": ["Cruda", "Sofrita", "Caramelizada"],
+  "familias": [
+    {
+      "key": "hamburguesas",
+      "emoji": "🍔",
+      "titulo": "Hamburguesas",
+      "base": ["Pan de hamburguesa", "Carne de res", "Ensalada dulce de repollo", "Salsas de la casa"],
+      "productos": [
+        { "nombre": "Hamburguesa Sencilla", "lleva": [], "nota": "La receta tradicional de la casa, sin adiciones." },
+        { "nombre": "Hamburguesa con queso", "lleva": ["Queso fundido"] },
+        { "nombre": "Hamburguesa con tocineta", "lleva": ["Tocineta"] },
+        { "nombre": "Hamburguesa Especial", "lleva": ["Queso fundido", "Tocineta"] },
+        { "nombre": "Hamburguesa Mixta", "lleva": ["Pollo (además de la carne de res)", "Tocineta", "Doble queso"] },
+        { "nombre": "Hamburguesa Super", "lleva": ["Doble carne", "Doble queso", "Doble tocineta"] },
+        { "nombre": "Hamburguesa Sencilla de Pollo", "lleva": ["Pechuga de pollo en vez de carne de res"] },
+        { "nombre": "Hamburguesa de pollo con queso o tocineta", "lleva": ["Pechuga de pollo en vez de carne de res", "Queso fundido o tocineta, a elegir"] },
+        { "nombre": "Hamburguesa Especial de Pollo", "lleva": ["Pechuga de pollo en vez de carne de res", "Queso fundido", "Tocineta"] },
+        { "nombre": "Hamburguesa Super de Pollo", "lleva": ["Doble pollo en vez de carne de res", "Doble queso", "Doble tocineta"] }
+      ]
+    },
+    {
+      "key": "perros",
+      "emoji": "🌭",
+      "titulo": "Perros calientes",
+      "base": ["Pan de perro", "Salchicha", "Ensalada dulce de repollo", "Salsas de la casa"],
+      "nota": "La diferencia entre el perro y la perra es la tocineta: la perra ya la trae incluida.",
+      "productos": [
+        { "nombre": "Perro Pequeño", "lleva": [] },
+        { "nombre": "Perro Grande", "lleva": [] },
+        { "nombre": "Perro Pequeño con tocineta", "lleva": ["Tocineta"] },
+        { "nombre": "Perro Grande con tocineta", "lleva": ["Tocineta"] },
+        { "nombre": "Perra Pequeña", "lleva": ["Dos tocinetas"] },
+        { "nombre": "Perra Grande", "lleva": ["Tres tocinetas"] },
+        { "nombre": "Super Perro Sencillo", "lleva": ["Salchicha americana"] },
+        { "nombre": "Super Perro con tocineta", "lleva": ["Salchicha americana", "Tocineta"] },
+        { "nombre": "Super Perro Doble salchicha", "lleva": ["Doble salchicha americana"] }
+      ]
+    },
+    {
+      "key": "salchipapas",
+      "emoji": "🍟",
+      "titulo": "Salchipapas",
+      "base": null,
+      "productos": [
+        { "nombre": "Salchipapa Sencilla", "lleva": ["Papas fritas", "Salchicha"] },
+        { "nombre": "Salchipapa Especial", "lleva": ["Papas fritas", "Salchicha", "Tocineta", "Queso"] },
+        { "nombre": "Papastars", "lleva": ["Chicharrones o pollo, a elegir", "Salchicha", "Ensalada dulce de repollo", "Viruta de papa", "Queso fundido"], "nota": "La especialidad de la casa." }
+      ]
+    },
+    {
+      "key": "combos",
+      "emoji": "🥤",
+      "titulo": "Combos",
+      "base": ["El producto que elijas", "Papas fritas", "Gaseosa"],
+      "nota": "Cada combo lleva exactamente lo mismo que el producto individual, más papas y bebida.",
+      "productos": []
+    },
+    {
+      "key": "adiciones",
+      "emoji": "➕",
+      "titulo": "Adiciones",
+      "base": null,
+      "productos": [
+        { "nombre": "Carne", "lleva": ["Porción extra de carne de res"] },
+        { "nombre": "Pollo", "lleva": ["Porción extra de pollo"] },
+        { "nombre": "Queso", "lleva": ["Porción extra de queso fundido"] },
+        { "nombre": "Queso en vaso", "lleva": ["Salsa de queso fundido, servida aparte"] },
+        { "nombre": "Tocineta", "lleva": ["Porción extra de tocineta"] },
+        { "nombre": "Salchicha pequeña", "lleva": ["Salchicha tradicional"] },
+        { "nombre": "Papas", "lleva": ["Porción extra de papas fritas"] },
+        { "nombre": "Ensalada", "lleva": ["Porción extra de ensalada dulce de repollo"] }
+      ]
+    }
+  ]
+}

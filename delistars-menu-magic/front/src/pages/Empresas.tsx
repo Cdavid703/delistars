@@ -12,9 +12,14 @@ import {
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
   Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
   ShieldCheck, Moon, Trophy, Cake, ChevronDown, LayoutGrid, MessageCircle, Ticket,
+  UtensilsCrossed,
 } from "lucide-react";
+import { FAMILIAS, ENSALADA_DE_LA_CASA, ENSALADA_NOTA, SALSAS_CASA, CEBOLLAS } from "@/data/ingredientes";
 
 const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
+// Se genera con scripts/generar-ficha-ingredientes.py desde el mismo JSON que
+// alimenta la sección de ingredientes de esta página.
+const FICHA_URL = "/ficha-ingredientes-delistars.pdf";
 const WA_EMPRESAS = "573122275039";
 const WA_TEXT = encodeURIComponent("Hola DeliStars 👋 Quiero cotizar un pedido para mi empresa.");
 const CORREO = "andres.arango@delistars.com";
@@ -42,7 +47,16 @@ const DIFERENCIALES = [
   { icon: CreditCard, title: "Todas las formas de pago", desc: "Efectivo, tarjeta débito y crédito, transferencia bancaria, Nequi y demás pagos digitales." },
   { icon: Headset, title: "Atención dedicada", desc: "Un canal directo para empresas: cotizamos y coordinamos contigo cada pedido." },
   { icon: MonitorSmartphone, title: "Plataforma propia", desc: "Pide y sigue tu pedido en delistars.com — sin llamadas, sin intermediarios, sin comisiones de terceros." },
+  { icon: Building2, title: "Cobertura amplia", desc: "Medellín y todo el Área Metropolitana del Valle de Aburrá." },
+  { icon: ShieldCheck, title: "Manipulación de alimentos", desc: "Preparación con buenas prácticas de higiene y empaques que conservan la temperatura." },
 ];
+
+// Texto de "Quiénes somos" — el mismo del brochure descargable.
+const QUIENES_SOMOS =
+  "DeliStars nació en 2015 en Medellín con una idea simple: comida rápida hecha con ingredientes frescos, " +
+  "salsas de la casa y un toque de magia. Hoy operamos dos sedes y una plataforma propia de pedidos y " +
+  "domicilios con seguimiento en tiempo real, atendiendo a Medellín y todo el Área Metropolitana. Ese mismo " +
+  "cuidado por la calidad y la puntualidad lo ponemos al servicio de tu empresa.";
 
 const PAGOS = [
   { icon: Banknote, label: "Efectivo" },
@@ -103,6 +117,7 @@ const TABS = [
   { key: "porque",     label: "Por qué DeliStars" },
   { key: "soluciones", label: "Soluciones" },
   { key: "menu",       label: "Menú" },
+  { key: "ingredientes", label: "Ingredientes" },
   { key: "beneficios", label: "Beneficios" },
   { key: "cobertura",  label: "Cobertura y pagos" },
   { key: "cotizar",    label: "Cotizar" },
@@ -229,6 +244,14 @@ export default function Empresas() {
 
         {/* ── POR QUÉ DELISTARS ── */}
         <section id="porque" className="scroll-mt-[112px] animate-fade-in">
+          {/* Quiénes somos — estaba en el brochure descargable pero no en la
+              página. Ahora los dos cuentan la misma historia. */}
+          <div className="max-w-3xl mx-auto text-center mb-14">
+            <h2 className="font-display text-3xl md:text-4xl text-coal mb-3">Quiénes somos</h2>
+            <div className="w-20 h-1 bg-gradient-hero rounded-full mx-auto mb-6" />
+            <p className="text-muted-foreground leading-relaxed">{QUIENES_SOMOS}</p>
+          </div>
+
           <h2 className="font-display text-3xl md:text-4xl text-center text-coal mb-3">¿Por qué DeliStars para tu empresa?</h2>
           <div className="w-20 h-1 bg-gradient-hero rounded-full mx-auto mb-10" />
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -372,6 +395,83 @@ export default function Empresas() {
             <p className="text-center text-muted-foreground text-sm mt-6">
               Además: adiciones (queso, tocineta, carne, pollo) y salsas de la casa sin costo — guacamole, mayochipotle, BBQ, piña, tártara y más.
             </p>
+        </section>
+
+        {/* ── INGREDIENTES ── */}
+        {/* Qué lleva cada producto. Nace de una confusión real: hay clientes
+            que asumen que las hamburguesas traen lechuga. Solo se muestra lo
+            que la operación tiene confirmado (ver data/ingredientes.ts). */}
+        <section id="ingredientes" className="scroll-mt-[112px] animate-fade-in mt-20">
+          <div className="text-center mb-8">
+            <UtensilsCrossed className="w-8 h-8 text-cherry mx-auto mb-2" />
+            <h2 className="font-display text-3xl md:text-4xl text-coal mb-2">¿Qué lleva cada producto?</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Para que nadie se lleve sorpresas: esto es lo que trae cada uno de nuestros productos.
+            </p>
+          </div>
+
+          {/* La duda más frecuente va de primera: la ensalada NO es lechuga. */}
+          {ENSALADA_DE_LA_CASA && (
+            <div className="max-w-4xl mx-auto mb-6 border-2 border-cherry/30 rounded-2xl bg-cherry/5 p-5 text-center">
+              <p className="font-display text-xl text-coal mb-1">🥗 La ensalada de la casa</p>
+              <p className="text-sm text-coal">{ENSALADA_NOTA}</p>
+            </div>
+          )}
+
+          <div className="max-w-4xl mx-auto space-y-4">
+            {FAMILIAS.filter((f) => f.productos.length > 0 || f.base).map((fam) => (
+              <div key={fam.key} className="border border-border rounded-2xl bg-card p-5">
+                <p className="font-display text-xl text-coal flex items-center gap-2 mb-3">
+                  <span className="text-2xl">{fam.emoji}</span> {fam.titulo}
+                </p>
+
+                {fam.base && (
+                  <div className="bg-cream/50 rounded-xl px-4 py-3 mb-4">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Todos llevan</p>
+                    <p className="text-sm text-coal">{fam.base.join(" · ")}</p>
+                  </div>
+                )}
+                {fam.nota && <p className="text-sm text-muted-foreground mb-3">{fam.nota}</p>}
+
+                {fam.productos.length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {fam.productos.map((p) => (
+                      <div key={p.nombre} className="border border-border rounded-xl px-4 py-3">
+                        <p className="font-display text-sm text-coal leading-tight">{p.nombre}</p>
+                        {p.lleva.length > 0 && (
+                          <p className="text-sm text-muted-foreground mt-1">+ {p.lleva.join(", ")}</p>
+                        )}
+                        {p.nota && <p className="text-xs text-muted-foreground/80 mt-1 italic">{p.nota}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="border border-border rounded-2xl bg-card p-5">
+              <p className="font-display text-xl text-coal mb-3">🧂 Salsas y cebolla</p>
+              <p className="text-sm text-muted-foreground mb-1">
+                <strong className="text-coal">Salsas de la casa, incluidas:</strong> {SALSAS_CASA.join(", ")}.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-coal">Cebolla a elegir:</strong> {CEBOLLAS.join(", ").toLowerCase()}.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center mt-8">
+            <a href={FICHA_URL} download>
+              <Button size="lg" variant="outline" className="border-cherry text-cherry hover:bg-cherry/5">
+                <Download className="w-4 h-4" /> Descargar ficha de ingredientes (PDF)
+              </Button>
+            </a>
+          </div>
+
+          <p className="text-center text-muted-foreground text-sm mt-6 max-w-2xl mx-auto">
+            ¿Tienes una alergia o una restricción alimentaria? Escríbenos antes de pedir y te confirmamos
+            la preparación exacta del producto que te interesa.
+          </p>
         </section>
 
         {/* ── BENEFICIOS ── */}
