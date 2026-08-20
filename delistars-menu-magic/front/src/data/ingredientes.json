@@ -1,8 +1,8 @@
 {
   "ensalada": ["Ensalada dulce de repollo"],
   "ensaladaNota": "Es una ensalada dulce de repollo, no lleva lechuga. Va incluida en las hamburguesas y en los perros.",
-  "salsas": ["Guacamole de la casa", "Mayochipotle", "BBQ", "Piña", "Tártara", "Ajo", "Rosada"],
-  "cebollas": ["Cruda", "Sofrita", "Caramelizada"],
+  "salsas": ["Guacamole", "Mayochipotle", "BBQ", "Piña", "Tártara", "Ajo", "Rosada", "Roja", "Mayonesa", "Mostaza", "Queso"],
+  "cebollas": ["Cruda", "Sofrita"],
   "familias": [
     {
       "key": "hamburguesas",
