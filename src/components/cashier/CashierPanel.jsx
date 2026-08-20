@@ -19,7 +19,8 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X,
-  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
+  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
+  Volume2, VolumeX
 } from 'lucide-react'
 
 const TABS = [
@@ -42,52 +43,135 @@ const isToday = ts => {
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 
 // ─── Audio alarm ─────────────────────────────────────────────────────────────
-function createAlarmPlayer() {
-  let ctx = null; let intervalId = null
-  const getCtx = () => {
-    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)()
-    if (ctx.state === 'suspended') ctx.resume()
-    return ctx
+// La caja reportó que a veces NO suena la entrada de un pedido. La causa es el
+// AudioContext: el navegador lo deja 'suspended' (o 'interrupted' en iOS) cuando
+// la pestaña pasa a segundo plano o se bloquea la pantalla — que es justo lo que
+// hace la caja entre pedido y pedido. La versión anterior llamaba a resume() y
+// programaba los tonos EN LA MISMA LÍNEA; como resume() es asíncrono, el
+// currentTime seguía congelado y los tonos se agendaban en un tiempo ya pasado:
+// no sonaba nada y no daba ningún error.
+//
+// Ahora: se despierta el contexto primero y solo se programan los tonos cuando
+// ya está corriendo. Además se desbloquea con el primer toque del cajero y se
+// vuelve a despertar cada vez que la pestaña regresa al frente.
+let ctx = null
+
+function getCtx() {
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return null
+  if (!ctx) ctx = new AC()
+  return ctx
+}
+
+/** Despierta el contexto y avisa si quedó listo para sonar. */
+async function despertarAudio() {
+  const c = getCtx()
+  if (!c) return false
+  if (c.state !== 'running') {
+    try { await c.resume() } catch (_) { /* sin gesto del usuario todavía */ }
   }
-  const playPattern = () => {
-    const c = getCtx(), now = c.currentTime
-    const seq = [880, 1100, 880, 1100, 1320, 1100, 880]
-    seq.forEach((freq, i) => {
-      const osc = c.createOscillator(), gain = c.createGain()
-      osc.connect(gain); gain.connect(c.destination)
-      osc.type = 'square'; osc.frequency.value = freq
-      const t = now + i * 0.16
-      gain.gain.setValueAtTime(0.6, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14)
-      osc.start(t); osc.stop(t + 0.15)
-    })
+  return c.state === 'running'
+}
+
+/** ¿El navegador nos está dejando sonar ahora mismo? */
+function audioListo() {
+  return !!ctx && ctx.state === 'running'
+}
+
+function tonos(c, seq, { tipo = 'square', vol = 0.6, paso = 0.16, dur = 0.14 } = {}) {
+  const now = c.currentTime
+  seq.forEach((freq, i) => {
+    const osc = c.createOscillator(), gain = c.createGain()
+    osc.connect(gain); gain.connect(c.destination)
+    osc.type = tipo; osc.frequency.value = freq
+    const t = now + i * paso
+    gain.gain.setValueAtTime(vol, t)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur)
+    osc.start(t); osc.stop(t + dur + 0.01)
+  })
+}
+
+function createAlarmPlayer() {
+  let intervalId = null
+  const patron = async () => {
+    if (!(await despertarAudio())) return
+    tonos(ctx, [880, 1100, 880, 1100, 1320, 1100, 880])
   }
   return {
-    play() { playPattern(); intervalId = setInterval(playPattern, 2000) },
+    play() {
+      patron()
+      clearInterval(intervalId)
+      intervalId = setInterval(patron, 2000)
+    },
     stop() { clearInterval(intervalId); intervalId = null },
+    /** Prueba manual desde el panel: suena una vez. */
+    test: patron,
   }
 }
 const alarm = createAlarmPlayer()
 
-function playMessageSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    if (ctx.state === 'suspended') ctx.resume()
-    // Doble ráfaga de 3 tonos — mucho más audible que un bip simple
-    const burst = (offset) => {
-      [880, 1100, 880].forEach((freq, i) => {
-        const osc = ctx.createOscillator(), gain = ctx.createGain()
-        osc.connect(gain); gain.connect(ctx.destination)
-        osc.type = 'sine'; osc.frequency.value = freq
-        const t = ctx.currentTime + offset + i * 0.14
-        gain.gain.setValueAtTime(0.55, t)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
-        osc.start(t); osc.stop(t + 0.20)
-      })
-    }
-    burst(0)
-    burst(0.55)   // repite a los 0.55s para asegurar que se escuche
-  } catch (_) {}
+// El primer toque/clic del cajero desbloquea el audio para toda la sesión, y al
+// volver a la pestaña se vuelve a despertar (la pantalla bloqueada lo suspende).
+if (typeof window !== 'undefined') {
+  const desbloquear = () => { despertarAudio() }
+  ;['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+    window.addEventListener(ev, desbloquear, { passive: true }))
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) despertarAudio()
+  })
+}
+
+// Mismo problema que la alarma: hay que esperar a que el contexto despierte.
+// Además se reusa UN solo contexto — antes creaba uno nuevo por mensaje y los
+// navegadores limitan cuántos se pueden abrir (a partir de cierto punto dejaban
+// de sonar del todo).
+async function playMessageSound() {
+  if (!(await despertarAudio())) return
+  // Doble ráfaga de 3 tonos — mucho más audible que un bip simple
+  tonos(ctx, [880, 1100, 880], { tipo: 'sine', vol: 0.55, paso: 0.14, dur: 0.18 })
+  setTimeout(() => {
+    if (audioListo()) tonos(ctx, [880, 1100, 880], { tipo: 'sine', vol: 0.55, paso: 0.14, dur: 0.18 })
+  }, 550)
+}
+
+// Aviso del estado del audio + prueba manual. Se revisa cada 2 s porque el
+// navegador puede suspender el contexto en cualquier momento (pantalla
+// bloqueada, pestaña al fondo) sin avisarle a la aplicación.
+function SonidoEstado() {
+  const [listo, setListo]   = useState(audioListo)
+  const [probando, setProbando] = useState(false)
+
+  useEffect(() => {
+    const id = setInterval(() => setListo(audioListo()), 2000)
+    return () => clearInterval(id)
+  }, [])
+
+  const activar = async () => {
+    setProbando(true)
+    await despertarAudio()
+    setListo(audioListo())
+    await alarm.test()
+    setTimeout(() => setProbando(false), 1500)
+  }
+
+  if (!listo) {
+    return (
+      <button onClick={activar}
+        className="mx-4 mt-2 w-[calc(100%-2rem)] flex items-center gap-2 rounded-xl px-4 py-3 bg-pepper/10 border-2 border-pepper text-left animate-pulse">
+        <VolumeX size={18} className="text-pepper flex-shrink-0" />
+        <span className="font-body text-sm font-semibold text-pepper">
+          El sonido está bloqueado — no vas a oír los pedidos que entren. Toca aquí para activarlo.
+        </span>
+      </button>
+    )
+  }
+  return (
+    <button onClick={activar} disabled={probando}
+      className="mx-4 mt-2 flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-mint/15 text-mint text-xs font-semibold font-body">
+      <Volume2 size={12} />
+      {probando ? 'Sonando…' : 'Sonido activo · probar'}
+    </button>
+  )
 }
 
 export default function CashierPanel() {
@@ -428,6 +512,10 @@ export default function CashierPanel() {
           </button>
         </div>
       </header>
+
+      {/* Estado del sonido — que la caja NUNCA se entere de que el audio está
+          bloqueado por haber perdido un pedido. */}
+      <SonidoEstado />
 
       {/* Platform status banner */}
       {platformActive !== null && (
