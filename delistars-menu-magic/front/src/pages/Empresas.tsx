@@ -12,7 +12,7 @@ import {
   Download, Send, CheckCircle2, Building2, PartyPopper, Presentation, RefreshCw, ShoppingBag,
   Banknote, Smartphone, Landmark, Globe, MonitorSmartphone, Gift, IdCard,
   ShieldCheck, Moon, Trophy, Cake, ChevronDown, LayoutGrid, MessageCircle, Ticket,
-  UtensilsCrossed,
+  UtensilsCrossed, Handshake,
 } from "lucide-react";
 import { FAMILIAS, ENSALADA_DE_LA_CASA, ENSALADA_NOTA, SALSAS_CASA, CEBOLLAS } from "@/data/ingredientes";
 
@@ -20,6 +20,11 @@ const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
 // Se genera con scripts/generar-ficha-ingredientes.py desde el mismo JSON que
 // alimenta la sección de ingredientes de esta página.
 const FICHA_URL = "/ficha-ingredientes-delistars.pdf";
+// Programa de comisiones: quien traiga una venta al por mayor gana el 5%.
+const PROPUESTA_URL = "/propuesta-comisiones-delistars.pdf";
+const WA_COMISIONES = encodeURIComponent(
+  "Hola DeliStars 👋 Vi el programa de comisiones y quiero trabajar comisionando.",
+);
 const WA_EMPRESAS = "573122275039";
 const WA_TEXT = encodeURIComponent("Hola DeliStars 👋 Quiero cotizar un pedido para mi empresa.");
 const CORREO = "andres.arango@delistars.com";
@@ -120,6 +125,7 @@ const TABS = [
   { key: "ingredientes", label: "Ingredientes" },
   { key: "beneficios", label: "Beneficios" },
   { key: "cobertura",  label: "Cobertura y pagos" },
+  { key: "comisiones", label: "Gana comisión" },
   { key: "cotizar",    label: "Cotizar" },
 ];
 
@@ -619,6 +625,70 @@ export default function Empresas() {
                 </div>
               </div>
             </div>
+        </section>
+
+        {/* ── GANA COMISIÓN ── */}
+        {/* Programa para quien traiga ventas al por mayor: 5% del valor pactado.
+            La propuesta completa va en el PDF descargable. */}
+        <section id="comisiones" className="scroll-mt-[112px] animate-fade-in mt-20">
+          <div className="rounded-3xl bg-coal text-cream p-8 md:p-12 shadow-glow">
+            <div className="grid md:grid-cols-[1.3fr_1fr] gap-10 items-center">
+              <div>
+                <p className="inline-flex items-center gap-2 bg-mustard/20 text-mustard rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide mb-4">
+                  <Handshake className="w-4 h-4" /> Programa de comisiones
+                </p>
+                <h2 className="font-display text-3xl md:text-4xl mb-3">
+                  ¿Quieres ganar comisión trayéndonos clientes?
+                </h2>
+                <p className="text-cream/85 leading-relaxed mb-4">
+                  Si conectas a DeliStars con un colegio, una empresa, un conjunto o el organizador
+                  de un evento que contrate un pedido al por mayor, te llevas el{" "}
+                  <strong className="text-mustard">5% del valor pactado</strong> — y lo vuelves a
+                  cobrar cada vez que ese cliente repita.
+                </p>
+                <ul className="space-y-2 mb-6">
+                  {[
+                    "Desde 20 hamburguesas ya cuenta como venta al por mayor",
+                    "No inviertes nada y no asumes ningún riesgo",
+                    "Nosotros cotizamos, producimos y entregamos",
+                  ].map((t) => (
+                    <li key={t} className="flex items-start gap-2 text-sm text-cream/85">
+                      <CheckCircle2 className="w-4 h-4 text-mustard shrink-0 mt-0.5" /> {t}
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a href={PROPUESTA_URL} download>
+                    <Button size="lg" className="bg-mustard text-coal hover:bg-mustard/85 border-0 w-full sm:w-auto">
+                      <Download className="w-4 h-4" /> Descargar la propuesta
+                    </Button>
+                  </a>
+                  <a href={`https://wa.me/${WA_EMPRESAS}?text=${WA_COMISIONES}`} target="_blank" rel="noreferrer">
+                    <Button size="lg" variant="outline"
+                      className="border-cream/40 text-cream hover:bg-cream/10 w-full sm:w-auto">
+                      <MessageCircle className="w-4 h-4" /> Quiero comisionar
+                    </Button>
+                  </a>
+                </div>
+              </div>
+
+              <div className="bg-cream/10 rounded-2xl p-6 text-center">
+                <p className="text-sm text-cream/70 mb-1">Un pedido de 200 hamburguesas te deja</p>
+                <p className="font-display text-5xl text-mustard mb-1">$240.000</p>
+                <p className="text-xs text-cream/60">y lo vuelves a cobrar cada vez que repita</p>
+                <div className="border-t border-cream/15 mt-5 pt-5 text-left space-y-1.5">
+                  {[["20 hamburguesas", "$24.000"], ["100 hamburguesas", "$120.000"], ["500 hamburguesas", "$600.000"]].map(
+                    ([u, c]) => (
+                      <div key={u} className="flex justify-between text-sm">
+                        <span className="text-cream/70">{u}</span>
+                        <span className="font-semibold text-mustard">{c}</span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* ── COTIZAR ── */}
