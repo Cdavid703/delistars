@@ -13,7 +13,7 @@ import {
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Printer, Hash, DollarSign, MessageSquare, Clock,
-  Send, FileCheck, CheckCircle, Search
+  Send, FileCheck, CheckCircle, Search, Pencil
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -60,6 +60,16 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [editOrderNum,    setEditOrderNum]    = useState(order.orderNumber || '')
   const [savingOrderNum,  setSavingOrderNum]  = useState(false)
   const [quoteErrors,        setQuoteErrors]         = useState([])
+
+  // Método de pago editable desde la caja. Hace falta porque al cliente se le
+  // cierra la sesión por inactividad y se queda sin poder elegir cómo paga;
+  // antes la caja no tenía forma de registrarlo por él.
+  const [editingPay,   setEditingPay]   = useState(false)
+  const [payMethod,    setPayMethod]    = useState(order.payment || '')
+  const [payMixtoEf,   setPayMixtoEf]   = useState(String(order.mixtoEfectivo ?? ''))
+  const [payMixtoTr,   setPayMixtoTr]   = useState(String(order.mixtoTransferencia ?? ''))
+  const [payError,     setPayError]     = useState('')
+  const [savingPay,    setSavingPay]    = useState(false)
 
   // Address editing
   const [editingAddr,    setEditingAddr]    = useState(false)
@@ -189,6 +199,39 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       })
       onClose()
     } finally { setLoading(false) }
+  }
+
+  // Guarda el método de pago que la caja registra por el cliente. Escribe los
+  // MISMOS campos que escribiría el cliente, para que el cuadre, el domiciliario
+  // y el aviso de cambio no noten diferencia.
+  const savePayment = async () => {
+    if (!payMethod) { setPayError('Selecciona cómo va a pagar'); return }
+    const esMixto = payMethod === 'Mixto'
+    if (esMixto && (!payMixtoEf || !payMixtoTr)) {
+      setPayError('Indica cuánto va en efectivo y cuánto en transferencia'); return
+    }
+    setPayError('')
+    setSavingPay(true)
+    try {
+      const llevaEfectivo = payMethod === 'Efectivo' || esMixto
+      await updateDoc(doc(db, 'orders', order.id), {
+        payment:        payMethod,
+        cashOnDelivery: llevaEfectivo,
+        // Si deja de ser Mixto se limpia el desglose: si no, queda un
+        // mixtoEfectivo viejo ensuciando los reportes.
+        mixtoEfectivo:      esMixto ? payMixtoEf : null,
+        mixtoTransferencia: esMixto ? payMixtoTr : null,
+        // Sin efectivo no hay billete ni cambio que anunciar.
+        ...(llevaEfectivo ? {} : { cashBillAmount: null, cashChange: null }),
+        // Queda el rastro de que lo registró la caja, no el cliente.
+        paymentSetBy: user?.email || 'caja',
+        paymentSetAt: serverTimestamp(),
+        updatedAt:    serverTimestamp(),
+      })
+      setEditingPay(false)
+    } catch (_) {
+      setPayError('No se pudo guardar. Revisa la conexión e intenta de nuevo.')
+    } finally { setSavingPay(false) }
   }
 
   const rejectOrder = async () => {
@@ -594,24 +637,102 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             )}
           </Section>
 
-          {/* Payment */}
+          {/* Payment — editable por la caja: al cliente se le cierra la sesión
+              por inactividad y a veces no alcanza a elegir cómo paga. */}
           <Section title="Pago">
-            <Row icon={CreditCard} label="Forma de pago"
-              value={order.payment || 'El cliente lo elegirá tras la cotización'} />
-            {order.payment === 'Mixto' && (
-              <div className="mt-2 bg-smoked/50 rounded-xl p-3 flex flex-col gap-1">
-                {order.mixtoEfectivo > 0 && (
-                  <div className="flex justify-between text-sm font-body">
-                    <span className="text-coal/60">💵 Efectivo:</span>
-                    <span className="font-semibold text-coal">{fmt(order.mixtoEfectivo)}</span>
+            {!editingPay ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <Row icon={CreditCard} label="Forma de pago"
+                      value={order.payment || 'Sin definir — el cliente no lo eligió'} />
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPayMethod(order.payment || '')
+                      setPayMixtoEf(String(order.mixtoEfectivo ?? ''))
+                      setPayMixtoTr(String(order.mixtoTransferencia ?? ''))
+                      setPayError('')
+                      setEditingPay(true)
+                    }}
+                    className="flex-shrink-0 btn-secondary btn-sm">
+                    <Pencil size={13} /> {order.payment ? 'Cambiar' : 'Registrar'}
+                  </button>
+                </div>
+
+                {!order.payment && (
+                  <p className="font-body text-xs text-mustard mt-2 leading-relaxed">
+                    ⚠️ Este pedido no tiene forma de pago. Pregúntale al cliente y regístrala
+                    aquí — si se le cerró la sesión, él no puede hacerlo.
+                  </p>
+                )}
+                {order.paymentSetBy && (
+                  <p className="font-body text-[11px] text-coal/40 mt-1">
+                    Registrado por la caja ({order.paymentSetBy})
+                  </p>
+                )}
+
+                {order.payment === 'Mixto' && (
+                  <div className="mt-2 bg-smoked/50 rounded-xl p-3 flex flex-col gap-1">
+                    {order.mixtoEfectivo > 0 && (
+                      <div className="flex justify-between text-sm font-body">
+                        <span className="text-coal/60">💵 Efectivo:</span>
+                        <span className="font-semibold text-coal">{fmt(order.mixtoEfectivo)}</span>
+                      </div>
+                    )}
+                    {order.mixtoTransferencia > 0 && (
+                      <div className="flex justify-between text-sm font-body">
+                        <span className="text-coal/60">📲 Transferencia:</span>
+                        <span className="font-semibold text-coal">{fmt(order.mixtoTransferencia)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {order.mixtoTransferencia > 0 && (
-                  <div className="flex justify-between text-sm font-body">
-                    <span className="text-coal/60">📲 Transferencia:</span>
-                    <span className="font-semibold text-coal">{fmt(order.mixtoTransferencia)}</span>
-                  </div>
+              </>
+            ) : (
+              <div className="bg-smoked/40 rounded-2xl p-3 flex flex-col gap-3">
+                <select className="input-field" value={payMethod}
+                  onChange={e => setPayMethod(e.target.value)}>
+                  <option value="" disabled>— ¿Cómo va a pagar? —</option>
+                  <option>Efectivo</option>
+                  <option>Transferencia</option>
+                  <option>Nequi</option>
+                  <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
+                </select>
+
+                {payMethod === 'Mixto' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label-field">💵 En efectivo</label>
+                        <input className="input-field" inputMode="numeric" value={payMixtoEf}
+                          onChange={e => setPayMixtoEf(onlyDigits(e.target.value))} placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="label-field">📲 En transferencia</label>
+                        <input className="input-field" inputMode="numeric" value={payMixtoTr}
+                          onChange={e => setPayMixtoTr(onlyDigits(e.target.value))} placeholder="0" />
+                      </div>
+                    </div>
+                    {/* Aviso, no bloqueo: puede haber abonos o vueltas. */}
+                    {order.totalPrice > 0 && (Number(payMixtoEf) || 0) + (Number(payMixtoTr) || 0) !== order.totalPrice && (
+                      <p className="font-body text-xs text-mustard">
+                        Las dos partes suman {fmt((Number(payMixtoEf) || 0) + (Number(payMixtoTr) || 0))} y
+                        el total es {fmt(order.totalPrice)}.
+                      </p>
+                    )}
+                  </>
                 )}
+
+                {payError && <p className="font-body text-xs text-pepper">{payError}</p>}
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditingPay(false); setPayError('') }}
+                    className="btn-secondary btn-sm flex-1">Cancelar</button>
+                  <button onClick={savePayment} disabled={savingPay}
+                    className="btn-primary btn-sm flex-1">
+                    {savingPay ? 'Guardando…' : '✓ Guardar'}
+                  </button>
+                </div>
               </div>
             )}
           </Section>

@@ -108,9 +108,17 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
             {order.notes && (
               <p className="font-body text-xs text-coal/60 italic mb-2">Indicaciones: {order.notes}</p>
             )}
+            {/* Sin forma de pago esto quedaba en blanco y el pedido se
+                despachaba igual: el domiciliario llegaba sin saber cómo cobra. */}
             <div className="flex items-center gap-2">
-              <CreditCard size={14} className="text-cherry" />
-              <p className="font-body text-xs font-semibold text-coal">{order.payment}</p>
+              <CreditCard size={14} className={order.payment ? 'text-cherry' : 'text-mustard'} />
+              {order.payment ? (
+                <p className="font-body text-xs font-semibold text-coal">{order.payment}</p>
+              ) : (
+                <p className="font-body text-xs font-semibold text-mustard">
+                  ⚠️ Sin forma de pago — regístrala en el detalle del pedido antes de despachar
+                </p>
+              )}
             </div>
           </div>
 
