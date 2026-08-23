@@ -32,8 +32,11 @@ const STATUS_STEPS = [
   { key: 'pending',       label: 'Pedido enviado',        emoji: '📋' },
   { key: 'quoted',        label: 'Cotización recibida',   emoji: '💰' },
   { key: 'assigned',      label: 'Domiciliario asignado', emoji: '🛵' },
-  { key: 'accepted',      label: 'Domiciliario aceptó',   emoji: '✅' },
-  { key: 'preparing',     label: 'En preparación',        emoji: '🍳' },
+  // 'accepted' y 'preparing' son UN SOLO paso para el cliente: apenas el
+  // domiciliario toma el pedido, la cocina ya lo está haciendo. Fundirlos evita
+  // dos pasos casi iguales y, sobre todo, que la barra retroceda si la caja
+  // marca preparación antes de que el domiciliario acepte (o al revés).
+  { key: 'preparing',     label: 'Aceptado y en preparación', emoji: '🍳' },
   { key: 'in_transit',    label: 'En camino',             emoji: '🏃' },
   { key: 'arrived',       label: 'Llegó al destino',      emoji: '📍' },
   { key: 'delivered_paid',label: '¡Entregado!',           emoji: '🎉' },
@@ -47,11 +50,19 @@ const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
 const CLOSED_STATUSES    = ['rejected', 'cancelled']
 
 // Pasos positivos para calcular el progreso (excluye estados de cierre)
-const PROGRESS_KEYS = ['pending','quoted','assigned','accepted','preparing','in_transit','arrived','delivered_paid']
+// El cliente ve 'accepted' como 'preparing' (ver STATUS_STEPS). Todo lo que
+// mire el estado del lado del cliente debe pasar por aquí primero.
+const pasoCliente = status => (status === 'accepted' ? 'preparing' : status)
+
+// Etiqueta del paso: en "recoger en sede" no hay domiciliario que acepte nada.
+const labelPaso = (step, order) =>
+  (step.key === 'preparing' && order?.deliveryMode === 'pickup') ? 'En preparación' : step.label
+
+const PROGRESS_KEYS = ['pending','quoted','assigned','preparing','in_transit','arrived','delivered_paid']
 const getProgress = status => {
   if (CLOSED_STATUSES.includes(status)) return 0
   if (DELIVERED_STATUSES.includes(status)) return 100
-  const idx = PROGRESS_KEYS.indexOf(status)
+  const idx = PROGRESS_KEYS.indexOf(pasoCliente(status))
   return idx === -1 ? 0 : Math.round(((idx + 1) / PROGRESS_KEYS.length) * 100)
 }
 
@@ -1041,7 +1052,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
 
 // ─── Order card ───────────────────────────────────────────────────────────────
 function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
-  const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
+  const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = getProgress(order.status)
   const hasQuote = order.totalPrice > 0
@@ -1334,7 +1345,9 @@ function ClientOrderDetail({ order, onClose }) {
   }
 
   useEffect(() => {
-    if (!['accepted', 'in_transit'].includes(order.status)) { setElapsed(null); return }
+    // 'preparing' cuenta igual que 'accepted': para el cliente son el mismo
+    // paso, así que el contador no debe apagarse al pasar de uno al otro.
+    if (!['accepted', 'preparing', 'in_transit'].includes(order.status)) { setElapsed(null); return }
     const ts = order.inTransitAt || order.acceptedAt
     if (!ts?.toDate) return
     const calc = () => setElapsed(Math.floor((Date.now() - ts.toDate().getTime()) / 60000))
@@ -1353,7 +1366,7 @@ function ClientOrderDetail({ order, onClose }) {
   }, [])
   const sedeEta = (order.sedeId && etaStats?.[order.sedeId]) || null
 
-  const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
+  const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
   const progress = getProgress(order.status)
   const isDelivered = DELIVERED_STATUSES.includes(order.status)
@@ -1704,21 +1717,21 @@ function ClientOrderDetail({ order, onClose }) {
           <div className="flex flex-col gap-2">
             {STATUS_STEPS.filter((s, i, arr) => {
               // En recoger en sede no hay domiciliario: ocultamos esos pasos
-              if (order.deliveryMode === 'pickup' && ['assigned','accepted','in_transit','arrived'].includes(s.key)) return false
+              if (order.deliveryMode === 'pickup' && ['assigned','in_transit','arrived'].includes(s.key)) return false
               const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
               if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
               return true
             }).map((s, i) => {
-              const currentIdx = STATUS_STEPS.findIndex(x => x.key === order.status)
+              const currentIdx = STATUS_STEPS.findIndex(x => x.key === pasoCliente(order.status))
               const done = CLOSED_STATUSES.includes(order.status)
-                ? s.key === order.status
+                ? s.key === pasoCliente(order.status)
                 : currentIdx >= 0 && currentIdx >= STATUS_STEPS.findIndex(x => x.key === s.key)
               return (
                 <div key={s.key} className="flex items-center gap-3">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${
                     done ? 'bg-cherry text-cream' : 'bg-smoked text-coal/30'
                   }`}>{done ? '✓' : (i+1)}</div>
-                  <span className={`font-body text-sm ${done ? 'text-coal font-semibold' : 'text-coal/40'}`}>{s.label}</span>
+                  <span className={`font-body text-sm ${done ? 'text-coal font-semibold' : 'text-coal/40'}`}>{labelPaso(s, order)}</span>
                 </div>
               )
             })}
@@ -1728,11 +1741,16 @@ function ClientOrderDetail({ order, onClose }) {
           {['accepted', 'preparing', 'in_transit', 'arrived'].includes(order.status) && (
             <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
               <p className="font-display text-base tracking-wide">
-                {order.status === 'accepted'   ? '✅ Domiciliario aceptó el pedido' :
-                 order.status === 'preparing'  ? '🍳 Tu pedido está siendo preparado' :
-                 order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
-                                                 '📍 Domiciliario llegó'}
+                {order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
+                 order.status === 'arrived'    ? '📍 Domiciliario llegó' :
+                 order.deliveryMode === 'pickup' ? '🍳 Tu pedido está en preparación' :
+                                                 '🍳 Aceptado por el domiciliario y en preparación'}
               </p>
+              {['accepted', 'preparing'].includes(order.status) && (
+                <p className="font-body text-xs text-coal/55 leading-relaxed">
+                  Te avisamos apenas salga hacia tu dirección.
+                </p>
+              )}
               {order.driverName && (
                 <p className="font-body text-sm text-coal/70">
                   Domiciliario: <span className="font-semibold text-coal">{order.driverName}</span>
