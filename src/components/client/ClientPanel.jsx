@@ -58,6 +58,24 @@ const pasoCliente = status => (status === 'accepted' ? 'preparing' : status)
 const labelPaso = (step, order) =>
   (step.key === 'preparing' && order?.deliveryMode === 'pickup') ? 'En preparación' : step.label
 
+// Hora estimada de llegada: cuándo se creó el pedido + la mediana de la sede.
+// Esa mediana la publica el scheduler en config/eta_stats y está medida de
+// createdAt a deliveredAt, así que se suma sobre la creación del pedido.
+//
+// Existe porque el tramo "asignado → en camino" se toma ~31 minutos (la mitad
+// larga del pedido) y el cliente lo pasaba sin ninguna información.
+function calcularEta(order, sedeEta) {
+  const creado = order?.createdAt?.toDate?.()
+  if (!creado || !(sedeEta?.medianMin > 0)) return null
+  const llegada = new Date(creado.getTime() + sedeEta.medianMin * 60000)
+  const faltan  = Math.round((llegada.getTime() - Date.now()) / 60000)
+  // Se da un margen antes de admitir demora: la mediana es una referencia, no
+  // una promesa, y avisar "va tarde" a los 30 segundos genera ansiedad de más.
+  return { llegada, faltan, tarde: faltan < -8 }
+}
+
+const horaCorta = d => format(d, 'h:mm a', { locale: es }).replace('a. m.', 'AM').replace('p. m.', 'PM')
+
 const PROGRESS_KEYS = ['pending','quoted','assigned','preparing','in_transit','arrived','delivered_paid']
 const getProgress = status => {
   if (CLOSED_STATUSES.includes(status)) return 0
@@ -339,6 +357,32 @@ export default function ClientPanel() {
   }
 
   const handleCreateOrder = async (data) => {
+    // Aviso de pedido duplicado. En los últimos 30 días hubo 8 casos del mismo
+    // cliente pidiendo dos veces en menos de 15 minutos, y la caja tuvo que
+    // rechazar uno ("Pedido duplicado", "lo realizo dos veces"). Casi siempre
+    // es alguien que quería AGREGAR algo y armó un pedido nuevo, pagando dos
+    // domicilios. Si ya hay uno en curso, se le ofrece sumarlo al que tiene.
+    const reciente = orders.find(o =>
+      !CLOSED_STATUSES.includes(o.status) &&
+      !DELIVERED_STATUSES.includes(o.status) &&
+      o.createdAt?.toMillis &&
+      (Date.now() - o.createdAt.toMillis()) < 30 * 60 * 1000
+    )
+    if (reciente) {
+      const min = Math.max(1, Math.round((Date.now() - reciente.createdAt.toMillis()) / 60000))
+      const aparte = window.confirm(
+        `Ya tienes un pedido en curso, enviado hace ${min} min.\n\n` +
+        `Si lo que quieres es agregarle algo, pulsa Cancelar y te llevamos a ese ` +
+        `pedido para sumarlo ahí: llega todo junto y pagas un solo domicilio.\n\n` +
+        `¿Prefieres crear un pedido APARTE?`
+      )
+      if (!aparte) {
+        setShowForm(false)
+        openOrderDetail(reciente.id)
+        return
+      }
+    }
+
     const { redeemRewardIds = [], ...orderData } = data
     // Número + pedido en UNA transacción atómica: el pedido SIEMPRE llega a
     // la caja con su consecutivo asignado, sin saltos ni números quemados.
@@ -1365,6 +1409,9 @@ function ClientOrderDetail({ order, onClose }) {
       .catch(() => {})
   }, [])
   const sedeEta = (order.sedeId && etaStats?.[order.sedeId]) || null
+  // Se recalcula en cada render; el intervalo de `elapsed` (30 s) mantiene
+  // fresca la cuenta regresiva mientras el pedido está en curso.
+  const eta = calcularEta(order, sedeEta)
 
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
@@ -1394,10 +1441,15 @@ function ClientOrderDetail({ order, onClose }) {
           <div className="w-full bg-cream/20 rounded-full h-2">
             <div className="bg-cream h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
-          {/* Tiempo típico de entrega (mediana histórica por sede, calculada por el scheduler) */}
-          {sedeEta?.medianMin > 0 && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
+          {/* Hora estimada de llegada, no un promedio abstracto: el cliente
+              quiere saber a qué hora come, no cuánto dura la mediana. */}
+          {eta && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <p className="font-body text-xs text-cream/80 mt-2">
-              🕒 Los pedidos de esta sede suelen llegar en <strong>~{sedeEta.medianMin} min</strong> desde que se envían
+              {eta.tarde
+                ? <>⏳ Se está demorando un poco más de lo normal — escríbenos por el chat si necesitas algo</>
+                : eta.faltan > 0
+                  ? <>🕒 Te llega alrededor de las <strong>{horaCorta(eta.llegada)}</strong> · faltan ~{eta.faltan} min</>
+                  : <>🕒 Debe estar llegando en cualquier momento</>}
             </p>
           )}
         </div>
@@ -1746,6 +1798,20 @@ function ClientOrderDetail({ order, onClose }) {
                  order.deliveryMode === 'pickup' ? '🍳 Tu pedido está en preparación' :
                                                  '🍳 Aceptado por el domiciliario y en preparación'}
               </p>
+              {/* La espera larga vive aquí (mediana de 31 min entre asignado y
+                  en camino), así que es donde más falta hace la hora concreta. */}
+              {eta && !eta.tarde && eta.faltan > 0 && (
+                <div className="bg-white/70 rounded-xl px-3 py-2.5">
+                  <p className="font-body text-xs text-coal/60">Llegada estimada</p>
+                  <p className="font-display text-2xl text-cherry leading-tight">{horaCorta(eta.llegada)}</p>
+                  <p className="font-body text-xs text-coal/55">faltan ~{eta.faltan} min</p>
+                </div>
+              )}
+              {eta?.tarde && (
+                <p className="font-body text-xs text-mustard leading-relaxed">
+                  ⏳ Se está demorando más de lo normal. Si necesitas algo, escríbenos aquí por el chat.
+                </p>
+              )}
               {['accepted', 'preparing'].includes(order.status) && (
                 <p className="font-body text-xs text-coal/55 leading-relaxed">
                   Te avisamos apenas salga hacia tu dirección.
