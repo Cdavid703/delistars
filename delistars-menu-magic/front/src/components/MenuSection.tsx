@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { PRODUCTS } from "@/data/menu";
+
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDialog } from "@/components/ProductDialog";
 import { apiService, type Category, type Product as ApiProduct } from "@/services/api";

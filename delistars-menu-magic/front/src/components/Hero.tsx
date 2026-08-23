@@ -4,7 +4,6 @@ import { Sparkles } from "lucide-react";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/components/ui/carousel";
 import Autoplay from "embla-carousel-autoplay";
 import { useRef, useState, useEffect } from "react";
-import { PRODUCTS } from "@/data/menu";
 import { apiService, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
 
@@ -18,14 +17,12 @@ interface HeroSlide {
 export const Hero = () => {
   const autoplay = useRef(Autoplay({ delay: 3000, stopOnInteraction: false, stopOnMouseEnter: true }));
   
-  // Filtrar de los productos locales iniciales los que no sean hamburguesas de pollo
-  const initialProducts = PRODUCTS.filter(
-    (p) => !(p.name.toLowerCase().includes("hamburguesa") && p.name.toLowerCase().includes("pollo"))
-  );
-
+  // Mientras carga la API se muestra UNA imagen de marca, sin nombre de
+  // producto ni precio. Antes se sembraba con una lista quemada en el código
+  // que anunciaba productos inexistentes ("Perro DeliStar" a $14.900) con
+  // precios que no eran los de la plataforma.
   const [slides, setSlides] = useState<HeroSlide[]>([
-    { image: heroFood, name: "Perro DeliStar", tag: "El favorito de la casa" },
-    ...initialProducts.slice(0, 5).map((p) => ({ image: p.image, name: p.name, tag: p.description, price: `$${p.price.toLocaleString()}` })),
+    { image: heroFood, name: "DeliStars", tag: "Perros, hamburguesas y más" },
   ]);
 
   useEffect(() => {
