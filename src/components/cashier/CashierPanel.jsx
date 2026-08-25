@@ -91,19 +91,31 @@ function tonos(c, seq, { tipo = 'square', vol = 0.6, paso = 0.16, dur = 0.14 } =
   })
 }
 
+// Tope de la alarma: 45 s repitiendo cada 2 s. Sin tope, si nadie cierra el
+// aviso la alarma timbra indefinidamente — y como el pedido ya se atendió desde
+// otra pantalla, la caja escucha un timbre sin nada que atender. Pasado el tope
+// el pedido sigue marcado en la lista, que es donde de verdad se trabaja.
+const ALARMA_MAX_MS = 45000
+
 function createAlarmPlayer() {
   let intervalId = null
+  let topeId     = null
   const patron = async () => {
     if (!(await despertarAudio())) return
     tonos(ctx, [880, 1100, 880, 1100, 1320, 1100, 880])
   }
+  const parar = () => {
+    clearInterval(intervalId); intervalId = null
+    clearTimeout(topeId);      topeId = null
+  }
   return {
     play() {
+      parar()               // nunca dos alarmas encima
       patron()
-      clearInterval(intervalId)
       intervalId = setInterval(patron, 2000)
+      topeId     = setTimeout(parar, ALARMA_MAX_MS)
     },
-    stop() { clearInterval(intervalId); intervalId = null },
+    stop: parar,
     /** Prueba manual desde el panel: suena una vez. */
     test: patron,
   }
@@ -325,6 +337,21 @@ export default function CashierPanel() {
             alarm.play(); setAlarmActive(true); setNewOrderAlert(o)
           }
         })
+      }
+
+      // Si ya no queda NINGÚN pedido por cotizar, la alarma y el aviso se
+      // apagan solos. Antes dependían de que alguien pulsara el aviso: si la
+      // cajera cotizaba el pedido desde la lista, el aviso quedaba abierto y la
+      // alarma seguía timbrando sin nada que atender.
+      if (pendingDocs.length === 0) {
+        alarm.stop()
+        setAlarmActive(false)
+        setNewOrderAlert(null)
+      } else {
+        // El aviso apuntaba a un pedido que ya se cotizó: se pasa al siguiente
+        // que sí esté pendiente, o se cierra.
+        setNewOrderAlert(prev =>
+          prev && !pendingDocs.some(o => o.id === prev.id) ? null : prev)
       }
 
       // Cliente canceló un pedido que estaba en curso → avisar a la caja.
