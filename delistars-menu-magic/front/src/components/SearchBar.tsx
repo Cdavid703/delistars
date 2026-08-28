@@ -57,7 +57,13 @@ export const SearchBar = ({ value, onChange, resultsCount }: SearchBarProps) => 
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="Buscar producto... (presiona / para buscar)"
+          /* El atajo de teclado solo se anuncia donde existe un teclado: en
+             celular ocupaba media línea del placeholder sin significar nada. */
+          placeholder={
+            typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches
+              ? "Buscar producto… (presiona / para buscar)"
+              : "¿Qué se te antoja hoy?"
+          }
           className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 font-medium text-sm sm:text-base"
         />
 
