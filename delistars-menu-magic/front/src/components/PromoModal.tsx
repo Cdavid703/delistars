@@ -22,7 +22,17 @@ const PROMO = {
 const CLAVE = "ds_promo_vista";
 const UN_DIA = 24 * 60 * 60 * 1000;
 
+/** ?promo=1 en la URL la fuerza, aunque ya se haya visto hoy (para revisarla). */
+const forzada = () => {
+  try {
+    return new URLSearchParams(window.location.search).get("promo") === "1";
+  } catch {
+    return false;
+  }
+};
+
 function yaLaVio() {
+  if (forzada()) return false;
   try {
     const t = Number(localStorage.getItem(CLAVE) || 0);
     return Date.now() - t < UN_DIA;
