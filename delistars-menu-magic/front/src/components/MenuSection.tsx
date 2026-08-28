@@ -5,6 +5,7 @@ import { ProductDialog } from "@/components/ProductDialog";
 import { apiService, type Category, type Product as ApiProduct } from "@/services/api";
 import { SearchBar } from "@/components/SearchBar";
 import { useCart } from "@/context/CartContext";
+import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
 
 // Emojis para cada categoría
 const EMOJI_MAP: Record<string, string> = {
@@ -23,6 +24,23 @@ export const MenuSection = () => {
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // El pop-up de promoción pide abrir un producto por nombre. Puede llegar
+  // antes de que carguen los productos, así que el nombre se guarda y se abre
+  // en cuanto estén disponibles.
+  const [pedido, setPedido] = useState<string | null>(null);
+  useEffect(() => {
+    const abrir = (e: Event) => setPedido((e as CustomEvent<string>).detail);
+    window.addEventListener("ds:ver-producto", abrir);
+    return () => window.removeEventListener("ds:ver-producto", abrir);
+  }, []);
+  useEffect(() => {
+    if (!pedido || products.length === 0) return;
+    const buscado = normalizarNombre(pedido);
+    const p = products.find((x) => normalizarNombre(x.nombre_producto) === buscado);
+    if (p) setSelected(p);
+    setPedido(null);
+  }, [pedido, products]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -112,12 +130,12 @@ export const MenuSection = () => {
         categories
           .filter((cat) => cat.id_categoria !== 5 && cat.id_categoria !== 8) // Excluir Adiciones y Salsas
           .map((cat) => {
-            const categoryProducts = products.filter((p) => {
+            const categoryProducts = destacadosPrimero(products.filter((p) => {
               if (p.id_categoria !== cat.id_categoria || p.id_categoria === 5 || p.id_categoria === 8) return false;
               const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
               if (isJugo && Number(sede) !== 2) return false;
               return true;
-            });
+            }));
 
             const emoji = EMOJI_MAP[cat.nombre_categoria] || "🍽️";
             const categoryId = cat.nombre_categoria.toLowerCase().replace(/\s+/g, "-");
