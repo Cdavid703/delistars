@@ -50,8 +50,8 @@ export const PromoModal = () => {
 
   const verProducto = () => {
     cerrar();
-    document.getElementById("hamburguesas")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    // MenuSection escucha esto y abre la ficha del producto.
+    // MenuSection escucha esto: abre la categoría del producto, baja hasta
+    // ella y muestra la ficha. El scroll lo hace allá para no duplicarlo.
     window.dispatchEvent(new CustomEvent("ds:ver-producto", { detail: PROMO.producto }));
   };
 

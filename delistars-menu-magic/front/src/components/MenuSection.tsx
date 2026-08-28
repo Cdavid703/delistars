@@ -6,6 +6,7 @@ import { apiService, type Category, type Product as ApiProduct } from "@/service
 import { SearchBar } from "@/components/SearchBar";
 import { useCart } from "@/context/CartContext";
 import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
+import { ChevronDown } from "lucide-react";
 
 // Emojis para cada categoría
 const EMOJI_MAP: Record<string, string> = {
@@ -27,20 +28,14 @@ export const MenuSection = () => {
 
   // El pop-up de promoción pide abrir un producto por nombre. Puede llegar
   // antes de que carguen los productos, así que el nombre se guarda y se abre
-  // en cuanto estén disponibles.
+  // en cuanto estén disponibles (ver el efecto más abajo, junto a las
+  // categorías plegables, que también hay que abrir).
   const [pedido, setPedido] = useState<string | null>(null);
   useEffect(() => {
     const abrir = (e: Event) => setPedido((e as CustomEvent<string>).detail);
     window.addEventListener("ds:ver-producto", abrir);
     return () => window.removeEventListener("ds:ver-producto", abrir);
   }, []);
-  useEffect(() => {
-    if (!pedido || products.length === 0) return;
-    const buscado = normalizarNombre(pedido);
-    const p = products.find((x) => normalizarNombre(x.nombre_producto) === buscado);
-    if (p) setSelected(p);
-    setPedido(null);
-  }, [pedido, products]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,6 +63,60 @@ export const MenuSection = () => {
     fetchData();
   }, []);
 
+  // ── Categorías plegables ───────────────────────────────────────────────
+  const idDeCategoria = (nombre: string) => nombre.toLowerCase().replace(/\s+/g, "-");
+
+  const categorias = categories.filter((c) => c.id_categoria !== 5 && c.id_categoria !== 8);
+
+  const productosDe = (idCategoria: number) =>
+    destacadosPrimero(
+      products.filter((p) => {
+        if (p.id_categoria !== idCategoria) return false;
+        const isJugo =
+          p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
+        if (isJugo && Number(sede) !== 2) return false;
+        return true;
+      }),
+    );
+
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  // La primera categoría se abre sola en cuanto cargan: así la página no
+  // aparece "vacía" y el producto destacado queda a la vista.
+  useEffect(() => {
+    if (categorias.length === 0 || abiertas.size > 0) return;
+    setAbiertas(new Set([idDeCategoria(categorias[0].nombre_categoria)]));
+  }, [categorias.length]);
+
+  const alternar = (id: string) =>
+    setAbiertas((prev) => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+
+  /** Desde la barra fija: abre la categoría y baja hasta ella. */
+  const irACategoria = (id: string) => {
+    setAbiertas((prev) => new Set(prev).add(id));
+    // El scroll espera al render para que la sección ya esté desplegada.
+    requestAnimationFrame(() =>
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
+
+  // Atiende la petición del pop-up: abre la categoría del producto y su ficha.
+  useEffect(() => {
+    if (!pedido || products.length === 0 || categories.length === 0) return;
+    const buscado = normalizarNombre(pedido);
+    const p = products.find((x) => normalizarNombre(x.nombre_producto) === buscado);
+    if (p) {
+      const cat = categories.find((c) => c.id_categoria === p.id_categoria);
+      if (cat) irACategoria(idDeCategoria(cat.nombre_categoria));
+      setSelected(p);
+    }
+    setPedido(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido, products, categories]);
+
   const filteredProducts = products.filter((p) => {
     // Excluir adiciones (categoría 5) y salsas (categoría 8)
     if (p.id_categoria === 5 || p.id_categoria === 8) return false;
@@ -86,13 +135,35 @@ export const MenuSection = () => {
 
   return (
     <>
-      {/* Sección del Buscador */}
-      <div className="container py-8 -mt-8 mb-4">
-        <SearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          resultsCount={searchQuery.trim() ? filteredProducts.length : undefined}
-        />
+      {/* Barra FIJA: buscador + atajo a cada categoría.
+          Antes el buscador vivía a 1.400 px del tope y no era fijo: llegando a
+          Combos, veinte pantallas abajo, el cliente ya no podía buscar sin
+          subir hasta arriba. Y no había ningún atajo a las categorías fuera
+          del menú de hamburguesa. */}
+      <div className="sticky top-[60px] md:top-[68px] z-30 bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="container px-3 sm:px-6 py-2.5 space-y-2">
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            resultsCount={searchQuery.trim() ? filteredProducts.length : undefined}
+          />
+          {!searchQuery.trim() && categorias.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
+              {categorias.map((cat) => {
+                const id = idDeCategoria(cat.nombre_categoria);
+                return (
+                  <button
+                    key={cat.id_categoria}
+                    onClick={() => irACategoria(id)}
+                    className="shrink-0 min-h-[44px] px-4 rounded-full bg-secondary/70 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-smooth whitespace-nowrap"
+                  >
+                    {EMOJI_MAP[cat.nombre_categoria] || "🍽️"} {cat.nombre_categoria}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -126,44 +197,53 @@ export const MenuSection = () => {
           </div>
         </section>
       ) : (
-        // Si no hay búsqueda, renderizar las categorías normales
-        categories
-          .filter((cat) => cat.id_categoria !== 5 && cat.id_categoria !== 8) // Excluir Adiciones y Salsas
-          .map((cat) => {
-            const categoryProducts = destacadosPrimero(products.filter((p) => {
-              if (p.id_categoria !== cat.id_categoria || p.id_categoria === 5 || p.id_categoria === 8) return false;
-              const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
-              if (isJugo && Number(sede) !== 2) return false;
-              return true;
-            }));
+        // Categorías PLEGABLES. Con todo desplegado el menú medía 39 pantallas
+        // en celular y había que pasar 27 para llegar a las bebidas. Cerradas,
+        // el cliente ve el menú completo de un vistazo y abre lo que le
+        // interesa. La primera viene abierta para que la página no luzca vacía.
+        categorias.map((cat) => {
+          const categoryProducts = productosDe(cat.id_categoria);
+          const emoji = EMOJI_MAP[cat.nombre_categoria] || "🍽️";
+          const categoryId = idDeCategoria(cat.nombre_categoria);
+          const abierta = abiertas.has(categoryId);
 
-            const emoji = EMOJI_MAP[cat.nombre_categoria] || "🍽️";
-            const categoryId = cat.nombre_categoria.toLowerCase().replace(/\s+/g, "-");
+          return (
+            <section key={cat.id_categoria} id={categoryId} className="scroll-mt-[132px] container py-2">
+              <button
+                onClick={() => alternar(categoryId)}
+                aria-expanded={abierta}
+                className="w-full min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border shadow-card hover:border-primary/50 transition-smooth text-left"
+              >
+                <span className="text-3xl md:text-4xl shrink-0">{emoji}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-display text-xl md:text-3xl text-foreground leading-tight">
+                    {cat.nombre_categoria}
+                  </span>
+                  <span className="block text-xs md:text-sm text-muted-foreground">
+                    {categoryProducts.length} {categoryProducts.length === 1 ? "producto" : "productos"}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`w-6 h-6 text-primary shrink-0 transition-transform ${abierta ? "rotate-180" : ""}`}
+                />
+              </button>
 
-            return (
-              <section key={cat.id_categoria} id={categoryId} className="py-16 md:py-20 scroll-mt-20">
-                <div className="container">
-                  <div className="text-center mb-10 space-y-2 animate-fade-in">
-                    <span className="text-5xl inline-block animate-bounce-soft">{emoji}</span>
-                    <h2 className="text-4xl md:text-5xl font-display text-foreground">{cat.nombre_categoria}</h2>
-                    <p className="text-muted-foreground">Los mejores de nuestra categoría</p>
-                    <div className="w-20 h-1 bg-gradient-hero rounded-full mx-auto mt-3" />
-                  </div>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {categoryProducts.length > 0 ? (
-                      categoryProducts.map((p) => (
-                        <ProductCard key={p.id_producto} product={p} onClick={() => setSelected(p)} />
-                      ))
-                    ) : (
-                      <div className="col-span-full text-center py-8 text-muted-foreground">
-                        No hay productos en esta categoría
-                      </div>
-                    )}
-                  </div>
+              {abierta && (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 mb-10 animate-fade-in">
+                  {categoryProducts.length > 0 ? (
+                    categoryProducts.map((p) => (
+                      <ProductCard key={p.id_producto} product={p} onClick={() => setSelected(p)} />
+                    ))
+                  ) : (
+                    <div className="col-span-full text-center py-8 text-muted-foreground">
+                      No hay productos en esta categoría
+                    </div>
+                  )}
                 </div>
-              </section>
-            );
-          })
+              )}
+            </section>
+          );
+        })
       )}
 
       <ProductDialog product={selected} onClose={() => setSelected(null)} />

@@ -115,7 +115,9 @@ export const Navbar = () => {
 
           <button
             onClick={() => setSede(null)}
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-smooth px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-secondary/60 max-w-[120px] sm:max-w-none"
+            /* min-h-[44px]: es el botón que cambia toda la experiencia y medía
+               28 px de alto, por debajo del mínimo tocable recomendado. */
+            className="flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-medium text-muted-foreground hover:text-primary transition-smooth px-3 rounded-full bg-secondary/60 max-w-[120px] sm:max-w-none"
           >
             <MapPin className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">{sedeName}</span>
           </button>
@@ -124,7 +126,7 @@ export const Navbar = () => {
             onClick={() => setOpen(true)}
             variant="default"
             size="sm"
-            className={`relative bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth px-3 sm:px-4 ${popped ? "animate-pop" : ""}`}
+            className={`relative min-h-[44px] bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth px-3 sm:px-4 ${popped ? "animate-pop" : ""}`}
           >
             <ShoppingCart className="w-4 h-4" />
             <span className="hidden sm:inline ml-2">Carrito</span>
@@ -177,7 +179,7 @@ export const Navbar = () => {
             </div>
           )}
 
-          <button onClick={() => setMobile(!mobile)} className="lg:hidden p-1.5 text-foreground" aria-label="Menú">
+          <button onClick={() => setMobile(!mobile)} className="lg:hidden flex items-center justify-center w-11 h-11 text-foreground" aria-label="Menú">
             {mobile ? <X /> : <Menu />}
           </button>
         </div>
