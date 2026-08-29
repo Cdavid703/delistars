@@ -4,6 +4,7 @@ import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 import { buildShiftEmployees, type ShiftEmployee } from '@/lib/team'
+import { generarRotacion, esCajero, type Caja } from '@/lib/turnos'
 
 const DAYS = [
   { key: 'lun', label: 'Lunes' }, { key: 'mar', label: 'Martes' }, { key: 'mie', label: 'Miércoles' },
@@ -16,8 +17,10 @@ const SEDE_OPTS = [
   { value: 'santa_teresita', label: 'Santa Teresita', color: 'bg-mint/15 text-mint border-mint/30' },
   { value: 'descanso',       label: 'Descanso',       color: 'bg-gray-100 text-coal/40 border-gray-200' },
 ]
+// Servicios generales (aseo): no rota entre sedes, solo turno de la mañana.
+// El valor sigue siendo 'trabajo' para no romper los cuadros ya guardados.
 const SERVICIOS_OPTS = [
-  { value: 'trabajo',  label: 'Trabajo',  color: 'bg-mustard/20 text-mustard border-mustard/30' },
+  { value: 'trabajo',  label: 'Mañana',   color: 'bg-mustard/20 text-mustard border-mustard/30' },
   { value: 'descanso', label: 'Descanso', color: 'bg-gray-100 text-coal/40 border-gray-200' },
 ]
 
@@ -52,32 +55,16 @@ const getCell = (value: string, type: string) => {
   return opts.find((o) => o.value === value) || { label: '—', color: 'bg-gray-50 text-coal/20 border-gray-100' }
 }
 
-function generarRotacion(empleados: ShiftEmployee[]): Schedule {
-  const regulares = empleados.filter((e) => e.type === 'regular')
-  const deisy = empleados.find((e) => e.type === 'servicios')
-  const keys = DAYS.map((d) => d.key)
-  const shuffled = [...keys].sort(() => Math.random() - 0.5)
-  const sched: Schedule = {}
-  regulares.forEach((emp, idx) => {
-    const rest = shuffled[idx]; let tog = idx; sched[emp.id] = {}
-    keys.forEach((day) => {
-      if (day === rest) sched[emp.id][day] = 'descanso'
-      else { sched[emp.id][day] = tog % 2 === 0 ? 'santa_lucia' : 'santa_teresita'; tog++ }
-    })
-  })
-  if (deisy) {
-    const ri = Math.floor(Math.random() * 7); sched[deisy.id] = {}
-    keys.forEach((day, i) => { sched[deisy.id][day] = i === ri ? 'descanso' : 'trabajo' })
-  }
-  return sched
-}
-
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function Turnos() {
   const { user } = useAuthStore()
   const [weekOffset, setWeekOffset] = useState(0)
   const [schedule, setSchedule] = useState<Schedule>({})
   const [saved, setSaved] = useState<Schedule>({})
+  // Quién hace caja en cada sede cada día: caja[dia][sede] = empId.
+  const [caja, setCaja] = useState<Caja>({})
+  const [savedCaja, setSavedCaja] = useState<Caja>({})
+  const [avisos, setAvisos] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [picker, setPicker] = useState<Picker>(null)
@@ -109,21 +96,53 @@ export default function Turnos() {
 
   const monday = getMonday(weekOffset)
   const wid = weekId(monday)
-  const dirty = JSON.stringify(schedule) !== JSON.stringify(saved)
+  const dirty = JSON.stringify(schedule) !== JSON.stringify(saved) ||
+                JSON.stringify(caja) !== JSON.stringify(savedCaja)
 
   useEffect(() => {
     setLoading(true); setPicker(null)
     getDoc(doc(db, 'turnos', wid))
       .then((snap) => {
         const data = (snap.exists() ? (snap.data().schedule ?? {}) : {}) as Schedule
+        const cajas = (snap.exists() ? (snap.data().caja ?? {}) : {}) as Caja
         setSchedule(data); setSaved(data)
+        setCaja(cajas); setSavedCaja(cajas)
       })
-      .catch(() => { setSchedule({}); setSaved({}) })
+      .catch(() => { setSchedule({}); setSaved({}); setCaja({}); setSavedCaja({}) })
       .finally(() => setLoading(false))
   }, [wid])
 
   const setCelda = (empId: string, dayKey: string, value: string) => {
     setSchedule((prev) => ({ ...prev, [empId]: { ...(prev[empId] ?? {}), [dayKey]: value } }))
+    // Si estaba en caja y lo cambian de sede (o a descanso), esa caja queda
+    // huérfana: se limpia para que nadie quede marcado donde ya no está.
+    setCaja((prev) => {
+      const delDia = { ...(prev[dayKey] ?? {}) }
+      let cambio = false
+      Object.keys(delDia).forEach((sede) => {
+        if (delDia[sede] === empId && sede !== value) { delete delDia[sede]; cambio = true }
+      })
+      return cambio ? { ...prev, [dayKey]: delDia } : prev
+    })
+    setPicker(null)
+  }
+
+  // Marcar/desmarcar caja. Solo una persona por sede y día.
+  const toggleCaja = (empId: string, dayKey: string, sede: string) => {
+    setCaja((prev) => {
+      const delDia = { ...(prev[dayKey] ?? {}) }
+      if (delDia[sede] === empId) delete delDia[sede]
+      else delDia[sede] = empId
+      return { ...prev, [dayKey]: delDia }
+    })
+    setPicker(null)
+  }
+
+  const rotar = () => {
+    const sugerido = generarRotacion(empleados)
+    setSchedule(sugerido.schedule)
+    setCaja(sugerido.caja)
+    setAvisos(sugerido.avisos)
     setPicker(null)
   }
 
@@ -133,11 +152,13 @@ export default function Turnos() {
       await setDoc(doc(db, 'turnos', wid), {
         weekStart: monday.toISOString().slice(0, 10),
         schedule,
+        caja,
         updatedAt: serverTimestamp(),
         updatedBy: user?.email,
         published: true,
       })
       setSaved({ ...schedule })
+      setSavedCaja({ ...caja })
       toast.success('Turno publicado — los empleados ya pueden verlo')
     } catch {
       toast.error('Error al publicar el turno')
@@ -154,7 +175,7 @@ export default function Turnos() {
           <p className="text-muted-fg mt-1">Horario semanal del equipo</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setSchedule(generarRotacion(empleados)); setPicker(null) }}
+          <button onClick={rotar}
             className="text-sm font-semibold px-4 py-2 rounded-lg bg-tangelo/10 hover:bg-tangelo/20 text-tangelo border border-tangelo/30">
             Sugerir rotación
           </button>
@@ -178,6 +199,14 @@ export default function Turnos() {
           )
         })}
       </div>
+
+      {avisos.length > 0 && (
+        <div className="bg-mustard/15 border border-mustard/40 rounded-lg p-3 mb-4 max-w-3xl">
+          {avisos.map((aviso) => (
+            <p key={aviso} className="text-xs text-coal">⚠️ {aviso}</p>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-muted-fg">Cargando turno…</p>
@@ -207,12 +236,21 @@ export default function Turnos() {
                     const cell = getCell(value, emp.type)
                     const opts = emp.type === 'servicios' ? SERVICIOS_OPTS : SEDE_OPTS
                     const open = picker?.empId === emp.id && picker?.dayKey === day.key
+                    const enCaja = caja[day.key]?.[value] === emp.id
+                    // La caja solo tiene sentido en una sede: no en descanso ni en aseo.
+                    const puedeCaja = esCajero(emp.id) && emp.type !== 'servicios' &&
+                                      !!value && value !== 'descanso'
                     return (
                       <td key={day.key} className="px-1.5 py-2 text-center relative">
                         <button
                           onClick={(e) => { e.stopPropagation(); setPicker(open ? null : { empId: emp.id, dayKey: day.key }) }}
                           className={`w-full px-1.5 py-2 rounded-lg border text-[11px] font-semibold ${cell.color} ${open ? 'ring-2 ring-cherry/40' : ''}`}>
                           {cell.label || '—'}
+                          {enCaja && (
+                            <span className="block mt-0.5 text-[9px] font-bold uppercase tracking-wider text-coal/60">
+                              Caja
+                            </span>
+                          )}
                         </button>
                         {open && (
                           <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 flex flex-col gap-1 min-w-[130px]">
@@ -222,6 +260,14 @@ export default function Turnos() {
                                 {opt.label}
                               </button>
                             ))}
+                            {puedeCaja && (
+                              <button onClick={(e) => { e.stopPropagation(); toggleCaja(emp.id, day.key, value) }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border text-left ${
+                                  enCaja ? 'bg-coal text-white border-coal' : 'bg-white text-coal/70 border-gray-200'
+                                }`}>
+                                {enCaja ? '✓ En caja' : 'Poner en caja'}
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
