@@ -28,8 +28,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && userEmail() in [
         'thebesta4321@gmail.com',
-        'cdavid.jaramillo@gmail.com',
-        'josemigeul44@gmail.com'
+        'cdavid.jaramillo@gmail.com'
       ];
     }
     // Cajeros "por defecto" hardcodeados (espejo de DEFAULT_CASHIERS en
@@ -39,9 +38,7 @@ service cloud.firestore {
       return isSignedIn() && (
         userEmail() in [
           'lluis02martinez@gmail.com',
-          'josemanuellondonorivillas@gmail.com',
           'vvillegasmazo@gmail.com',
-          'yencytp@gmail.com',
           'cdavid.jaramillo@gmail.com',
           'thebesta4321@gmail.com'
         ]
@@ -51,8 +48,7 @@ service cloud.firestore {
     function isDriver() {
       return isSignedIn() && (
         userEmail() in [
-          'cdavid.jaramillo@gmail.com',
-          'josemanuellondonorivillas@gmail.com'
+          'cdavid.jaramillo@gmail.com'
         ]
         || exists(/databases/$(database)/documents/roles_drivers/$(userEmail()))
       );
@@ -69,8 +65,8 @@ service cloud.firestore {
 
     // Admins de confianza total — pueden modificar fidelización (corregir
     // progreso, otorgar/anular premios manualmente desde /admin/fidelizacion).
-    // Subconjunto de isAdmin(): a propósito NO incluye a todos los admins
-    // (josemigeul44@gmail.com puede ver fidelización pero no modificarla).
+    // Subconjunto de isAdmin(): puede haber admins que vean fidelización pero
+    // no la modifiquen (hoy la lista coincide con isAdmin()).
     // Espejo de SUPER_ADMIN_EMAILS en delistars-menu-magic/admin/src/lib/team.ts.
     function isSuperAdmin() {
       return isSignedIn() && userEmail() in [
@@ -81,7 +77,7 @@ service cloud.firestore {
     // Quién puede escribir el progreso/premios de fidelización: cajero y
     // domiciliario para el flujo automático (entregar pedido, devolver premio
     // al rechazar), y solo los super admins para el manual. isAdmin() a secas
-    // NO basta — así josemigeul44 queda fuera aunque sea admin.
+    // NO basta — un admin que no sea super admin queda fuera a propósito.
     function isLoyaltyManager() { return isCashier() || isDriver() || isSuperAdmin(); }
 
     // ── Pedidos ────────────────────────────────────────────────────────────
@@ -147,7 +143,7 @@ service cloud.firestore {
     // El campo "loyalty" (progreso de fidelización por sede) NUNCA lo escribe
     // el cliente — solo isLoyaltyManager() (cajero/domiciliario en el flujo
     // automático, solo super admin en el manual). isAdmin() a secas NO basta:
-    // josemigeul44 puede leer fidelización pero no escribirla.
+    // un admin que no sea super admin puede leer fidelización pero no escribirla.
     // El cliente sí puede crear/actualizar el resto de su perfil (nombre, tel,
     // direcciones) con normalidad.
     match /customers/{uid} {

@@ -14,13 +14,17 @@ import Logo from '../components/common/Logo'
 // La lista REAL se filtra contra las bajas del panel de administración
 // (colección roles_disabled): al eliminar un empleado en el admin, desaparece
 // solo de aquí — antes había que editar este archivo y volver a desplegar.
+// `doc` es la cédula (o PPT): identifica a la persona aunque aún no tengamos su
+// correo. Sin correo sale en el cuadro pero no puede iniciar sesión; cuando
+// llegue hay que escribirlo aquí y en los espejos (admin/src/lib/team.ts).
 const EMPLOYEES_BASE = [
-  { id: 'joseluis',   email: 'lluis02martinez@gmail.com',           name: 'José Luis Martínez Villegas',   short: 'José Luis',   type: 'regular'   },
-  { id: 'sara',       email: 'monsalvesara1124@gmail.com',          name: 'Sara Castaño Monsalve',          short: 'Sara',        type: 'regular'   },
-  { id: 'valentina',  email: 'vvillegasmazo@gmail.com',             name: 'Valentina Villegas Mazo',        short: 'Valentina',   type: 'regular'   },
-  { id: 'josemanuel', email: 'josemanuellondonorivillas@gmail.com', name: 'Jose Manuel Londoño Rivillas',   short: 'Jose Manuel', type: 'regular'   },
-  { id: 'gendelson',  email: 'tikdash17@gmail.com',                 name: 'Gendelson González Blanco',      short: 'Gendelson',   type: 'regular'   },
-  { id: 'deisy',      email: 'deisyhenao670@gmail.com',             name: 'Deisy Henao Grisales',           short: 'Deisy',       type: 'servicios' },
+  { id: 'joseluis',  email: 'lluis02martinez@gmail.com',  doc: '1003231096',    name: 'José Luis Martínez Villegas', short: 'José Luis', type: 'regular'   },
+  { id: 'sara',      email: 'monsalvesara1124@gmail.com', doc: '1015072348',    name: 'Sara Castaño Monsalve',       short: 'Sara',      type: 'regular'   },
+  { id: 'valentina', email: 'vvillegasmazo@gmail.com',    doc: '1041631088',    name: 'Valentina Villegas Mazo',     short: 'Valentina', type: 'regular'   },
+  { id: 'gendelson', email: 'tikdash17@gmail.com',        doc: 'PPT6005363877', name: 'Gendelson González Blanco',   short: 'Gendelson', type: 'regular'   },
+  { id: 'shirly',    email: '',                           doc: '1003316676',    name: 'Shirly Elena Rico Daza',      short: 'Shirly',    type: 'regular'   },
+  { id: 'melissa',   email: '',                           doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular'   },
+  { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
 ]
 
 const DAYS = [
@@ -376,7 +380,11 @@ export default function TurnosPage() {
   // Plantilla base + altas del admin, menos las bajas.
   const empleados = (() => {
     const baja = new Set(disabledEmails)
-    const out = EMPLOYEES_BASE.filter(e => !baja.has(e.email.toLowerCase()))
+    // Si a alguien de la plantilla sin correo le crean su usuario desde el admin
+    // con la misma cédula, manda el del panel (si no, saldría dos veces).
+    const docsDelPanel = new Set(extraEmployees.map(e => (e.doc || '').trim()).filter(Boolean))
+    const out = EMPLOYEES_BASE.filter(e =>
+      e.email ? !baja.has(e.email.toLowerCase()) : !(e.doc && docsDelPanel.has(e.doc)))
     const ya = new Set(out.map(e => e.email.toLowerCase()))
     extraEmployees.forEach(e => {
       const email = (e.email || '').toLowerCase()
@@ -398,7 +406,11 @@ export default function TurnosPage() {
   const wid     = weekId(monday)
   const userEmail = user?.email?.toLowerCase() ?? ''
   const isAdmin   = ADMIN_EMAILS.map(e => e.toLowerCase()).includes(userEmail)
-  const myEmployee = empleados.find(e => e.email.toLowerCase() === userEmail) ?? null
+  // Sin correo no hay a quién parear: los empleados aún sin correo (email '')
+  // no deben calzar con una sesión sin email.
+  const myEmployee = userEmail
+    ? empleados.find(e => e.email.toLowerCase() === userEmail) ?? null
+    : null
   const isEmployee = myEmployee !== null
   const dirty      = JSON.stringify(schedule) !== JSON.stringify(saved)
 

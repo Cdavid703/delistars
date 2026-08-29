@@ -87,17 +87,17 @@ export default function Turnos() {
 
   useEffect(() => {
     let bajas: string[] = []
-    let extra: { email: string; name?: string; shortName?: string; shiftType?: string }[] = []
+    let extra: { email: string; doc?: string; name?: string; shortName?: string; shiftType?: string }[] = []
     const recalc = () => setEmpleados(buildShiftEmployees(extra, bajas))
 
     const unsubDis = onSnapshot(collection(db, 'roles_disabled'), (snap) => {
       bajas = snap.docs.map((d) => d.id.toLowerCase()); recalc()
     }, () => {})
     // Un empleado puede estar en cajeros y/o domiciliarios: se juntan ambos.
-    const acc: Record<string, { email: string; name?: string; shortName?: string; shiftType?: string }> = {}
+    const acc: Record<string, { email: string; doc?: string; name?: string; shortName?: string; shiftType?: string }> = {}
     const watch = (col: string) => onSnapshot(collection(db, col), (snap) => {
       snap.docs.forEach((d) => {
-        const v = d.data() as { name?: string; shortName?: string; shiftType?: string }
+        const v = d.data() as { doc?: string; name?: string; shortName?: string; shiftType?: string }
         acc[d.id.toLowerCase()] = { ...acc[d.id.toLowerCase()], ...v, email: d.id.toLowerCase() }
       })
       extra = Object.values(acc); recalc()

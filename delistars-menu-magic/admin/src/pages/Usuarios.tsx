@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { toast } from 'sonner'
-import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS } from '@/lib/team'
+import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS, EMPLOYEES } from '@/lib/team'
 import { Lock, Pencil, RotateCcw, Save, Trash2, X } from 'lucide-react'
 
 type Role = 'cashier' | 'driver'
@@ -11,10 +11,18 @@ type Role = 'cashier' | 'driver'
 // Los roles "fijos" vienen hardcodeados en el código; los dinámicos viven en
 // Firestore (roles_cashiers / roles_drivers). Para retirar del sistema a un
 // empleado fijo se usa una baja (roles_disabled), que anula todos sus roles.
+//
+// La lista también incluye a la plantilla del cuadro de turnos (EMPLOYEES),
+// aunque no tenga rol de cajero ni domiciliario: son empleados igual y aquí se
+// ven con su documento. Los que todavía no tienen correo salen en modo lectura
+// — todas las acciones (roles, baja, edición) usan el correo como ID.
 interface Employee {
+  key: string       // email, o 'doc:<cédula>' mientras no tenga correo
   email: string
+  doc?: string
   name: string
   phone?: string
+  shiftType?: 'regular' | 'servicios'
   isCashier: boolean
   cashierFixed: boolean
   isDriver: boolean
@@ -28,6 +36,7 @@ export default function Usuarios() {
 
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
+  const [newDoc, setNewDoc] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [newCashier, setNewCashier] = useState(true)
   const [newDriver, setNewDriver] = useState(false)
@@ -48,15 +57,23 @@ export default function Usuarios() {
         getDocs(collection(db, 'roles_drivers')),
         getDocs(collection(db, 'roles_disabled')),
       ])
-      const dynCashiers = new Map(cs.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string }]))
-      const dynDrivers = new Map(ds.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string }]))
+      const dynCashiers = new Map(cs.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string; doc?: string }]))
+      const dynDrivers = new Map(ds.docs.map((d) => [d.id.toLowerCase(), d.data() as { name?: string; phone?: string; doc?: string }]))
       const disabled = new Set(dis.docs.map((d) => d.id.toLowerCase()))
+
+      // Plantilla del cuadro de turnos, indexada por correo (los que ya lo tienen).
+      const plantilla = new Map(
+        EMPLOYEES.filter((e) => e.email).map((e) => [e.email.toLowerCase(), e]),
+      )
 
       const emails = new Set([
         ...Object.keys(DEFAULT_CASHIERS).map((e) => e.toLowerCase()),
         ...Object.keys(DEFAULT_DRIVERS).map((e) => e.toLowerCase()),
         ...dynCashiers.keys(),
         ...dynDrivers.keys(),
+        // Personal de turnos sin rol operativo (p. ej. servicios generales):
+        // también son empleados y deben verse aquí.
+        ...plantilla.keys(),
         // Los dados de baja también se listan (marcados como tal) para poder
         // reactivarlos; si no, quien ya no tiene ningún rol desaparecía del
         // panel y quedaba fuera de alcance.
@@ -70,10 +87,14 @@ export default function Usuarios() {
         const dynDriver = dynDrivers.get(email)
         const fixedCashierName = Object.entries(DEFAULT_CASHIERS).find(([k]) => k.toLowerCase() === email)?.[1]
         const fixedDriverName = Object.entries(DEFAULT_DRIVERS).find(([k]) => k.toLowerCase() === email)?.[1]
+        const enTurnos = plantilla.get(email)
         return {
+          key: email,
           email,
-          name: dynCashier?.name || dynDriver?.name || fixedCashierName || fixedDriverName || email,
+          doc: dynCashier?.doc || dynDriver?.doc || enTurnos?.doc,
+          name: dynCashier?.name || dynDriver?.name || fixedCashierName || fixedDriverName || enTurnos?.name || email,
           phone: dynCashier?.phone || dynDriver?.phone || undefined,
+          shiftType: enTurnos?.type,
           isCashier: cashierFixed || dynCashiers.has(email),
           cashierFixed,
           isDriver: driverFixed || dynDrivers.has(email),
@@ -81,6 +102,26 @@ export default function Usuarios() {
           disabled: disabled.has(email),
         }
       })
+
+      // Empleados de la plantilla que aún no tienen correo: se listan por
+      // documento, en modo lectura (sin correo no hay roles ni baja posible).
+      // Si ya les crearon usuario aquí con la misma cédula, ese registro manda.
+      const docsRegistrados = new Set(list.map((e) => e.doc).filter(Boolean))
+      EMPLOYEES.filter((e) => !e.email && !(e.doc && docsRegistrados.has(e.doc))).forEach((e) => {
+        list.push({
+          key: `doc:${e.doc || e.id}`,
+          email: '',
+          doc: e.doc,
+          name: e.name,
+          shiftType: e.type,
+          isCashier: false,
+          cashierFixed: false,
+          isDriver: false,
+          driverFixed: false,
+          disabled: false,
+        })
+      })
+
       // Activos primero, luego por nombre.
       list.sort((a, b) => (Number(a.disabled) - Number(b.disabled)) || a.name.localeCompare(b.name))
       setEmployees(list)
@@ -101,6 +142,9 @@ export default function Usuarios() {
       const nombre = newName.trim() || email
       const payload = {
         email, name: nombre, phone: newPhone.trim() || null, addedAt: serverTimestamp(),
+        // Cédula: si coincide con la de alguien de la plantilla que aún no tenía
+        // correo, el cuadro de turnos usa este registro y no lo duplica.
+        doc: newDoc.trim() || null,
         // Datos del cuadro de turnos: si shiftType queda vacío, el empleado no
         // aparece en turnos (p. ej. personal que no entra en la rotación).
         shiftType: newShiftType || null,
@@ -111,7 +155,7 @@ export default function Usuarios() {
       // Por si estaba dado de baja, reactivarlo al re-agregarlo.
       await deleteDoc(doc(db, 'roles_disabled', email)).catch(() => {})
       toast.success(`${email} agregado`)
-      setNewEmail(''); setNewName(''); setNewPhone(''); setNewCashier(true); setNewDriver(false)
+      setNewEmail(''); setNewName(''); setNewDoc(''); setNewPhone(''); setNewCashier(true); setNewDriver(false)
       setNewShiftType(''); setNewShort('')
       load()
     } catch {
@@ -137,7 +181,7 @@ export default function Usuarios() {
   }
 
   const startEdit = (emp: Employee) => {
-    setEditing(emp.email)
+    setEditing(emp.key)
     setEditEmail(emp.email)
     setEditName(emp.name)
     setEditPhone(emp.phone || '')
@@ -216,7 +260,10 @@ export default function Usuarios() {
     <div>
       <div className="mb-6">
         <h1 className="text-4xl font-display font-bold text-coal">Empleados</h1>
-        <p className="text-muted-fg mt-1">Cajeros y domiciliarios del sistema de domicilios — un empleado puede tener ambos roles</p>
+        <p className="text-muted-fg mt-1">
+          Todo el equipo: cajeros, domiciliarios y personal del cuadro de turnos —
+          un empleado puede tener ambos roles
+        </p>
       </div>
 
       {/* Admins — solo lectura, fijos en el código por seguridad */}
@@ -241,6 +288,7 @@ export default function Usuarios() {
         <div className="flex flex-col gap-2">
           <input className="border rounded px-3 py-2 text-sm" placeholder="Correo de Google *" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
           <input className="border rounded px-3 py-2 text-sm" placeholder="Nombre" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <input className="border rounded px-3 py-2 text-sm" placeholder="Documento / cédula (opcional)" value={newDoc} onChange={(e) => setNewDoc(e.target.value)} />
           <input className="border rounded px-3 py-2 text-sm" placeholder="Teléfono (opcional)" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} />
           <div className="flex items-center gap-4 text-sm">
             <label className="flex items-center gap-1.5">
@@ -299,9 +347,9 @@ export default function Usuarios() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {employees.map((emp) => (
-                <tr key={emp.email} className={`hover:bg-gray-50 ${emp.disabled ? 'opacity-50' : ''}`}>
+                <tr key={emp.key} className={`hover:bg-gray-50 ${emp.disabled ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
-                    {editing === emp.email ? (
+                    {editing === emp.key ? (
                       <div className="flex flex-col gap-1">
                         <input
                           className="border rounded px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-400"
@@ -320,30 +368,44 @@ export default function Usuarios() {
                           {emp.name}
                           {emp.disabled && <span className="ml-2 text-[10px] uppercase tracking-wider text-red-600 font-bold">dado de baja</span>}
                         </p>
-                        <p className="text-xs text-muted-fg">{emp.email}{emp.phone ? ` · ${emp.phone}` : ''}</p>
+                        <p className="text-xs text-muted-fg">
+                          {emp.email || <span className="italic">sin correo aún</span>}
+                          {emp.phone ? ` · ${emp.phone}` : ''}
+                        </p>
+                        <p className="text-[11px] text-muted-fg mt-0.5">
+                          {emp.doc && <span title="Documento">CC {emp.doc}</span>}
+                          {emp.doc && emp.shiftType ? ' · ' : ''}
+                          {emp.shiftType && (
+                            <span className="text-coal/50">
+                              Turnos: {emp.shiftType === 'servicios' ? 'servicios generales' : 'regular'}
+                            </span>
+                          )}
+                        </p>
                       </>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {emp.disabled ? <span className="text-gray-300">—</span> : emp.cashierFixed ? (
+                    {!emp.email ? <span className="text-gray-300" title="Necesita correo para tener roles">—</span> : emp.disabled ? <span className="text-gray-300">—</span> : emp.cashierFixed ? (
                       <span title="Fijo en el código" className="text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
                     ) : (
                       <input type="checkbox" checked={emp.isCashier} onChange={() => toggleRole(emp, 'cashier')} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {emp.disabled ? <span className="text-gray-300">—</span> : emp.driverFixed ? (
+                    {!emp.email ? <span className="text-gray-300" title="Necesita correo para tener roles">—</span> : emp.disabled ? <span className="text-gray-300">—</span> : emp.driverFixed ? (
                       <span title="Fijo en el código" className="text-[10px] text-coal/30 uppercase tracking-wider">fijo</span>
                     ) : (
                       <input type="checkbox" checked={emp.isDriver} onChange={() => toggleRole(emp, 'driver')} />
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {emp.disabled ? (
+                    {!emp.email ? (
+                      <span className="text-[11px] text-muted-fg">Solo turnos — falta su correo</span>
+                    ) : emp.disabled ? (
                       <button onClick={() => reactivate(emp)} className="inline-flex items-center gap-1 text-xs font-semibold text-mint border border-mint/30 rounded px-3 py-1.5 hover:bg-mint/10">
                         <RotateCcw className="w-3.5 h-3.5" /> Reactivar
                       </button>
-                    ) : editing === emp.email ? (
+                    ) : editing === emp.key ? (
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => saveEdit(emp)} className="text-mint hover:bg-mint/10 rounded p-1.5"><Save className="w-4 h-4" /></button>
                         <button onClick={() => setEditing(null)} className="text-coal/50 hover:bg-gray-100 rounded p-1.5"><X className="w-4 h-4" /></button>

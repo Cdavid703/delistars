@@ -5,7 +5,6 @@
 export const ADMIN_EMAILS = [
   'thebesta4321@gmail.com',   // Andrés Elías Arango Monsalve
   'cdavid.jaramillo@gmail.com', // Carlos David Jaramillo Gallego (dev)
-  'josemigeul44@gmail.com',
 ]
 
 // Mantener compatibilidad con código que use ADMIN_EMAIL singular
@@ -13,30 +12,24 @@ export const ADMIN_EMAIL = ADMIN_EMAILS[0]
 
 export const DEFAULT_CASHIERS = [
   'lluis02martinez@gmail.com',
-  'josemanuellondonorivillas@gmail.com',
   'vvillegasmazo@gmail.com',
-  'yencytp@gmail.com',
   'cdavid.jaramillo@gmail.com',
   'thebesta4321@gmail.com',
 ]
 
 export const DEFAULT_CASHIER_NAMES = {
   'lluis02martinez@gmail.com':          'Jose Luis Martinez Villegas',
-  'josemanuellondonorivillas@gmail.com': 'Jose Manuel Londoño Rivillas',
   'vvillegasmazo@gmail.com':            'Valentina Villegas Mazo',
-  'yencytp@gmail.com':                  'Yency Torres Parra',
   'cdavid.jaramillo@gmail.com':         'Carlos David Jaramillo',
   'thebesta4321@gmail.com':             'Andrés Elías Arango Monsalve',
 }
 
 export const DEFAULT_DRIVERS = [
   'cdavid.jaramillo@gmail.com',
-  'josemanuellondonorivillas@gmail.com',
 ]
 
 export const DEFAULT_DRIVER_NAMES = {
   'cdavid.jaramillo@gmail.com':          'Carlos David Jaramillo',
-  'josemanuellondonorivillas@gmail.com': 'José Manuel Londoño',
 }
 
 
