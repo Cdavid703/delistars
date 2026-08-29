@@ -18,6 +18,8 @@ import Logo from '../components/common/Logo'
 // `doc` es la cédula (o PPT): identifica a la persona aunque aún no tengamos su
 // correo. Sin correo sale en el cuadro pero no puede iniciar sesión; cuando
 // llegue hay que escribirlo aquí y en los espejos (admin/src/lib/team.ts).
+// type 'refuerzo': Andrés entra 2 días a Santa Teresita para abrir descansos;
+// no rota ni descansa (ver reglas en src/utils/turnos.js).
 const EMPLOYEES_BASE = [
   { id: 'joseluis',  email: 'lluis02martinez@gmail.com',  doc: '1003231096',    name: 'José Luis Martínez Villegas', short: 'José Luis', type: 'regular'   },
   { id: 'sara',      email: 'monsalvesara1124@gmail.com', doc: '1015072348',    name: 'Sara Castaño Monsalve',       short: 'Sara',      type: 'regular'   },
@@ -25,6 +27,7 @@ const EMPLOYEES_BASE = [
   { id: 'gendelson', email: 'tikdash17@gmail.com',        doc: 'PPT6005363877', name: 'Gendelson González Blanco',   short: 'Gendelson', type: 'regular'   },
   { id: 'shirly',    email: '',                           doc: '1003316676',    name: 'Shirly Elena Rico Daza',      short: 'Shirly',    type: 'regular'   },
   { id: 'melissa',   email: '',                           doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular'   },
+  { id: 'andres',    email: 'thebesta4321@gmail.com',     doc: '',              name: 'Andrés Elías Arango Monsalve', short: 'Andrés',   type: 'refuerzo'  },
   { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
 ]
 
@@ -116,6 +119,9 @@ function ScheduleTable({ empleados, schedule, caja = {}, monday, isAdmin, myEmpl
                         <p className={`font-body font-semibold text-sm leading-tight ${isMe ? 'text-cherry' : 'text-coal'}`}>{emp.short}</p>
                         {emp.type === 'servicios' && (
                           <p className="font-body text-[9px] font-bold uppercase tracking-wider text-coal/35 mt-0.5">Serv. generales</p>
+                        )}
+                        {emp.type === 'refuerzo' && (
+                          <p className="font-body text-[9px] font-bold uppercase tracking-wider text-coal/35 mt-0.5">Refuerzo</p>
                         )}
                       </div>
                     </div>

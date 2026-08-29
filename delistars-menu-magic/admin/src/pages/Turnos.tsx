@@ -230,6 +230,7 @@ export default function Turnos() {
                   <td className="px-4 py-2.5">
                     <p className="font-semibold text-sm text-coal leading-tight">{emp.short}</p>
                     {emp.type === 'servicios' && <p className="text-[9px] font-bold uppercase tracking-wider text-coal/35">Serv. generales</p>}
+                    {emp.type === 'refuerzo' && <p className="text-[9px] font-bold uppercase tracking-wider text-coal/35">Refuerzo</p>}
                   </td>
                   {DAYS.map((day) => {
                     const value = schedule[emp.id]?.[day.key] ?? ''

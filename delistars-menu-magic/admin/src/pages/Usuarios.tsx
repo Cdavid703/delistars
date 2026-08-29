@@ -22,7 +22,7 @@ interface Employee {
   doc?: string
   name: string
   phone?: string
-  shiftType?: 'regular' | 'servicios'
+  shiftType?: 'regular' | 'servicios' | 'refuerzo'
   isCashier: boolean
   cashierFixed: boolean
   isDriver: boolean
@@ -377,7 +377,9 @@ export default function Usuarios() {
                           {emp.doc && emp.shiftType ? ' · ' : ''}
                           {emp.shiftType && (
                             <span className="text-coal/50">
-                              Turnos: {emp.shiftType === 'servicios' ? 'servicios generales' : 'regular'}
+                              Turnos: {emp.shiftType === 'servicios' ? 'servicios generales'
+                                : emp.shiftType === 'refuerzo' ? 'refuerzo (2 días en Teresita)'
+                                : 'regular'}
                             </span>
                           )}
                         </p>

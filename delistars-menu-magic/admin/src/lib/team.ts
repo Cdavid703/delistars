@@ -32,13 +32,15 @@ export const isSuperAdminEmail = (email?: string | null): boolean =>
 // sesión ni tener rol de cajero/domiciliario. Cuando llegue el correo hay que
 // escribirlo AQUÍ (y en los dos espejos), no agregarlo desde el panel: si no,
 // quedaría duplicado en el cuadro.
+// type 'refuerzo': Andrés entra 2 días a Santa Teresita para abrir descansos;
+// no rota ni descansa (ver reglas en admin/src/lib/turnos.ts).
 export interface ShiftEmployee {
   id: string
   email: string
   doc?: string
   name: string
   short: string
-  type: 'regular' | 'servicios'
+  type: 'regular' | 'servicios' | 'refuerzo'
 }
 
 export const EMPLOYEES: ShiftEmployee[] = [
@@ -48,6 +50,7 @@ export const EMPLOYEES: ShiftEmployee[] = [
   { id: 'gendelson', email: 'tikdash17@gmail.com',        doc: 'PPT6005363877', name: 'Gendelson González Blanco',   short: 'Gendelson', type: 'regular' },
   { id: 'shirly',    email: '',                           doc: '1003316676',    name: 'Shirly Elena Rico Daza',      short: 'Shirly',    type: 'regular' },
   { id: 'melissa',   email: '',                           doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular' },
+  { id: 'andres',    email: 'thebesta4321@gmail.com',     doc: '',              name: 'Andrés Elías Arango Monsalve', short: 'Andrés',   type: 'refuerzo' },
   { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
 ]
 
