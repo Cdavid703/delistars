@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   collection, onSnapshot, query, where,
-  serverTimestamp, doc, setDoc, getDocs
+  serverTimestamp, doc, setDoc, updateDoc, getDocs
 } from 'firebase/firestore'
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -304,6 +304,24 @@ export default function CashierPanel() {
     if (!orderId) return
     markChatSeen(orderId)
     setSelectedId(orderId)
+  }
+
+  // Marcar/desmarcar un pedido como facturado (ingresado al sistema de
+  // facturación). Aplica a cualquier pedido, sin importar el medio de pago.
+  // Cualquier cajero puede prenderlo y apagarlo; se guarda quién y cuándo.
+  const toggleFacturado = async (order) => {
+    if (!order?.id) return
+    const nuevo = !order.facturado
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        facturado:     nuevo,
+        facturadoBy:   nuevo ? user.email : null,
+        facturadoAt:   nuevo ? serverTimestamp() : null,
+        updatedAt:     serverTimestamp(),
+      })
+    } catch (e) {
+      console.error('No se pudo actualizar facturado', e)
+    }
   }
 
   // Mapa de mensajes no leídos por pedido (mensajes del cliente que el cajero no ha visto)
@@ -747,6 +765,7 @@ export default function CashierPanel() {
             order={order}
             unreadCount={unreadChatMap[order.id] || 0}
             onClick={() => tab === 'assign' ? openAssign(order) : openOrderDetail(order.id)}
+            onToggleFacturado={() => toggleFacturado(order)}
           />
         ))}
       </main>

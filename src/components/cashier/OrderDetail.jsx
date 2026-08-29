@@ -13,7 +13,7 @@ import {
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Printer, Hash, DollarSign, MessageSquare, Clock,
-  Send, FileCheck, CheckCircle, Search, Pencil
+  Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -70,6 +70,22 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [payMixtoTr,   setPayMixtoTr]   = useState(String(order.mixtoTransferencia ?? ''))
   const [payError,     setPayError]     = useState('')
   const [savingPay,    setSavingPay]    = useState(false)
+
+  // Facturado: ingresado al sistema de facturación. Aplica a todo pedido, sin
+  // importar el medio de pago; cualquier cajero lo prende o apaga.
+  const toggleFacturado = async () => {
+    const nuevo = !order.facturado
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        facturado:   nuevo,
+        facturadoBy: nuevo ? (user?.email || 'caja') : null,
+        facturadoAt: nuevo ? serverTimestamp() : null,
+        updatedAt:   serverTimestamp(),
+      })
+    } catch (e) {
+      console.error('No se pudo actualizar facturado', e)
+    }
+  }
 
   // Address editing
   const [editingAddr,    setEditingAddr]    = useState(false)
@@ -477,6 +493,33 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
         <div className="p-5 flex flex-col gap-4">
           <p className="font-body text-xs text-coal/40">{time}</p>
+
+          {/* Facturación — botón grande y claro, en todos los pedidos */}
+          <button
+            onClick={toggleFacturado}
+            className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-3 transition-colors ${
+              order.facturado
+                ? 'bg-mint/15 border-mint hover:bg-mint/25'
+                : 'bg-white border-coal/15 hover:border-coal/30 hover:bg-smoked/40'
+            }`}
+          >
+            <span className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 flex-shrink-0 transition-colors ${
+              order.facturado ? 'bg-mint border-mint text-cream' : 'bg-white border-coal/25 text-transparent'
+            }`}>
+              <Check size={18} strokeWidth={3.5} />
+            </span>
+            <Receipt size={18} className={order.facturado ? 'text-mint' : 'text-coal/40'} />
+            <div className="text-left">
+              <p className={`font-body text-sm font-bold ${order.facturado ? 'text-mint' : 'text-coal/70'}`}>
+                {order.facturado ? 'Facturado' : 'Sin facturar'}
+              </p>
+              <p className="font-body text-[11px] text-coal/40">
+                {order.facturado
+                  ? `Ingresado al sistema${order.facturadoBy ? ` · ${order.facturadoBy.split('@')[0]}` : ''}`
+                  : 'Toca para marcarlo como ingresado al sistema de facturación'}
+              </p>
+            </div>
+          </button>
 
           {/* Premio de fidelización canjeado — bloque MUY visible para que la caja
               no se confunda al ver productos que no aparecen en el precio. */}

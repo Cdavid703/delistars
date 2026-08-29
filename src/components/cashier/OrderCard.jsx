@@ -1,7 +1,38 @@
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import StatusBadge from '../common/StatusBadge'
-import { MapPin, Phone, Clock, User, Bike, MessageCircle } from 'lucide-react'
+import { MapPin, Phone, Clock, User, Bike, MessageCircle, Check, Receipt } from 'lucide-react'
+
+// Chulito de "facturado" (ingresado al sistema de facturación). Se puede prender
+// y apagar sin abrir el pedido; por eso corta la propagación del clic de la
+// tarjeta. Aparece en todos los pedidos, sin importar el medio de pago.
+function FacturadoToggle({ facturado, onToggle }) {
+  const stop = (e) => { e.stopPropagation(); onToggle?.() }
+  return (
+    <span
+      role="checkbox"
+      aria-checked={facturado}
+      tabIndex={0}
+      onClick={stop}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') stop(e) }}
+      className={`mt-2 flex items-center gap-2 rounded-xl border px-3 py-2 cursor-pointer transition-colors select-none ${
+        facturado
+          ? 'bg-mint/15 border-mint/40 hover:bg-mint/25'
+          : 'bg-white border-coal/15 hover:border-coal/30 hover:bg-smoked/40'
+      }`}
+    >
+      <span className={`flex items-center justify-center w-5 h-5 rounded-md border-2 flex-shrink-0 transition-colors ${
+        facturado ? 'bg-mint border-mint text-cream' : 'bg-white border-coal/25 text-transparent'
+      }`}>
+        <Check size={13} strokeWidth={3.5} />
+      </span>
+      <Receipt size={13} className={facturado ? 'text-mint' : 'text-coal/35'} />
+      <span className={`font-body text-xs font-bold ${facturado ? 'text-mint' : 'text-coal/45'}`}>
+        {facturado ? 'Facturado' : 'Sin facturar'}
+      </span>
+    </span>
+  )
+}
 
 const BORDER_COLOR = {
   pending:        'border-mustard',
@@ -16,7 +47,7 @@ const BORDER_COLOR = {
   completed:      'border-smoked',
 }
 
-export default function OrderCard({ order, onClick, compact = false, unreadCount = 0 }) {
+export default function OrderCard({ order, onClick, compact = false, unreadCount = 0, onToggleFacturado }) {
   const border = unreadCount > 0 ? 'border-cherry' : (BORDER_COLOR[order.status] || 'border-smoked')
   const time   = order.createdAt?.toDate ? format(order.createdAt.toDate(), 'HH:mm', { locale: es }) : '--'
 
@@ -114,6 +145,11 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         <div className="mt-2 bg-mustard/10 border border-mustard/30 rounded-lg px-3 py-1.5">
           <p className="text-xs font-semibold text-mustard font-body">💰 Pendiente cuadre de caja</p>
         </div>
+      )}
+
+      {/* Chulito de facturación — en todos los pedidos */}
+      {onToggleFacturado && (
+        <FacturadoToggle facturado={!!order.facturado} onToggle={onToggleFacturado} />
       )}
     </button>
   )
