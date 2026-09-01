@@ -8,7 +8,8 @@ export const STAFF_EMAILS = [
   'monsalvesara1124@gmail.com',          // Sara Castaño
   'tikdash17@gmail.com',                 // Gendelson González
   'deisyhenao670@gmail.com',             // Deisy Henao
-  // Shirly Rico y Melissa Varelas entran aquí cuando tengamos su correo.
+  'shirlyrico01@gmail.com',              // Shirly Rico
+  'varelasmazo3@gmail.com',              // Melissa Varelas
 ]
 
 export const isStaff = (email?: string | null): boolean =>

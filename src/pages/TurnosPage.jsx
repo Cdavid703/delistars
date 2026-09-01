@@ -25,8 +25,8 @@ const EMPLOYEES_BASE = [
   { id: 'sara',      email: 'monsalvesara1124@gmail.com', doc: '1015072348',    name: 'Sara Castaño Monsalve',       short: 'Sara',      type: 'regular'   },
   { id: 'valentina', email: 'vvillegasmazo@gmail.com',    doc: '1041631088',    name: 'Valentina Villegas Mazo',     short: 'Valentina', type: 'regular'   },
   { id: 'gendelson', email: 'tikdash17@gmail.com',        doc: 'PPT6005363877', name: 'Gendelson González Blanco',   short: 'Gendelson', type: 'regular'   },
-  { id: 'shirly',    email: '',                           doc: '1003316676',    name: 'Shirly Elena Rico Daza',      short: 'Shirly',    type: 'regular'   },
-  { id: 'melissa',   email: '',                           doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular'   },
+  { id: 'shirly',    email: 'shirlyrico01@gmail.com',     doc: '1003316676',    name: 'Shirly Elena Rico Daza',      short: 'Shirly',    type: 'regular'   },
+  { id: 'melissa',   email: 'varelasmazo3@gmail.com',     doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular'   },
   { id: 'andres',    email: 'thebesta4321@gmail.com',     doc: '',              name: 'Andrés Elías Arango Monsalve', short: 'Andrés',   type: 'refuerzo'  },
   { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
 ]
