@@ -20,6 +20,7 @@ import {
 import { SEDES } from '../../services/roles'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { cashAmount } from '../../utils/payments'
+import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -608,6 +609,15 @@ function DriverOrderDetail({ order, onClose }) {
   const [addrSearched,   setAddrSearched]   = useState(false)
   const [savingAddr,     setSavingAddr]     = useState(false)
 
+  // Pin exacto pegado desde WhatsApp
+  const [pinOpen,   setPinOpen]   = useState(false)
+  const [pinDraft,  setPinDraft]  = useState('')
+  const [pinSaving, setPinSaving] = useState(false)
+  // Coordenadas resueltas desde el texto cuando el pedido no trae pin propio.
+  // Se guarda junto a la dirección que las produjo: así, si la dirección
+  // cambia, el resultado viejo deja de valer sin tener que limpiarlo a mano.
+  const [autoGeo, setAutoGeo] = useState({ addr: null, coords: null })
+
   const update = async (data) => {
     setLoading(true)
     try {
@@ -689,20 +699,65 @@ function DriverOrderDetail({ order, onClose }) {
     registerLoyaltyDelivery(order) // best-effort, no bloquea la entrega
   }
 
-  // Si el cliente geolocalizó su dirección al pedir, navegamos DIRECTO a esas
-  // coordenadas (pin exacto). Si no, caemos al texto como antes.
+  // ── A dónde navegamos ──────────────────────────────────────────────────────
+  // Por orden de confianza:
+  //   1. Pin exacto del pedido (lo puso el cliente al pedir, o lo pegó el
+  //      domiciliario desde la ubicación de WhatsApp).
+  //   2. Coordenadas resueltas del texto con el geocodificador.
+  //   3. El texto crudo. Último recurso: el buscador de Waze no entiende la
+  //      nomenclatura de Medellín ("Calle 44 B #70 A-23") y suele fallar.
   const hasCoords  = order.addrLat != null && order.addrLng != null
+
+  // Sin pin propio: se resuelve el texto una vez para no mandarle a Waze una
+  // dirección que no va a entender.
+  useEffect(() => {
+    if (hasCoords || !localAddr.trim()) return
+    let vivo = true
+    geocodeAddress(localAddr).then(c => { if (vivo) setAutoGeo({ addr: localAddr, coords: c }) })
+    return () => { vivo = false }
+  }, [hasCoords, localAddr])
+
+  const autoCoords = (!hasCoords && autoGeo.addr === localAddr) ? autoGeo.coords : null
+  const navCoords  = hasCoords ? { lat: order.addrLat, lng: order.addrLng } : autoCoords
+  const precision  = hasCoords ? 'pin' : (autoCoords ? 'aprox' : 'texto')
   const navAddress = encodeURIComponent(localAddr + ', Medellín, Colombia')
+
   const openMaps = () => window.open(
-    hasCoords
-      ? `https://www.google.com/maps/dir/?api=1&destination=${order.addrLat},${order.addrLng}`
+    navCoords
+      ? `https://www.google.com/maps/dir/?api=1&destination=${navCoords.lat},${navCoords.lng}`
       : `https://www.google.com/maps/dir/?api=1&destination=${navAddress}`,
     '_blank')
   const openWaze = () => window.open(
-    hasCoords
-      ? `https://waze.com/ul?ll=${order.addrLat},${order.addrLng}&navigate=yes`
+    navCoords
+      ? `https://waze.com/ul?ll=${navCoords.lat},${navCoords.lng}&navigate=yes`
       : `https://waze.com/ul?q=${encodeURIComponent(localAddr)}&navigate=yes`,
     '_blank')
+
+  // ── Pedir la ubicación por WhatsApp ────────────────────────────────────────
+  const waPedirUbicacion = linkPedirUbicacion({
+    telefono:     order.phone,
+    cliente:      order.name || order.clientName,
+    domiciliario: user?.displayName || order.driverName,
+    pedido:       order.orderNumber,
+  })
+
+  // ── Guardar el pin que el cliente mandó por WhatsApp ───────────────────────
+  const pinCheck = pinDraft.trim() ? revisarUbicacion(pinDraft) : null
+  const savePin = async () => {
+    if (!pinCheck?.coords) return
+    setPinSaving(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        addrLat:    pinCheck.coords.lat,
+        addrLng:    pinCheck.coords.lng,
+        addrPinBy:  user?.email || 'domiciliario',
+        addrPinAt:  serverTimestamp(),
+        updatedAt:  serverTimestamp(),
+      })
+      setPinOpen(false)
+      setPinDraft('')
+    } finally { setPinSaving(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
@@ -763,10 +818,70 @@ function DriverOrderDetail({ order, onClose }) {
                     {order.reference && <p className="font-body text-xs text-coal/50">Ref: {order.reference}</p>}
                   </div>
                 </div>
+                {/* Qué tan confiable es a dónde va a navegar */}
+                <div className={`mb-2 rounded-xl border px-3 py-2 flex items-start gap-2 ${
+                  precision === 'pin'   ? 'bg-mint/10 border-mint/30'
+                  : precision === 'aprox' ? 'bg-mustard/10 border-mustard/30'
+                  : 'bg-cherry/10 border-cherry/30'}`}>
+                  <Target size={14} className={`flex-shrink-0 mt-0.5 ${
+                    precision === 'pin' ? 'text-mint' : precision === 'aprox' ? 'text-mustard' : 'text-cherry'}`} />
+                  <p className="font-body text-[11px] leading-relaxed text-coal/70">
+                    {precision === 'pin'   && <><b className="text-mint">Ubicación exacta.</b> Maps y Waze te llevan al punto exacto.</>}
+                    {precision === 'aprox' && <><b className="text-[#8a5a00]">Ubicación aproximada.</b> Te deja cerca, sobre la vía. Si no das con la casa, pídele la ubicación al cliente.</>}
+                    {precision === 'texto' && <><b className="text-cherry">Sin ubicación en el mapa.</b> Waze va a buscar por el texto y casi siempre falla. Pídele la ubicación al cliente.</>}
+                  </p>
+                </div>
+
                 <div className="flex gap-2 mb-2">
                   <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><Navigation size={14} />Maps</button>
                   <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><ExternalLink size={14} />Waze</button>
                 </div>
+
+                {/* Pedir la ubicación por WhatsApp + pegarla */}
+                {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
+                  <div className="flex flex-col gap-2 mb-2">
+                    {order.phone && (
+                      <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#25D366] text-white font-body text-sm font-bold hover:brightness-95 transition-all">
+                        📍 Pedirle la ubicación por WhatsApp
+                      </a>
+                    )}
+                    {!pinOpen ? (
+                      <button onClick={() => setPinOpen(true)}
+                        className="text-xs font-body font-semibold text-mint underline underline-offset-2 self-start">
+                        📌 Ya me mandó la ubicación — pegarla aquí
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-2 bg-smoked/50 rounded-xl p-3">
+                        <p className="font-body text-[11px] text-coal/60 leading-relaxed">
+                          Mantén presionado el mensaje de ubicación que te mandó, <b>Copiar</b>, y pégalo aquí.
+                        </p>
+                        <textarea
+                          className="input-field text-sm min-h-[68px] resize-y"
+                          value={pinDraft}
+                          onChange={e => setPinDraft(e.target.value)}
+                          placeholder="Pega aquí el enlace de la ubicación…"
+                          autoComplete="off"
+                        />
+                        {pinCheck && (
+                          <p className={`font-body text-[11px] leading-relaxed ${
+                            pinCheck.nivel === 'ok' ? 'text-mint'
+                            : pinCheck.nivel === 'aviso' ? 'text-[#8a5a00]' : 'text-cherry'}`}>
+                            {pinCheck.nivel === 'ok' ? '✓ ' : '⚠️ '}{pinCheck.mensaje}
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <button onClick={savePin} disabled={!pinCheck?.coords || pinSaving}
+                            className="btn-primary btn-sm flex-1 disabled:opacity-40">
+                            {pinSaving ? 'Guardando…' : 'Guardar ubicación'}
+                          </button>
+                          <button onClick={() => { setPinOpen(false); setPinDraft('') }}
+                            className="btn-secondary btn-sm px-3">Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
                   <button
                     onClick={() => { setAddrDraft(localAddr); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
