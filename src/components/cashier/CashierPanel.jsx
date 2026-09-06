@@ -9,6 +9,7 @@ import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
 import { cashAmount } from '../../utils/payments'
 import { sonar, sonarMensaje, crearAlarma, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
+import BotonPushEquipo from '../common/BotonPushEquipo'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
@@ -429,7 +430,10 @@ export default function CashierPanel() {
 
       {/* Estado del sonido — que la caja NUNCA se entere de que el audio está
           bloqueado por haber perdido un pedido. */}
-      <BotonSilencio className="mx-4 mt-2" />
+      <div className="mx-4 mt-2 flex items-center gap-2 flex-wrap">
+        <BotonSilencio />
+        <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
+      </div>
 
       {/* Platform status banner */}
       {platformActive !== null && (

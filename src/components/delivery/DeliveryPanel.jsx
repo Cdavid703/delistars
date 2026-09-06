@@ -23,6 +23,7 @@ import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
+import BotonPushEquipo from '../common/BotonPushEquipo'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -314,6 +315,7 @@ export default function DeliveryPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <BotonPushEquipo email={user?.email} rol="driver" sedeId={sede?.id} />
           <BotonSilencio />
           <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
             className={`btn-icon flex items-center gap-1 px-2 relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>

@@ -279,6 +279,77 @@ async function sendPushForOrder(orderId, o) {
   console.log(`[scheduler] push enviado (${o.status}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
 }
 
+// ─── Notificaciones push al EQUIPO (caja y domiciliarios) ────────────────────
+// El sonido de los paneles solo existe con la aplicación abierta. Esto es lo
+// otro: que le llegue al celular con la app cerrada — a la caja cuando entra un
+// pedido, y al domiciliario cuando le asignan uno estando en la calle.
+//
+// Los tokens los guarda cada quien desde su panel en staff_push/{correo}.
+function notifyStaffFor(o) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  switch (o.status) {
+    case 'pending':
+      return { rol: 'cashier', title: '🔔 Entró un pedido', body: `Pedido${n} sin cotizar. Ábrelo para cotizarlo.` }
+    case 'assigned':
+      return { rol: 'driver', soloA: o.driverEmail, title: '🛵 Te asignaron un domicilio', body: `Pedido${n}${o.barrio ? ' — ' + o.barrio : ''}. Ábrelo para aceptarlo.` }
+    case 'accepted':
+      return { rol: 'cashier', title: '✅ El domiciliario aceptó', body: `${o.driverName || 'El domiciliario'} tomó el pedido${n}.` }
+    case 'rejected':
+      return { rol: 'cashier', title: '⚠️ Rechazaron un pedido', body: `El pedido${n} fue rechazado. Hay que reasignarlo.` }
+    case 'cancelled':
+      return { rol: 'cashier', title: '🚫 El cliente canceló', body: `Canceló el pedido${n}.` }
+    case 'delivered_paid':
+    case 'delivered_cash':
+    case 'pending_cuadre':
+      return { rol: 'cashier', title: '📦 Pedido entregado', body: `El pedido${n} quedó entregado.` }
+    default:
+      return null
+  }
+}
+
+// Documentos de staff_push que deben recibir este aviso. Se filtra por sede
+// para no despertar a la caja de Santa Lucía por un pedido de Teresita; quien
+// trabaja en "ambas sedes" (o no tiene sede guardada) recibe todo.
+async function destinatariosEquipo(msg, sedeId) {
+  if (msg.soloA) {
+    const d = await adminDb.doc(`staff_push/${String(msg.soloA).toLowerCase()}`).get()
+    return d.exists ? [d] : []
+  }
+  const snap = await adminDb.collection('staff_push').where('rol', '==', msg.rol).get()
+  return snap.docs.filter((d) => {
+    const s = d.data().sedeId
+    return !sedeId || !s || s === 'all' || s === sedeId
+  })
+}
+
+async function sendPushForStaff(orderId, o) {
+  const msg = notifyStaffFor(o)
+  if (!msg) return
+  const docs = await destinatariosEquipo(msg, o.sedeId)
+  if (!docs.length) return
+
+  for (const d of docs) {
+    const tokens = d.data().fcmTokens || []
+    if (!tokens.length) continue
+    const res = await getMessaging().sendEachForMulticast({
+      tokens,
+      notification: { title: msg.title, body: msg.body },
+      data:    { orderId: String(orderId), url: 'https://delistars.com/domicilios/' },
+      webpush: { fcmOptions: { link: 'https://delistars.com/domicilios/' } },
+    })
+    // Limpia tokens muertos (desinstalaron la app, revocaron el permiso…).
+    const bad = []
+    res.responses.forEach((r, i) => {
+      const code = r.error?.code || ''
+      if (code.includes('registration-token-not-registered') || code.includes('invalid-argument')) bad.push(tokens[i])
+    })
+    if (bad.length) {
+      await d.ref.update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
+    }
+    console.log(`[scheduler] push equipo (${o.status}) pedido ${orderId} → ${d.id}: ${res.successCount}/${tokens.length}`)
+  }
+}
+
 // Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
 // un estado relevante (cotizado / en camino / llegó / entregado / rechazado).
 function watchOrdersForPush() {
@@ -294,6 +365,7 @@ function watchOrdersForPush() {
         seen.set(id, o.status)
         if (baseline || prev === o.status) continue
         sendPushForOrder(id, o).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+        sendPushForStaff(id, o).catch((e) => console.error('[scheduler] push equipo error:', e?.message || e))
       }
       baseline = false
     }, (err) => console.error('[scheduler] watch pedidos error:', err?.message || err))

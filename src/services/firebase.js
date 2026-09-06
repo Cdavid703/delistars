@@ -72,6 +72,38 @@ export async function enablePush(uid) {
   }
 }
 
+// Igual que enablePush pero para el EQUIPO (cajeros y domiciliarios). El token
+// va a staff_push/{correo}, que es donde el scheduler los busca para avisarles
+// con la app cerrada: a la caja cuando entra un pedido, al domiciliario cuando
+// le asignan uno.
+//
+// Se guarda también el rol y la sede para no despertar a todo el mundo por todo:
+// un cajero de Santa Lucía no tiene por qué sonar por un pedido de Teresita.
+export async function enableStaffPush(email, { rol, sedeId } = {}) {
+  try {
+    const correo = String(email || '').toLowerCase().trim()
+    if (!correo || !('Notification' in window) || !(await isSupported())) {
+      return { ok: false, reason: 'unsupported' }
+    }
+    const perm = await Notification.requestPermission()
+    if (perm !== 'granted') return { ok: false, reason: perm === 'denied' ? 'denied' : 'dismissed' }
+    const swReg = await registerFcmSw()
+    const token = await getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg })
+    if (!token) return { ok: false, reason: 'no-token' }
+    await setDoc(doc(db, 'staff_push', correo), {
+      email:     correo,
+      rol:       rol || null,
+      sedeId:    sedeId || null,
+      fcmTokens: arrayUnion(token),
+      updatedAt: serverTimestamp(),
+    }, { merge: true })
+    return { ok: true, token }
+  } catch (e) {
+    console.error('[push] enableStaffPush error:', e)
+    return { ok: false, reason: 'error' }
+  }
+}
+
 // Notificaciones con la app ABIERTA (por si el cliente la tiene en primer plano).
 export async function listenForegroundPush(cb) {
   try {

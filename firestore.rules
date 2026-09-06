@@ -116,6 +116,17 @@ service cloud.firestore {
     // ── Listas de roles dinámicos ──────────────────────────────────────────
     // Cajero también puede agregar/editar domiciliarios (CashierPanel.jsx lo
     // usa para "agregar domiciliario" y actualizar su teléfono).
+    // ── Tokens de notificación del equipo ──────────────────────────────────
+    // Cada cajero/domiciliario guarda aquí el token de SU dispositivo para que
+    // el scheduler pueda avisarle con la app cerrada. Solo puede escribir su
+    // propio documento (el id es su correo): así nadie puede meterle un token
+    // a otro ni desviarle los avisos. Lee solo el admin — el scheduler entra
+    // con credenciales de servidor y no pasa por estas reglas.
+    match /staff_push/{email} {
+      allow read:  if isAdmin() || (isSignedIn() && email == userEmail());
+      allow write: if isStaff() && email == userEmail();
+    }
+
     match /roles_cashiers/{email} {
       allow read:  if isSignedIn();
       allow write: if isAdmin();
