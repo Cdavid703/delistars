@@ -5,6 +5,7 @@ import ClientChat from './ClientChat'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
+import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -100,6 +101,16 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
   useEffect(() => {
     if (!order.fullAddress || !orderSede) { setDistanceKm(-1); return }
+    // Si el pedido trae el pin exacto (el cliente ubicó su dirección, o el
+    // domiciliario pegó la ubicación de WhatsApp), se mide contra ESE punto.
+    // Antes se geocodificaba siempre el texto —y recortado, sin el "#45-10"—
+    // así que teniendo el punto exacto se calculaba sobre una aproximación de
+    // la calle. De esa distancia depende ahora el precio del domicilio.
+    if (order.addrLat != null && order.addrLng != null) {
+      setDistanceKm(haversineKm(orderSede.coords.lat, orderSede.coords.lng,
+        Number(order.addrLat), Number(order.addrLng)))
+      return
+    }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
     // Las direcciones colombianas tipo "Carrera 85 C, número 34 a 27" o "Cra 50 #45-10"
@@ -125,7 +136,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         }
       })
       .catch(() => setDistanceKm(-1))
-  }, [order.fullAddress, orderSede])
+  }, [order.fullAddress, order.addrLat, order.addrLng, orderSede])
 
 
   const time = order.createdAt?.toDate
@@ -134,6 +145,17 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
   const lqp   = parseFloat(localQuotedPrice)   || 0
   const ldp   = parseFloat(localDeliveryPrice) || 0
+
+  // Precio que le corresponde por distancia. Sirve para dos cosas: sugerirle el
+  // valor al cajero cuando el cliente pidió revisión (o cuando no hubo pin), y
+  // avisar si el precio que trae el pedido NO cuadra con la distancia — el
+  // precio automático lo calcula el navegador del cliente, así que este es el
+  // único punto donde se verifica del lado de la caja.
+  const sugerido = (distanceKm !== null && distanceKm >= 0)
+    ? precioDomicilio(distanceKm)
+    : null
+  const desajuste = !!sugerido && sugerido.estado === 'ok' &&
+    order.deliveryPriceAuto && Number(order.deliveryPrice) !== sugerido.precio
   const localTotal = lqp + ldp
 
   const searchAddr = async () => {
@@ -954,6 +976,45 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   </div>
                 )}
               </div>
+
+              {/* Sugerencia por distancia: el cajero no tiene que calcular ni
+                  acordarse de la tabla. Un toque y queda puesto. */}
+              {!pickup && sugerido && (
+                <div className={`rounded-xl border px-4 py-3 ${
+                  desajuste ? 'bg-mustard/10 border-mustard/40' : 'bg-mint/10 border-mint/30'}`}>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="font-body text-xs font-bold text-coal">
+                        {sugerido.estado === 'fuera_de_rango'
+                          ? `Fuera de cobertura — ${distanceKm.toFixed(1)} km`
+                          : `Sugerido por distancia: ${fmt(sugerido.precio)}`}
+                      </p>
+                      <p className="font-body text-[11px] text-coal/55 mt-0.5">
+                        {sugerido.estado === 'fuera_de_rango'
+                          ? `Solo se despacha hasta ${MAX_KM} km. Ofrécele recoger en sede.`
+                          : <>
+                              {distanceKm.toFixed(1)} km desde {orderSede?.name}
+                              {order.addrLat != null ? ' (punto exacto)' : ' (dirección aproximada)'}
+                            </>}
+                      </p>
+                      {desajuste && (
+                        <p className="font-body text-[11px] font-semibold text-[#8a5a00] mt-1">
+                          ⚠️ No cuadra con lo que trae el pedido ({fmt(order.deliveryPrice)}). Revísalo antes de cerrar.
+                        </p>
+                      )}
+                    </div>
+                    {sugerido.estado === 'ok' && (
+                      <button
+                        type="button"
+                        onClick={() => setLocalDeliveryPrice(String(sugerido.precio))}
+                        className="btn-secondary btn-sm flex-shrink-0"
+                      >
+                        Usar {fmt(sugerido.precio)}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Total */}
               {(lqp > 0 || ldp > 0) && (
