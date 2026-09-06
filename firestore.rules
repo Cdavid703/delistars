@@ -123,8 +123,11 @@ service cloud.firestore {
     // a otro ni desviarle los avisos. Lee solo el admin — el scheduler entra
     // con credenciales de servidor y no pasa por estas reglas.
     match /staff_push/{email} {
-      allow read:  if isAdmin() || (isSignedIn() && email == userEmail());
-      allow write: if isStaff() && email == userEmail();
+      // El id del documento se guarda SIEMPRE en minúsculas, así que se compara
+      // contra el correo del token también en minúsculas: si no, alguien con
+      // mayúsculas en su correo no podría registrar su propio dispositivo.
+      allow read:  if isAdmin() || (isSignedIn() && email == userEmail().lower());
+      allow write: if isStaff() && email == userEmail().lower();
     }
 
     match /roles_cashiers/{email} {
