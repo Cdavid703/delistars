@@ -21,6 +21,8 @@ import { SEDES } from '../../services/roles'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
+import { sonar, sonidoDeEstado } from '../../utils/sonidos'
+import BotonSilencio from '../common/BotonSilencio'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -28,21 +30,8 @@ const TABS = [
   { id: 'completed', label: 'Entregados' },
 ]
 
-function playNotifSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    if (ctx.state === 'suspended') ctx.resume()
-    ;[880, 1100, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = 'sine'; osc.frequency.value = freq
-      const t = ctx.currentTime + i * 0.18
-      gain.gain.setValueAtTime(0.4, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
-      osc.start(t); osc.stop(t + 0.16)
-    })
-  } catch (_) {}
-}
+// El sonido vive en utils/sonidos.js: un solo contexto de audio, que se
+// despierta solo, y una melodía distinta por evento.
 
 // Distancia geodésica en kilómetros (fórmula haversine)
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -103,6 +92,9 @@ export default function DeliveryPanel() {
     try { return JSON.parse(localStorage.getItem('ds_geo_cache_v1') || '{}') } catch { return {} }
   })
   const prevCount        = useRef(0)
+  // Foto de los estados de la tanda anterior. null en la primera carga, para no
+  // sonar por pedidos que ya venían así desde antes de abrir el panel.
+  const prevEstadoRef    = useRef(null)
   const geoWatchId       = useRef(null)
   const locShareWatchId  = useRef(null)
 
@@ -116,9 +108,25 @@ export default function DeliveryPanel() {
       try {
         const snap = await getDocs(q)
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        // Otros cambios que le importan al domiciliario y antes pasaban
+        // callados: que le cancelen un pedido que ya tenía asignado.
+        if (prevEstadoRef.current) {
+          let sonó = false
+          for (const o of all) {
+            const prev = prevEstadoRef.current[o.id]
+            if (prev !== undefined && prev !== o.status && !sonó && o.status !== 'assigned') {
+              const cual = sonidoDeEstado('domiciliario', o.status)
+              if (cual) { sonar(cual); sonó = true }
+            }
+          }
+        } else {
+          prevEstadoRef.current = {}
+        }
+        all.forEach(o => { prevEstadoRef.current[o.id] = o.status })
+
         const newPending = all.filter(o => o.status === 'assigned' && isToday(o.createdAt)).length
         if (newPending > prevCount.current) {
-          playNotifSound()
+          sonar('asignado')
           try {
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
               new Notification('🔔 DeliStars — Nuevo pedido', {
@@ -306,6 +314,7 @@ export default function DeliveryPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <BotonSilencio />
           <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
             className={`btn-icon flex items-center gap-1 px-2 relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>
             <Radio size={18} className={locationSharing ? 'animate-pulse' : ''} />

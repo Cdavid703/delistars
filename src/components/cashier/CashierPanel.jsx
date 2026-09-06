@@ -7,6 +7,8 @@ import { db, createOrderWithNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
 import { cashAmount } from '../../utils/payments'
+import { sonar, sonarMensaje, crearAlarma, sonidoDeEstado } from '../../utils/sonidos'
+import BotonSilencio from '../common/BotonSilencio'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
@@ -19,8 +21,7 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X,
-  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
-  Volume2, VolumeX
+  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
 } from 'lucide-react'
 
 const TABS = [
@@ -42,149 +43,10 @@ const isToday = ts => {
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 
-// ─── Audio alarm ─────────────────────────────────────────────────────────────
-// La caja reportó que a veces NO suena la entrada de un pedido. La causa es el
-// AudioContext: el navegador lo deja 'suspended' (o 'interrupted' en iOS) cuando
-// la pestaña pasa a segundo plano o se bloquea la pantalla — que es justo lo que
-// hace la caja entre pedido y pedido. La versión anterior llamaba a resume() y
-// programaba los tonos EN LA MISMA LÍNEA; como resume() es asíncrono, el
-// currentTime seguía congelado y los tonos se agendaban en un tiempo ya pasado:
-// no sonaba nada y no daba ningún error.
-//
-// Ahora: se despierta el contexto primero y solo se programan los tonos cuando
-// ya está corriendo. Además se desbloquea con el primer toque del cajero y se
-// vuelve a despertar cada vez que la pestaña regresa al frente.
-let ctx = null
-
-function getCtx() {
-  const AC = window.AudioContext || window.webkitAudioContext
-  if (!AC) return null
-  if (!ctx) ctx = new AC()
-  return ctx
-}
-
-/** Despierta el contexto y avisa si quedó listo para sonar. */
-async function despertarAudio() {
-  const c = getCtx()
-  if (!c) return false
-  if (c.state !== 'running') {
-    try { await c.resume() } catch (_) { /* sin gesto del usuario todavía */ }
-  }
-  return c.state === 'running'
-}
-
-/** ¿El navegador nos está dejando sonar ahora mismo? */
-function audioListo() {
-  return !!ctx && ctx.state === 'running'
-}
-
-function tonos(c, seq, { tipo = 'square', vol = 0.6, paso = 0.16, dur = 0.14 } = {}) {
-  const now = c.currentTime
-  seq.forEach((freq, i) => {
-    const osc = c.createOscillator(), gain = c.createGain()
-    osc.connect(gain); gain.connect(c.destination)
-    osc.type = tipo; osc.frequency.value = freq
-    const t = now + i * paso
-    gain.gain.setValueAtTime(vol, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + dur)
-    osc.start(t); osc.stop(t + dur + 0.01)
-  })
-}
-
-// Tope de la alarma: 45 s repitiendo cada 2 s. Sin tope, si nadie cierra el
-// aviso la alarma timbra indefinidamente — y como el pedido ya se atendió desde
-// otra pantalla, la caja escucha un timbre sin nada que atender. Pasado el tope
-// el pedido sigue marcado en la lista, que es donde de verdad se trabaja.
-const ALARMA_MAX_MS = 45000
-
-function createAlarmPlayer() {
-  let intervalId = null
-  let topeId     = null
-  const patron = async () => {
-    if (!(await despertarAudio())) return
-    tonos(ctx, [880, 1100, 880, 1100, 1320, 1100, 880])
-  }
-  const parar = () => {
-    clearInterval(intervalId); intervalId = null
-    clearTimeout(topeId);      topeId = null
-  }
-  return {
-    play() {
-      parar()               // nunca dos alarmas encima
-      patron()
-      intervalId = setInterval(patron, 2000)
-      topeId     = setTimeout(parar, ALARMA_MAX_MS)
-    },
-    stop: parar,
-    /** Prueba manual desde el panel: suena una vez. */
-    test: patron,
-  }
-}
-const alarm = createAlarmPlayer()
-
-// El primer toque/clic del cajero desbloquea el audio para toda la sesión, y al
-// volver a la pestaña se vuelve a despertar (la pantalla bloqueada lo suspende).
-if (typeof window !== 'undefined') {
-  const desbloquear = () => { despertarAudio() }
-  ;['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
-    window.addEventListener(ev, desbloquear, { passive: true }))
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) despertarAudio()
-  })
-}
-
-// Mismo problema que la alarma: hay que esperar a que el contexto despierte.
-// Además se reusa UN solo contexto — antes creaba uno nuevo por mensaje y los
-// navegadores limitan cuántos se pueden abrir (a partir de cierto punto dejaban
-// de sonar del todo).
-async function playMessageSound() {
-  if (!(await despertarAudio())) return
-  // Doble ráfaga de 3 tonos — mucho más audible que un bip simple
-  tonos(ctx, [880, 1100, 880], { tipo: 'sine', vol: 0.55, paso: 0.14, dur: 0.18 })
-  setTimeout(() => {
-    if (audioListo()) tonos(ctx, [880, 1100, 880], { tipo: 'sine', vol: 0.55, paso: 0.14, dur: 0.18 })
-  }, 550)
-}
-
-// Aviso del estado del audio + prueba manual. Se revisa cada 2 s porque el
-// navegador puede suspender el contexto en cualquier momento (pantalla
-// bloqueada, pestaña al fondo) sin avisarle a la aplicación.
-function SonidoEstado() {
-  const [listo, setListo]   = useState(audioListo)
-  const [probando, setProbando] = useState(false)
-
-  useEffect(() => {
-    const id = setInterval(() => setListo(audioListo()), 2000)
-    return () => clearInterval(id)
-  }, [])
-
-  const activar = async () => {
-    setProbando(true)
-    await despertarAudio()
-    setListo(audioListo())
-    await alarm.test()
-    setTimeout(() => setProbando(false), 1500)
-  }
-
-  if (!listo) {
-    return (
-      <button onClick={activar}
-        className="mx-4 mt-2 w-[calc(100%-2rem)] flex items-center gap-2 rounded-xl px-4 py-3 bg-pepper/10 border-2 border-pepper text-left animate-pulse">
-        <VolumeX size={18} className="text-pepper flex-shrink-0" />
-        <span className="font-body text-sm font-semibold text-pepper">
-          El sonido está bloqueado — no vas a oír los pedidos que entren. Toca aquí para activarlo.
-        </span>
-      </button>
-    )
-  }
-  return (
-    <button onClick={activar} disabled={probando}
-      className="mx-4 mt-2 flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-mint/15 text-mint text-xs font-semibold font-body">
-      <Volume2 size={12} />
-      {probando ? 'Sonando…' : 'Sonido activo · probar'}
-    </button>
-  )
-}
+// El audio vive en utils/sonidos.js: un solo contexto compartido por los tres
+// paneles, con una melodía distinta por evento. Antes cada panel creaba el suyo,
+// y varios contextos abiertos hacen que el navegador deje de sonar del todo.
+const alarm = crearAlarma()
 
 export default function CashierPanel() {
   const { user, sede, logout, selectSede } = useAuth()
@@ -273,7 +135,7 @@ export default function CashierPanel() {
       const count = (o.clientMessages || []).filter(m => m.role === 'client').length
       const prev  = clientMsgCountRef.current[o.id]
       // Solo sonar si el pedido ya estaba registrado (prev !== undefined) y el conteo subió
-      if (prev !== undefined && count > prev && !played) { playMessageSound(); played = true }
+      if (prev !== undefined && count > prev && !played) { sonarMensaje(); played = true }
       clientMsgCountRef.current[o.id] = count
     })
   }, [orders])
@@ -376,12 +238,19 @@ export default function CashierPanel() {
       // (En la primera carga solo se toma la foto de estados, sin avisar.)
       const ACTIVE_BEFORE_CANCEL = ['pending', 'quoted', 'assigned', 'accepted', 'preparing']
       const firstLoad = prevStatusRef.current.size === 0 && docs.length > 0
+      let sonóCambio = false
       docs.forEach(o => {
         const prev = prevStatusRef.current.get(o.id)
-        if (!firstLoad && prev && prev !== o.status &&
-            o.status === 'cancelled' && ACTIVE_BEFORE_CANCEL.includes(prev)) {
-          playMessageSound()
+        const cambió = !firstLoad && prev && prev !== o.status
+        if (cambió && o.status === 'cancelled' && ACTIVE_BEFORE_CANCEL.includes(prev)) {
+          sonar('cancelado')
           setCancelAlert(o)
+          sonóCambio = true
+        } else if (cambió && !sonóCambio) {
+          // Lo que antes pasaba callado: el domiciliario aceptó, entregó o
+          // rechazó. La caja se enteraba solo si estaba mirando la lista.
+          const cual = sonidoDeEstado('caja', o.status)
+          if (cual) { sonar(cual); sonóCambio = true }
         }
         prevStatusRef.current.set(o.id, o.status)
       })
@@ -560,7 +429,7 @@ export default function CashierPanel() {
 
       {/* Estado del sonido — que la caja NUNCA se entere de que el audio está
           bloqueado por haber perdido un pedido. */}
-      <SonidoEstado />
+      <BotonSilencio className="mx-4 mt-2" />
 
       {/* Platform status banner */}
       {platformActive !== null && (

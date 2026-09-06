@@ -17,6 +17,8 @@ import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
+import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
+import BotonSilencio from '../common/BotonSilencio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
 const LiveDriverMap = lazy(() => import('./LiveDriverMap'))
 import { format } from 'date-fns'
@@ -125,21 +127,8 @@ function hayPedidoPendiente() {
       || !!parseMenuCart(localStorage.getItem('ds_cart_items'))
 }
 
-function playMessageSound() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    if (ctx.state === 'suspended') ctx.resume()
-    ;[660, 880].forEach((freq, i) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = 'sine'; osc.frequency.value = freq
-      const t = ctx.currentTime + i * 0.13
-      gain.gain.setValueAtTime(0.25, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
-      osc.start(t); osc.stop(t + 0.24)
-    })
-  } catch (_) {}
-}
+// El sonido vive en utils/sonidos.js: un solo contexto de audio, que se
+// despierta solo, y una melodía distinta por evento.
 
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
@@ -165,6 +154,7 @@ export default function ClientPanel() {
   })
 
   const cashierMsgCountRef = useRef(null)  // null = primera carga, no reproducir
+  const prevEstadoRef      = useRef(null)  // ídem, para los cambios de estado
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   // ─── Fidelización ──────────────────────────────────────────────────────────
@@ -274,8 +264,33 @@ export default function ClientPanel() {
       const count = (o.clientMessages || []).filter(m => m.role === 'cashier').length
       const prev  = cashierMsgCountRef.current[o.id]
       // Solo sonar si el pedido ya estaba registrado (prev !== undefined) y el conteo subió
-      if (prev !== undefined && count > prev && !played) { playMessageSound(); played = true }
+      if (prev !== undefined && count > prev && !played) { sonarMensaje(); played = true }
       cashierMsgCountRef.current[o.id] = count
+    })
+  }, [orders])
+
+  // Sonido cuando un pedido cambia de estado: cotizado, aceptado, en camino,
+  // llegó, entregado o cancelado. Antes todo esto pasaba callado y el cliente
+  // se enteraba solo si estaba mirando la pantalla.
+  useEffect(() => {
+    if (prevEstadoRef.current === null) {
+      // Primera carga: se guarda la foto de estados sin sonar, para no timbrar
+      // por pedidos que ya estaban ahí desde antes de abrir la app.
+      if (orders.length === 0) return
+      prevEstadoRef.current = {}
+      orders.forEach(o => { prevEstadoRef.current[o.id] = o.status })
+      return
+    }
+    let sonó = false
+    orders.forEach(o => {
+      const prev = prevEstadoRef.current[o.id]
+      if (prev !== undefined && prev !== o.status && !sonó) {
+        const cual = sonidoDeEstado('cliente', o.status)
+        // Un solo sonido por tanda: si cambian dos pedidos a la vez, no se
+        // encima un timbre sobre otro.
+        if (cual) { sonar(cual); sonó = true }
+      }
+      prevEstadoRef.current[o.id] = o.status
     })
   }, [orders])
 
@@ -468,6 +483,7 @@ export default function ClientPanel() {
         <div className="relative z-10 flex items-center justify-between mb-4">
           <Logo variant="dark" size="sm" />
           <div className="flex items-center gap-1">
+            <BotonSilencio />
             <RoleSwitcher variant="dark" />
             <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
               <HelpCircle size={20} />
