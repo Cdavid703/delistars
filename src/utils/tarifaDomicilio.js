@@ -4,17 +4,21 @@
 // sede hasta el punto del cliente (la misma que ya calcula la caja), no el
 // recorrido real: manejando siempre es más, por las lomas y los sentidos únicos.
 //
-// Medido contra 303 pedidos reales de Santa Lucía con pin exacto: esta tabla
-// coincide con lo que la caja cobró en el 67% de los casos, y el 83% de los
-// pedidos cae en la primera banda.
+// Medido contra 303 pedidos reales de Santa Lucía con pin exacto: coincide con
+// lo que la caja cobró en el 67% de los casos y factura 4% menos que hoy. La
+// primera banda se acortó de 1 km a 0,8 km justamente para achicar esa brecha:
+// con 1 km eran 6% menos.
+//
+// El domicilio NUNCA es gratis: aunque el cliente esté a 50 metros, paga la
+// primera banda. No existe una banda en cero.
 // Módulo puro (sin React) para poder probarlo con node --test.
 
 /** Más allá de esto no se hace domicilio: se le ofrece recoger en sede. */
 export const MAX_KM = 5
 
-/** Bandas por distancia. `hasta` es inclusivo: 1.0 km paga $4.000. */
+/** Bandas por distancia. `hasta` es inclusivo: 0.8 km paga $4.000. */
 export const TARIFAS = [
-  { hasta: 1, precio: 4000 },
+  { hasta: 0.8, precio: 4000 },
   { hasta: 2, precio: 5000 },
   { hasta: 3, precio: 6000 },
   { hasta: 4, precio: 7000 },

@@ -17,9 +17,20 @@ test('cada banda cobra lo suyo', () => {
   assert.equal(precio(4.5),  8000)
 })
 
+test('el domicilio NUNCA es gratis, así el cliente esté al lado', () => {
+  // Regla del negocio: aunque sean 50 metros, el domicilio vale $4.000.
+  for (const km of [0, 0.001, 0.05, 0.1, 0.3]) {
+    const r = precioDomicilio(km)
+    assert.equal(r.estado, 'ok', `a ${km} km debería haber precio`)
+    assert.equal(r.precio, 4000, `a ${km} km el domicilio no puede bajar de $4.000`)
+  }
+  // Y ninguna banda puede valer cero.
+  for (const t of TARIFAS) assert.ok(t.precio > 0, 'hay una banda en cero')
+})
+
 test('los bordes exactos pagan la banda de abajo', () => {
-  // "hasta 1 km son $4.000": 1.0 exacto es $4.000, no $5.000.
-  assert.equal(precio(1),   4000)
+  // "hasta 0,8 km son $4.000": 0.8 exacto es $4.000, no $5.000.
+  assert.equal(precio(0.8), 4000)
   assert.equal(precio(2),   5000)
   assert.equal(precio(3),   6000)
   assert.equal(precio(4),   7000)
@@ -27,9 +38,17 @@ test('los bordes exactos pagan la banda de abajo', () => {
 })
 
 test('un pelo por encima del borde sube de banda', () => {
-  assert.equal(precio(1.001), 5000)
+  assert.equal(precio(0.801), 5000)
   assert.equal(precio(2.001), 6000)
   assert.equal(precio(5.001), null)
+})
+
+test('entre 0,8 y 1 km ya se cobra $5.000', () => {
+  // El cambio que pidió el negocio: antes la primera banda llegaba a 1 km.
+  // Un cliente a 900 metros pasa de $4.000 a $5.000.
+  assert.equal(precio(0.85), 5000)
+  assert.equal(precio(0.9),  5000)
+  assert.equal(precio(1),    5000)
 })
 
 test('más de 5 km no se despacha: se ofrece recoger en sede', () => {
@@ -71,7 +90,7 @@ test('la explicación le dice al cliente por qué paga eso', () => {
 test('la tabla es la que definió el negocio', () => {
   // Blindaje: si alguien cambia un precio sin querer, esta prueba lo canta.
   assert.deepEqual(TARIFAS, [
-    { hasta: 1, precio: 4000 },
+    { hasta: 0.8, precio: 4000 },
     { hasta: 2, precio: 5000 },
     { hasta: 3, precio: 6000 },
     { hasta: 4, precio: 7000 },
