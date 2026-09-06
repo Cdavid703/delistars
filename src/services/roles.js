@@ -46,9 +46,14 @@ export const SEDES = {
     id:        'santa_lucia',
     name:      'Santa Lucía',
     address:   'Cra. 87 #48e-3, Santa Rosa De Lima, Medellín',
-    // Cadena completa estilo Google Maps — usada como ORIGEN al calcular ruta
-    mapsAddress: 'DELISTAR | Santa Lucía | Perros y hamburguesas | Medellín, Cra. 87 #48e-3, Santa Rosa De Lima, Medellín, San Javier, Medellín, Antioquia',
-    coords:    { lat: 6.2397, lng: -75.6111 },
+    // Texto para Google Maps. Sin el nombre comercial ni barras: la cadena
+    // anterior ("DELISTAR | Santa Lucía | Perros y hamburguesas | Medellín, …",
+    // con "Medellín" tres veces) confundía al buscador de Maps.
+    mapsAddress: 'Cra. 87 #48e-3, Santa Rosa de Lima, San Javier, Medellín, Antioquia',
+    // Pin verificado por Andrés el 2026-09-04. El valor anterior
+    // (6.2397, -75.6111) estaba 2,4 km corrido: Waze mandaba al domiciliario a
+    // otro sector y además desviaba el orden de la ruta y el cálculo de la caja.
+    coords:    { lat: 6.260435, lng: -75.604912 },
     whatsapp:  '573135065720',
     // Barrios habituales de cobertura. NO es un filtro: el cliente puede
     // escribir cualquier barrio; esto solo lo autocompleta y le avisa que el
@@ -70,6 +75,9 @@ export const SEDES = {
     name:      'Santa Teresita',
     address:   'Cl 35B #87A-165, La América, Medellín',
     mapsAddress: 'Cl 35B #87A-165, La América, Medellín, Antioquia',
+    // OJO: pin SIN verificar. El geocodificador ubica la Calle 35B / Carrera 87A
+    // de Santa Teresita cerca de 6.244, -75.611 — a ~1,1 km de este valor, así
+    // que probablemente también está corrido. Pendiente el pin real de Andrés.
     coords:    { lat: 6.2477, lng: -75.6020 },
     whatsapp:  '573150634084',
     barrios: [
