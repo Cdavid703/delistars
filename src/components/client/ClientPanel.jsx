@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import {
   collection, query, where, onSnapshot, serverTimestamp,
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
@@ -16,6 +16,7 @@ import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
+import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
 const LiveDriverMap = lazy(() => import('./LiveDriverMap'))
 import { format } from 'date-fns'
@@ -790,7 +791,30 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   const [errors,            setErrors]            = useState([])
   const [fromMenu,          setFromMenu]          = useState(false)
   const [menuTotal,         setMenuTotal]         = useState(0)
+  // El cliente pidió que la caja revise el valor del domicilio: se manda a
+  // cotizar a mano, como toda la vida, en vez de cobrarle el automático.
+  const [pidioRevisión,     setPidioRevisión]     = useState(false)
   const errorsRef = useRef(null)
+
+  // ─── Domicilio automático ──────────────────────────────────────────────────
+  // Solo si la sede lo tiene activo Y la dirección trae pin. Sin pin no se
+  // inventa precio: cae a la cotización de la caja, como antes.
+  const kmSede = useMemo(() => {
+    if (form.deliveryMode !== 'delivery') return null
+    if (!sede?.tarifaAutomatica || !sede?.coords) return null
+    if (form.addrLat == null || form.addrLng == null) return null
+    const R = 6371
+    const dLat = (form.addrLat - sede.coords.lat) * Math.PI / 180
+    const dLng = (form.addrLng - sede.coords.lng) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(sede.coords.lat * Math.PI / 180) * Math.cos(form.addrLat * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.asin(Math.sqrt(a))
+  }, [form.deliveryMode, form.addrLat, form.addrLng, sede])
+
+  const tarifa = precioDomicilio(kmSede)
+  // Se le cobra automático solo si hay precio y el cliente no pidió revisión.
+  const cobroAutomático = tarifa.estado === 'ok' && !pidioRevisión
 
   useEffect(() => {
     // 1) Restaurar el borrador si la página se recargó a mitad del formulario
@@ -888,6 +912,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         items,
         redeemRewardIds,
         ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
+        // Domicilio cobrado automáticamente por distancia. Si el cliente pidió
+        // revisión, o no había pin, no va precio y la caja cotiza como siempre.
+        ...(cobroAutomático && form.deliveryMode === 'delivery'
+          ? {
+              deliveryPrice:     tarifa.precio,
+              deliveryPriceAuto: true,
+              deliveryKm:        Number(kmSede.toFixed(2)),
+            }
+          : {}),
+        ...(pidioRevisión ? { deliveryPriceReview: true } : {}),
       })
     } catch (err) {
       // Falló el envío: se reactiva el autoguardado para no perder el borrador.
@@ -999,12 +1033,75 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
               <p className="font-body text-sm font-semibold text-coal">{form.fullAddress}</p>
               <p className="font-body text-[11px] text-coal/55 leading-relaxed mt-0.5">
                 {form.barrio && <>📍 {form.barrio} · </>}
-                {form.addrLat != null
-                  ? 'Ubicada en el mapa. '
-                  : ''}
-                El valor del domicilio se confirma en caja antes de que pagues.
+                {form.addrLat != null ? 'Ubicada en el mapa. ' : ''}
+                {!cobroAutomático && tarifa.estado !== 'fuera_de_rango' &&
+                  'El valor del domicilio se confirma en caja antes de que pagues.'}
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Domicilio calculado: el cliente ve el valor de una vez, sin esperar
+            a que la caja cotice. */}
+        {form.fullAddress && cobroAutomático && (
+          <div className="mt-2 bg-white border-2 border-mint/40 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-body text-[11px] font-bold uppercase tracking-wider text-coal/45">
+                  Domicilio
+                </p>
+                <p className="font-body text-[11px] text-coal/50 mt-0.5">
+                  A {kmSede.toFixed(1)} km de la sede
+                </p>
+              </div>
+              <p className="font-display text-2xl text-mint tracking-wide flex-shrink-0">
+                ${tarifa.precio.toLocaleString('es-CO')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPidioRevisión(true)}
+              className="mt-2 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2"
+            >
+              ¿Te parece caro? Pide que la caja lo revise
+            </button>
+          </div>
+        )}
+
+        {/* Pidió revisión: vuelve al flujo de cotización manual */}
+        {form.fullAddress && pidioRevisión && tarifa.estado === 'ok' && (
+          <div className="mt-2 bg-mustard/10 border border-mustard/40 rounded-xl px-4 py-3">
+            <p className="font-body text-xs text-coal/70 leading-relaxed">
+              Listo: la caja va a revisar el valor de tu domicilio y te lo confirma
+              antes de que pagues.
+            </p>
+            <button
+              type="button"
+              onClick={() => setPidioRevisión(false)}
+              className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2"
+            >
+              Mejor cóbrame los ${tarifa.precio.toLocaleString('es-CO')}
+            </button>
+          </div>
+        )}
+
+        {/* Fuera de cobertura: no se bloquea el pedido, se ofrece recoger */}
+        {form.fullAddress && tarifa.estado === 'fuera_de_rango' && (
+          <div className="mt-2 bg-cherry/10 border border-cherry/30 rounded-xl px-4 py-3">
+            <p className="font-body text-sm font-semibold text-cherry">
+              Estás a {kmSede.toFixed(1)} km — muy lejos para domicilio
+            </p>
+            <p className="font-body text-xs text-coal/60 leading-relaxed mt-1">
+              Solo llevamos hasta {MAX_KM} km desde la sede. Puedes pedirlo y
+              recogerlo tú en la sede, sin costo de domicilio.
+            </p>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, deliveryMode: 'pickup' }))}
+              className="btn-secondary btn-sm mt-2"
+            >
+              Cambiar a recoger en sede
+            </button>
           </div>
         )}
       </div>

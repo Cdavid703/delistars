@@ -54,6 +54,10 @@ export const SEDES = {
     // (6.2397, -75.6111) estaba 2,4 km corrido: Waze mandaba al domiciliario a
     // otro sector y además desviaba el orden de la ruta y el cálculo de la caja.
     coords:    { lat: 6.260435, lng: -75.604912 },
+    // Cobra el domicilio automáticamente por distancia (ver utils/tarifaDomicilio).
+    // Solo se activa con el pin verificado: con una coordenada mala el cliente
+    // recibiría un precio equivocado.
+    tarifaAutomatica: true,
     whatsapp:  '573135065720',
     // Barrios habituales de cobertura. NO es un filtro: el cliente puede
     // escribir cualquier barrio; esto solo lo autocompleta y le avisa que el
@@ -79,6 +83,8 @@ export const SEDES = {
     // de Santa Teresita cerca de 6.244, -75.611 — a ~1,1 km de este valor, así
     // que probablemente también está corrido. Pendiente el pin real de Andrés.
     coords:    { lat: 6.2477, lng: -75.6020 },
+    // Apagado a propósito hasta verificar el pin: sigue cotizando la caja.
+    tarifaAutomatica: false,
     whatsapp:  '573150634084',
     barrios: [
       // Comuna 12 (La América) — donde está la sede

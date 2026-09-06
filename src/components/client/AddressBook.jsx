@@ -4,6 +4,7 @@ import { db } from '../../services/firebase'
 import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
 import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
+import BarrioPicker from '../common/BarrioPicker'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
 const MapPicker = lazy(() => import('./MapPicker'))
@@ -177,11 +178,11 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
           {/* Barrio */}
           <div>
             <label className="label-field">Barrio</label>
-            <input className="input-field" list="ds-barrios-builder" value={p.barrio}
-              onChange={e => setAddr('barrio', e.target.value)} placeholder="Barrio" autoComplete="off" />
-            <datalist id="ds-barrios-builder">
-              {(sede?.barrios || []).map(b => <option key={b} value={b} />)}
-            </datalist>
+            <BarrioPicker
+              value={p.barrio}
+              onChange={b => setAddr('barrio', b)}
+              barrios={sede?.barrios || []}
+            />
           </div>
 
           {/* Complemento + referencia */}

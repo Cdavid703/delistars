@@ -895,6 +895,30 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </div>
               )}
 
+              {/* De dónde salió el valor del domicilio: calculado por distancia,
+                  o el cliente pidió que la caja lo revise. Sin esto el cajero no
+                  sabe si ya está cobrado o si le toca cotizarlo. */}
+              {order.deliveryPriceReview ? (
+                <div className="bg-mustard/10 border border-mustard/40 rounded-xl p-3 flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-[#8a5a00] flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-body text-coal/75">
+                    <strong>El cliente pidió revisar el domicilio.</strong> Le pareció caro
+                    o cree que la dirección quedó mal. Cotízalo tú
+                    {order.deliveryKm != null && <> — el sistema lo midió a {order.deliveryKm} km</>}.
+                  </p>
+                </div>
+              ) : order.deliveryPriceAuto ? (
+                <div className="bg-mint/10 border border-mint/30 rounded-xl p-3 flex items-start gap-2">
+                  <CheckCircle size={14} className="text-mint flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-body text-coal/75">
+                    <strong>Domicilio cobrado automáticamente.</strong> El cliente ya vio
+                    ${Number(order.deliveryPrice || 0).toLocaleString('es-CO')}
+                    {order.deliveryKm != null && <> ({order.deliveryKm} km)</>}. Cámbialo
+                    solo si está mal.
+                  </p>
+                </div>
+              ) : null}
+
               {quoteErrors.length > 0 && (
                 <div className="bg-pepper/10 border border-pepper/20 rounded-xl p-3">
                   {quoteErrors.map(e => (
