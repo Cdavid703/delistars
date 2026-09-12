@@ -6,6 +6,7 @@ import { apiService, type Category, type Product as ApiProduct } from "@/service
 import { SearchBar } from "@/components/SearchBar";
 import { useCart } from "@/context/CartContext";
 import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
+import { vigente } from "@/lib/temporada";
 import { ChevronDown } from "lucide-react";
 
 // Emojis para cada categoría
@@ -72,6 +73,8 @@ export const MenuSection = () => {
     destacadosPrimero(
       products.filter((p) => {
         if (p.id_categoria !== idCategoria) return false;
+        // Los combos de temporada desaparecen solos al pasar su fecha.
+        if (!vigente(p.nombre_producto)) return false;
         const isJugo =
           p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
         if (isJugo && Number(sede) !== 2) return false;
@@ -120,6 +123,10 @@ export const MenuSection = () => {
   const filteredProducts = products.filter((p) => {
     // Excluir adiciones (categoría 5) y salsas (categoría 8)
     if (p.id_categoria === 5 || p.id_categoria === 8) return false;
+
+    // Un producto de temporada vencido tampoco debe salir en el buscador: si no,
+    // se encuentra por nombre aunque ya no esté en su categoría.
+    if (!vigente(p.nombre_producto)) return false;
 
     // Los jugos solo aparecen en la sede de Santa Teresita (sede === 2)
     const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");

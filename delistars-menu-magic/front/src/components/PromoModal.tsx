@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Heart, X } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import { hayTemporadaActiva } from "@/lib/temporada";
 
 // Promoción de temporada. Aparece DESPUÉS de que el visitante elige sede (antes
 // no: el modal de sede es obligatorio y dos ventanas encima se estorban).
@@ -27,13 +28,9 @@ const PROMOS = [
 
 const ETIQUETA = "Amor y Amistad";
 
-// Los combos son de temporada: solo septiembre. Pasada esta fecha el popup
-// deja de aparecer SOLO, sin que nadie tenga que acordarse de bajarlo.
-// La hora va con el desfase de Colombia a propósito: con una fecha "pelada" el
-// navegador la interpreta en UTC y la promoción moriría a las 7:00 PM del 30.
-const FIN = new Date("2026-10-01T00:00:00-05:00");
-
-const enTemporada = () => Date.now() < FIN.getTime();
+// La fecha de fin vive en lib/temporada.ts, la misma que usa el menú para
+// esconder los productos: así el popup y el menú no se pueden desincronizar.
+const enTemporada = () => hayTemporadaActiva();
 
 // Se muestra una vez al día por navegador: promocionar es bueno, perseguir no.
 const CLAVE = "ds_promo_vista";

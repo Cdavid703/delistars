@@ -9,7 +9,7 @@
 // Para quitar o cambiar el destacado basta editar esta lista. Se compara por
 // nombre normalizado, así que un cambio de mayúsculas o de tilde en el admin
 // no rompe el orden.
-export const DESTACADOS = ["mexistars"];
+export const DESTACADOS = ["combo amor", "combo amistad", "mexistars"];
 
 /** Min\u00fasculas y sin tildes, para comparar nombres sin depender del admin. */
 export const normalizarNombre = (s: string) =>
