@@ -77,13 +77,17 @@ export const Navbar = () => {
       <div className="container flex items-center justify-between gap-2 py-3 px-4 sm:px-6">
         <a href="#top" className="flex items-center gap-2 hover-scale shrink-0">
           <img src={logo} alt="DeliStars logo" width={56} height={56} className="w-11 h-11 sm:w-14 sm:h-14 object-contain" />
-          <span className="hidden sm:flex flex-col leading-none">
+          {/* Entre 1280 y 1535 px el nombre se oculta para que quepan los enlaces */}
+          <span className="hidden sm:flex xl:hidden 2xl:flex flex-col leading-none">
             <span className="font-display text-base tracking-widest text-foreground">DELISTARS</span>
             <span className="font-display text-[10px] tracking-widest text-primary">·Tasty & Cool·</span>
           </span>
         </a>
 
-        <nav className="hidden lg:flex items-center gap-8">
+        {/* Son 10 enlaces: con lg (1024 px) no cabían y en portátiles de 1366 px
+            "Trabaja con nosotros" se partía en tres renglones. Por debajo de xl
+            se usa el menú de hamburguesa. */}
+        <nav className="hidden xl:flex items-center gap-5 2xl:gap-8 whitespace-nowrap text-sm 2xl:text-base">
           {links.map((l) => (
             <a
               key={l.href}
@@ -99,7 +103,9 @@ export const Navbar = () => {
           </a>
           {/* Vacantes — público */}
           <a href="/vacantes/" className="font-display font-medium text-foreground/80 hover:text-primary transition-smooth flex items-center gap-1.5">
-            <Briefcase className="w-4 h-4" /> Trabaja con nosotros
+            <Briefcase className="w-4 h-4" />
+            <span className="2xl:hidden">Trabaja aquí</span>
+            <span className="hidden 2xl:inline">Trabaja con nosotros</span>
           </a>
           {/* Mis turnos — solo equipo autenticado */}
           {staff && (
@@ -179,14 +185,14 @@ export const Navbar = () => {
             </div>
           )}
 
-          <button onClick={() => setMobile(!mobile)} className="lg:hidden flex items-center justify-center w-11 h-11 text-foreground" aria-label="Menú">
+          <button onClick={() => setMobile(!mobile)} className="xl:hidden flex items-center justify-center w-11 h-11 text-foreground" aria-label="Menú">
             {mobile ? <X /> : <Menu />}
           </button>
         </div>
       </div>
 
       {mobile && (
-        <nav className="lg:hidden bg-background border-t border-border animate-fade-in shadow-soft">
+        <nav className="xl:hidden bg-background border-t border-border animate-fade-in shadow-soft">
           <div className="container py-4 flex flex-col gap-3">
             {links.map((l) => (
               <a
