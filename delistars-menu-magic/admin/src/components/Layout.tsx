@@ -31,10 +31,10 @@ const Layout = () => {
       <aside
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed left-0 top-0 z-40 h-full w-64 bg-coal text-white transition-transform duration-300 ease-in-out lg:static lg:translate-x-0`}
+        } fixed left-0 top-0 z-40 flex h-full w-64 shrink-0 flex-col bg-coal text-white transition-transform duration-300 ease-in-out lg:static lg:translate-x-0`}
       >
         {/* Logo Section */}
-        <div className="border-b border-gray-700 p-6 flex items-center gap-3">
+        <div className="shrink-0 border-b border-gray-700 p-6 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-cream flex items-center justify-center shrink-0 shadow-soft">
             <img src={logo} alt="DeliStars" className="w-8 h-8 object-contain" />
           </div>
@@ -44,8 +44,9 @@ const Layout = () => {
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="space-y-1 px-4 py-6">
+        {/* Navigation: con la ventana baja, el menú se desplaza por dentro en
+            vez de desbordar la página y quedar tapado por "Cerrar Sesión". */}
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-6">
           {navItems.map((item) => (
             <Link
               key={item.path}
@@ -64,7 +65,7 @@ const Layout = () => {
         </nav>
 
         {/* Logout Button */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-gray-700 p-4">
+        <div className="shrink-0 border-t border-gray-700 p-4">
           <button onClick={logout} className="w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-primary transition-colors">
             <LogOut className="w-4 h-4" />
             Cerrar Sesión
@@ -81,7 +82,7 @@ const Layout = () => {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Header */}
         <header className="border-b border-gray-200 bg-white">
           <div className="flex items-center justify-between px-4 py-4 sm:px-6">
