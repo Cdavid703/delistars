@@ -27,6 +27,14 @@ const PROMOS = [
 
 const ETIQUETA = "Amor y Amistad";
 
+// Los combos son de temporada: solo septiembre. Pasada esta fecha el popup
+// deja de aparecer SOLO, sin que nadie tenga que acordarse de bajarlo.
+// La hora va con el desfase de Colombia a propósito: con una fecha "pelada" el
+// navegador la interpreta en UTC y la promoción moriría a las 7:00 PM del 30.
+const FIN = new Date("2026-10-01T00:00:00-05:00");
+
+const enTemporada = () => Date.now() < FIN.getTime();
+
 // Se muestra una vez al día por navegador: promocionar es bueno, perseguir no.
 const CLAVE = "ds_promo_vista";
 const UN_DIA = 24 * 60 * 60 * 1000;
@@ -55,7 +63,7 @@ export const PromoModal = () => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!sede || yaLaVio() || PROMOS.length === 0) return;
+    if (!sede || yaLaVio() || PROMOS.length === 0 || !enTemporada()) return;
     // Pequeña pausa: si aparece en el mismo instante en que se cierra el modal
     // de sede, se siente como si el clic hubiera abierto otra cosa por error.
     const id = setTimeout(() => setOpen(true), 600);
