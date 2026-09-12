@@ -720,7 +720,10 @@ export default function ClientPanel() {
       </div>
 
       {/* Order detail modal */}
-      {selected && <ClientOrderDetail order={selected} onClose={() => setSelectedId(null)} />}
+      {/* key: el detalle inicializa sus campos (con cuánto paga) al montarse. Sin
+          esto, cambiar de pedido sin cerrar reusa el componente y arrastra el
+          valor del anterior — el mismo error que hubo en la caja. */}
+      {selected && <ClientOrderDetail key={selected.id} order={selected} onClose={() => setSelectedId(null)} />}
 
       {/* History modal */}
       {showHistory && (
