@@ -694,6 +694,12 @@ export default function CashierPanel() {
       {/* Order detail modal */}
       {selected && (
         <OrderDetail
+          // key: sin esto React REUSA el componente al pasar de un pedido a otro
+          // sin cerrar el modal (pasa al tocar "Ver pedido" en el aviso de pedido
+          // nuevo), y los campos conservan los valores del pedido ANTERIOR — el
+          // precio cotizado incluido. En producción llegó a la caja un pedido de
+          // $36.000 con $60.000 precargados del pedido de antes.
+          key={selected.id}
           order={selected}
           onClose={() => setSelectedId(null)}
           drivers={drivers}
@@ -707,6 +713,7 @@ export default function CashierPanel() {
       {/* Assign delivery modal */}
       {assigningLive && (
         <AssignDeliveryDetail
+          key={assigningLive.id}   // mismo motivo que en OrderDetail
           order={assigningLive}
           drivers={drivers}
           unreadClientMsgs={unreadChatMap[assigningLive.id] || 0}

@@ -478,7 +478,7 @@ export default function DeliveryPanel() {
         ))}
       </main>
 
-      {selected && <DriverOrderDetail order={selected} onClose={() => setSelected(null)} />}
+      {selected && <DriverOrderDetail key={selected.id} order={selected} onClose={() => setSelected(null)} />}
 
       {showCuadre && (
         <DriverCuadreTurnoModal orders={orders} onClose={() => setShowCuadre(false)} />
