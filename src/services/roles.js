@@ -79,12 +79,12 @@ export const SEDES = {
     name:      'Santa Teresita',
     address:   'Cl 35B #87A-165, La América, Medellín',
     mapsAddress: 'Cl 35B #87A-165, La América, Medellín, Antioquia',
-    // OJO: pin SIN verificar. El geocodificador ubica la Calle 35B / Carrera 87A
-    // de Santa Teresita cerca de 6.244, -75.611 — a ~1,1 km de este valor, así
-    // que probablemente también está corrido. Pendiente el pin real de Andrés.
-    coords:    { lat: 6.2477, lng: -75.6020 },
-    // Apagado a propósito hasta verificar el pin: sigue cotizando la caja.
-    tarifaAutomatica: false,
+    // Pin verificado por Andrés el 2026-09-11. El valor anterior
+    // (6.2477, -75.6020) estaba 1,28 km corrido. Este queda a 186 m de donde el
+    // geocodificador ubica la Calle 35B con Carrera 87A, y a 1,97 km de Santa
+    // Lucía, que es la separación real entre las dos sedes.
+    coords:    { lat: 6.244691, lng: -75.613159 },
+    tarifaAutomatica: true,
     whatsapp:  '573150634084',
     barrios: [
       // Comuna 12 (La América) — donde está la sede
