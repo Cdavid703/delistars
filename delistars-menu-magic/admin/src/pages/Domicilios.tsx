@@ -207,7 +207,7 @@ function DomiciliosPedidos() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Domicilios</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Domicilios</h1>
           <p className="text-muted-fg mt-1">Pedidos y reportes</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useCart, formatCOP } from "@/context/CartContext";
@@ -14,6 +15,12 @@ export const CartSheet = () => {
   const platformActive = usePlatformStatus();
   const [needsLogin, setNeedsLogin] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // En celular el aviso "agregado al carrito" queda encima del botón
+  // "Hacer pedido"; al abrir el carrito ya cumplió su función.
+  useEffect(() => {
+    if (isOpen) toast.dismiss();
+  }, [isOpen]);
 
   // Guarda el carrito y continúa al formulario de pedido (en /domicilios/,
   // ya autenticado porque la sesión se comparte entre el menú y domicilios).

@@ -64,7 +64,7 @@ export default function Calificaciones() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Calificaciones</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Calificaciones</h1>
           <p className="text-muted-fg mt-1">Lo que los clientes opinan de sus pedidos (últimos 500 pedidos)</p>
         </div>
         <div className="flex items-center gap-2">

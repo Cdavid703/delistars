@@ -164,9 +164,9 @@ const Sedes = () => {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Gestión de Sedes</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Gestión de Sedes</h1>
           <p className="text-muted-fg mt-1">Administra tus sucursales</p>
         </div>
         <button
@@ -195,7 +195,7 @@ const Sedes = () => {
           <p className="text-muted-fg">Crea una nueva sede para comenzar</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>

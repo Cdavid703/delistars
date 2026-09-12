@@ -72,7 +72,7 @@ function ClientesLista() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-4xl font-display font-bold text-coal">Clientes</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Clientes</h1>
         <p className="text-muted-fg mt-1">Clientes frecuentes, su progreso de fidelización y su historial de pedidos</p>
       </div>
 

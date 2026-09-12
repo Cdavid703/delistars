@@ -171,7 +171,7 @@ export default function Turnos() {
     <div onClick={() => picker && setPicker(null)}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Turnos</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Turnos</h1>
           <p className="text-muted-fg mt-1">Horario semanal del equipo</p>
         </div>
         <div className="flex items-center gap-2">

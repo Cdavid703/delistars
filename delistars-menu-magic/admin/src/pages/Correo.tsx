@@ -32,7 +32,7 @@ export default function Correo() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-4xl font-display font-bold text-coal">Correo</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Correo</h1>
         <p className="text-muted-fg mt-1">Correo corporativo de DeliStars (Hostinger)</p>
       </div>
 

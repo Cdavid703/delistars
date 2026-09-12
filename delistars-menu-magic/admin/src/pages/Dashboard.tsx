@@ -100,7 +100,7 @@ export default function Dashboard() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Resumen de hoy</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Resumen de hoy</h1>
           <p className="text-muted-fg mt-1">Pedidos de domicilios en tiempo real (todas las sedes)</p>
         </div>
         {/* Control de plataforma: mismo interruptor que tiene el cajero */}

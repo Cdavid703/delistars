@@ -32,7 +32,10 @@ export default function SedeSelectionPage() {
           <Logo variant="light" size="lg" />
           <div className="text-center">
             <p className="font-body font-semibold text-coal/70 text-sm">
-              Hola, <span className="text-cherry">{user?.displayName?.split(' ')[0]}</span>
+              {/* Los invitados no tienen nombre: sin esto quedaba "Hola," suelto */}
+              {user?.displayName
+                ? <>Hola, <span className="text-cherry">{user.displayName.split(' ')[0]}</span></>
+                : '¡Hola!'}
             </p>
             <p className="font-body text-xs text-coal/50 mt-0.5">{roleLabel}</p>
           </div>

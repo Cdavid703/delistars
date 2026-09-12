@@ -259,7 +259,7 @@ export default function Usuarios() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-4xl font-display font-bold text-coal">Empleados</h1>
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Empleados</h1>
         <p className="text-muted-fg mt-1">
           Todo el equipo: cajeros, domiciliarios y personal del cuadro de turnos —
           un empleado puede tener ambos roles
@@ -335,7 +335,7 @@ export default function Usuarios() {
       {loading ? (
         <p className="text-muted-fg">Cargando equipo…</p>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden max-w-4xl">
+        <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto max-w-4xl">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>

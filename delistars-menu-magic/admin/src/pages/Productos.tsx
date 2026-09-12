@@ -305,12 +305,12 @@ const Productos = () => {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-4xl font-display font-bold text-coal">Gestión de Productos</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Gestión de Productos</h1>
           <p className="text-muted-fg mt-1">Administra tu catálogo de productos</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={handleOpenCreateCategoriaModal}
             className="flex items-center gap-2 bg-accent hover:bg-tangelo text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-soft"

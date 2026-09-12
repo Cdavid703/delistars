@@ -38,7 +38,7 @@ export default function LoginPage() {
   const busy = loading || loadingGuest
 
   return (
-    <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-to-br from-cherry via-tangelo to-mustard relative overflow-hidden">
+    <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-to-br from-cherry via-tangelo to-mustard relative overflow-hidden px-4 py-8">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(6)].map((_, i) => (
@@ -57,7 +57,7 @@ export default function LoginPage() {
       </div>
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-sm mx-4 animate-scale-in">
+      <div className="relative z-10 w-full max-w-sm animate-scale-in">
         <div className="bg-cream rounded-3xl shadow-2xl p-8 flex flex-col items-center gap-6">
           {/* Logo */}
           <Logo variant="light" size="xl" />

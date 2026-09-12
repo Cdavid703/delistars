@@ -14,6 +14,16 @@
   h1,h2,h3,h4 { @apply font-display tracking-wide uppercase; }
 }
 
+@layer utilities {
+  /* Alto completo de pantalla. Las páginas ya usaban esta clase pero nunca se
+     había definido, así que en celular el fondo se cortaba a media pantalla.
+     100vh primero para navegadores viejos; dvh descuenta la barra del navegador. */
+  .min-h-screen-safe {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 bg-gradient-to-r from-cherry to-tangelo
