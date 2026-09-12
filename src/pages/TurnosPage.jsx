@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot } from 'firebase/firestore'
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithPopup, getRedirectResult, signOut } from 'firebase/auth'
 import { auth, db, provider } from '../services/firebase'
 import { format, addWeeks, startOfWeek, addDays, getISOWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ADMIN_EMAILS } from '../services/roles'
 import { generarRotacion, esCajero } from '../utils/turnos'
+import { navegadorEmbebido, esAndroid, enlaceChromeAndroid } from '../utils/navegadorEmbebido'
 import { LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
 import Logo from '../components/common/Logo'
 
@@ -287,7 +288,73 @@ function MiTurnoCard({ employee, schedule, caja = {}, monday }) {
 }
 
 // ─── Pantalla de login ────────────────────────────────────────────────────────
+// Cuando la página se abre DENTRO de otra app (típicamente al tocar el enlace
+// en WhatsApp), el inicio de sesión con Google no puede funcionar: esa ventana
+// bloquea las emergentes. Antes se intentaba igual y el empleado terminaba
+// viendo un error en inglés sobre "missing initial state", sin forma de salir.
+// Ahora se le dice qué hacer, con el enlace listo para copiar.
+function AvisoNavegadorEmbebido({ app }) {
+  const url = typeof window !== 'undefined' ? window.location.href : ''
+  const [copiado, setCopiado] = useState(false)
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2500)
+    } catch (_) { /* sin permiso de portapapeles: queda el enlace a la vista */ }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-cherry to-tangelo flex flex-col items-center justify-center px-6">
+      <div className="flex flex-col items-center gap-5 text-center max-w-xs w-full">
+        <Logo variant="dark" size="lg" />
+        <h1 className="font-display text-3xl text-cream tracking-wide leading-tight">
+          Ábrelo en tu navegador
+        </h1>
+        <p className="font-body text-sm text-cream/80 leading-relaxed">
+          Estás viendo esta página dentro de <strong>{app}</strong>, y ahí no se puede
+          iniciar sesión con Google.
+        </p>
+
+        <div className="bg-cream/15 border border-cream/25 rounded-2xl p-4 w-full text-left">
+          <p className="font-body text-xs font-bold text-cream mb-2 uppercase tracking-wider">
+            Cómo abrirlo
+          </p>
+          <ol className="font-body text-[13px] text-cream/85 leading-relaxed list-decimal pl-4 flex flex-col gap-1">
+            <li>Toca los <strong>⋯</strong> (o <strong>⋮</strong>) arriba a la derecha.</li>
+            <li>Elige <strong>“Abrir en Chrome”</strong> o <strong>“Abrir en Safari”</strong>.</li>
+          </ol>
+          <p className="font-body text-[12px] text-cream/60 mt-3 leading-relaxed">
+            Si no aparece esa opción, copia el enlace y pégalo tú en el navegador.
+          </p>
+        </div>
+
+        {esAndroid(navigator.userAgent) && (
+          <a href={enlaceChromeAndroid(url)}
+            className="w-full bg-cream text-coal font-body font-semibold text-base py-3.5 px-6 rounded-2xl shadow-lg text-center">
+            Abrir en Chrome
+          </a>
+        )}
+
+        <button onClick={copiar}
+          className="w-full bg-cream/20 border border-cream/30 text-cream font-body font-semibold text-sm py-3 px-6 rounded-2xl">
+          {copiado ? '✓ Enlace copiado' : 'Copiar el enlace'}
+        </button>
+
+        <p className="font-body text-[11px] text-cream/50 break-all">{url}</p>
+      </div>
+    </div>
+  )
+}
+
 function LoginScreen({ onLogin, error, loading }) {
+  // Si estamos dentro de otra app, no se muestra el botón de Google: fallaría.
+  const appContenedora = typeof navigator !== 'undefined'
+    ? navegadorEmbebido(navigator.userAgent)
+    : null
+  if (appContenedora) return <AvisoNavegadorEmbebido app={appContenedora} />
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-cherry to-tangelo flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center gap-6 text-center max-w-xs w-full">
@@ -467,9 +534,14 @@ export default function TurnosPage() {
     try {
       await signInWithPopup(auth, provider)
     } catch (err) {
-      // En móvil o si el popup fue bloqueado, usar redirect
-      if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-cancelled-by-user' || /mobile|android|iphone/i.test(navigator.userAgent)) {
-        try { await signInWithRedirect(auth, provider) } catch (e) { setLoginError('Error al iniciar sesión. Intenta de nuevo.') }
+      // La caída a signInWithRedirect se quitó: era la causa del error
+      // "missing initial state" que veían los empleados. El redirect sale a
+      // otro dominio (…firebaseapp.com) y, con el aislamiento de almacenamiento
+      // de iOS y Safari, al volver no encuentra lo que guardó. Donde el popup
+      // no funciona —una ventana dentro de otra app— el redirect tampoco: por
+      // eso ahí se muestra la pantalla que explica cómo abrirlo en el navegador.
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-cancelled-by-user') {
+        setLoginError('Tu navegador bloqueó la ventana de Google. Permite las ventanas emergentes para este sitio, o ábrelo en Chrome o Safari.')
       } else if (err.code === 'auth/unauthorized-domain') {
         setLoginError('Dominio no autorizado en Firebase. Contacta al administrador.')
       } else if (err.code !== 'auth/cancelled-popup-request') {
