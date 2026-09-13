@@ -557,14 +557,24 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Premio de fidelización canjeado — bloque MUY visible para que la caja
               no se confunda al ver productos que no aparecen en el precio. */}
           {order.loyaltyRedemption?.count > 0 && (
-            <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
-              <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
-                🎁 PREMIO DE FIDELIZACIÓN CANJEADO
+            <div className="bg-mint rounded-2xl p-5 shadow-lg">
+              <p className="font-display text-xl tracking-wide text-cream">
+                🎁 EL CLIENTE USA SU PREMIO DE FIDELIZACIÓN
               </p>
-              <p className="font-body text-sm text-coal/80 mt-1.5 leading-relaxed">
-                Este pedido incluye <strong>{order.loyaltyRedemption.count}x {LOYALTY_REWARD.name} GRATIS</strong>.
-                {' '}<strong>No lo cobres</strong> — el cliente lo ganó por 10 domicilios entregados en esta sede.
-                Avísale a cocina que incluya los dos productos igual.
+              <div className="bg-cream/15 rounded-xl px-4 py-3 mt-2">
+                <p className="font-body text-xs uppercase tracking-wider text-cream/80 font-bold">
+                  Agregar al pedido, GRATIS{order.loyaltyRedemption.count > 1 ? ` (x${order.loyaltyRedemption.count})` : ''}:
+                </p>
+                <p className="font-body text-base font-bold text-cream mt-1">
+                  🍔 {order.loyaltyRedemption.count}x Hamburguesa Especial
+                </p>
+                <p className="font-body text-base font-bold text-cream">
+                  🌭 {order.loyaltyRedemption.count}x Perro Grande con tocineta
+                </p>
+              </div>
+              <p className="font-body text-sm text-cream/95 mt-2 leading-relaxed">
+                <strong>NO lo cobres</strong> (no está en el total). Avísale a cocina que los incluya.
+                Lo ganó por 10 domicilios entregados en esta sede.
               </p>
             </div>
           )}

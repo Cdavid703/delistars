@@ -53,6 +53,11 @@ export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransf
     if (!(ef > 0) || !(tr > 0)) errs.push('Indica cuánto pagas en efectivo y cuánto por transferencia')
     else if (ef + tr !== total) {
       errs.push(`Efectivo + transferencia debe sumar el total ($${total.toLocaleString('es-CO')})`)
+    } else {
+      // La parte en efectivo también necesita billete, para el cambio.
+      const b = Number(billete)
+      if (!(b > 0)) errs.push('Dinos con qué billete pagas la parte en efectivo, o elige "Exacto"')
+      else if (b < ef) errs.push('El billete no alcanza para la parte en efectivo')
     }
   }
   if (llevaComprobante(metodo) && !comprobante) {
@@ -77,7 +82,11 @@ export function camposPago({ metodo, total, precioProductos, precioDomicilio, bi
     deliveryPrice:  Number(precioDomicilio) || 0,
     totalPrice:     total,
     ...(esMixto
-      ? { mixtoEfectivo: String(mixtoEfectivo), mixtoTransferencia: String(mixtoTransferencia) }
+      ? {
+          mixtoEfectivo: String(mixtoEfectivo), mixtoTransferencia: String(mixtoTransferencia),
+          // El cambio es sobre la parte en efectivo, no sobre el total.
+          cashBillAmount: Number(billete), cashChange: Number(billete) - Number(mixtoEfectivo),
+        }
       : {}),
     ...(esEfectivo
       ? { cashBillAmount: Number(billete), cashChange: Number(billete) - total }

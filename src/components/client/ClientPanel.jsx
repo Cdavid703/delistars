@@ -209,6 +209,9 @@ export default function ClientPanel() {
 
   const sedeLoyalty    = (sede?.id && loyaltyProgress[sede.id]) || { count: 0, totalDelivered: 0 }
   const availableForSede = availableRewardsForSede(loyaltyRewards, sede?.id)
+  const premiosOtraSede  = Object.keys(SEDES)
+    .filter(id => id !== sede?.id)
+    .flatMap(id => availableRewardsForSede(loyaltyRewards, id))
 
   const dismissCelebration = () => {
     celebrateRewards.forEach(r => markRewardNotified(user.uid, r.id).catch(() => {}))
@@ -552,6 +555,24 @@ export default function ClientPanel() {
         </div>
       </div>
 
+      {/* Premio listo para usar: bloque GRANDE y fijo (el aviso de "ganaste"
+          sale una sola vez; después el cliente tiene que seguir viéndolo). */}
+      {user?.email && availableForSede.length > 0 && (
+        <div className="mx-4 mt-3">
+          <PremioListo rewards={availableForSede} sedeName={sede?.name} />
+        </div>
+      )}
+      {/* Premios ganados en la OTRA sede: solo se usan pidiendo allá */}
+      {user?.email && premiosOtraSede.length > 0 && (
+        <div className="mx-4 mt-3 bg-mint/10 border border-mint/40 rounded-2xl px-4 py-3">
+          <p className="font-body text-xs text-coal/75 leading-relaxed">
+            🎁 También tienes {premiosOtraSede.length > 1 ? `${premiosOtraSede.length} premios` : 'un premio'} en{' '}
+            <strong>{[...new Set(premiosOtraSede.map(r => SEDES[r.sedeId]?.name).filter(Boolean))].join(' y ')}</strong>.
+            Solo se puede usar pidiendo en esa sede: cámbiala arriba para usarlo.
+          </p>
+        </div>
+      )}
+
       {/* Fidelización — solo clientes con cuenta de Google (no invitados) */}
       {user?.email && (
         <div className="mx-4 mt-3">
@@ -831,6 +852,52 @@ function DatosTransferencia() {
   )
 }
 
+// Con qué billete paga el cliente un monto en efectivo, y cuánto cambio lleva.
+// Se usa para el total (Efectivo) y para la parte en efectivo del Mixto.
+function SelectorBillete({ monto, billete, onChange, titulo }) {
+  return (
+    <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-body text-sm font-semibold text-coal">{titulo}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => onChange(monto)}
+          className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+            billete === monto ? 'bg-mint text-cream border-mint' : 'bg-cream border-mint/40 text-coal'
+          }`}>
+          Exacto
+        </button>
+        {[20000, 50000, 100000, 200000].filter(b => b > monto).map(b => (
+          <button key={b} type="button" onClick={() => onChange(b)}
+            className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+              billete === b ? 'bg-mustard text-cream border-mustard' : 'bg-cream border-mustard/40 text-coal'
+            }`}>
+            ${b.toLocaleString('es-CO')}
+          </button>
+        ))}
+      </div>
+      <div>
+        <label className="label-field">O escribe con cuánto pagas</label>
+        <input type="number" inputMode="numeric" className="input-field" placeholder="Ej: 50000"
+          value={billete ?? ''}
+          onChange={e => { const v = parseFloat(e.target.value); onChange(isNaN(v) ? null : v) }} />
+      </div>
+      {billete != null && (
+        billete < monto ? (
+          <p className="font-body text-sm text-pepper font-semibold">
+            ⚠️ No alcanza: faltan ${(monto - billete).toLocaleString('es-CO')}
+          </p>
+        ) : billete === monto ? (
+          <p className="font-body text-sm text-mint font-semibold">✅ Pagas exacto, no necesitas cambio</p>
+        ) : (
+          <div className="flex items-center justify-between">
+            <p className="font-body text-sm text-coal font-semibold">Tu cambio será:</p>
+            <p className="font-display text-2xl text-tangelo">${(billete - monto).toLocaleString('es-CO')}</p>
+          </div>
+        )
+      )}
+    </div>
+  )
+}
+
 // Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
 // la caja le llega el pedido completo para aceptarlo.
 function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, comprobante, setComprobante }) {
@@ -887,47 +954,12 @@ function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, compro
 
       {/* Efectivo: con qué billete, para que el domiciliario lleve el cambio */}
       {metodo === 'Efectivo' && (
-        <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-          <p className="font-body text-sm font-semibold text-coal">
-            {pickup ? '¿Con qué billete vas a pagar en la sede?' : '¿Con qué billete le vas a pagar al domiciliario?'}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => set('billete', total)}
-              className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
-                billete === total ? 'bg-mint text-cream border-mint' : 'bg-cream border-mint/40 text-coal'
-              }`}>
-              Exacto
-            </button>
-            {[20000, 50000, 100000, 200000].filter(b => b > total).map(b => (
-              <button key={b} type="button" onClick={() => set('billete', b)}
-                className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
-                  billete === b ? 'bg-mustard text-cream border-mustard' : 'bg-cream border-mustard/40 text-coal'
-                }`}>
-                ${b.toLocaleString('es-CO')}
-              </button>
-            ))}
-          </div>
-          <div>
-            <label className="label-field">O escribe con cuánto pagas</label>
-            <input type="number" inputMode="numeric" className="input-field" placeholder="Ej: 50000"
-              value={billete ?? ''}
-              onChange={e => { const v = parseFloat(e.target.value); set('billete', isNaN(v) ? null : v) }} />
-          </div>
-          {billete != null && (
-            billete < total ? (
-              <p className="font-body text-sm text-pepper font-semibold">
-                ⚠️ No alcanza: faltan ${(total - billete).toLocaleString('es-CO')}
-              </p>
-            ) : billete === total ? (
-              <p className="font-body text-sm text-mint font-semibold">✅ Pagas exacto, no necesitas cambio</p>
-            ) : (
-              <div className="flex items-center justify-between">
-                <p className="font-body text-sm text-coal font-semibold">Tu cambio será:</p>
-                <p className="font-display text-2xl text-tangelo">${(billete - total).toLocaleString('es-CO')}</p>
-              </div>
-            )
-          )}
-        </div>
+        <SelectorBillete
+          monto={total}
+          billete={billete}
+          onChange={v => set('billete', v)}
+          titulo={pickup ? '¿Con qué billete vas a pagar en la sede?' : '¿Con qué billete le vas a pagar al domiciliario?'}
+        />
       )}
 
       {/* Mixto: cuánto va en cada forma (tiene que sumar el total) */}
@@ -956,6 +988,14 @@ function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, compro
                 onChange={e => set('mixtoTransferencia', e.target.value)} />
             </div>
           </div>
+          {Number(form.mixtoEfectivo) > 0 && (
+            <SelectorBillete
+              monto={Number(form.mixtoEfectivo)}
+              billete={billete}
+              onChange={v => set('billete', v)}
+              titulo={`¿Con qué billete pagas los $${Number(form.mixtoEfectivo).toLocaleString('es-CO')} en efectivo?`}
+            />
+          )}
         </div>
       )}
 
@@ -1401,27 +1441,38 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
 
       {/* Canje de premios de fidelización ganados en esta sede */}
       {sortedRewards.length > 0 && (
-        <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4">
-          <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
-            🎁 Tienes {sortedRewards.length} {sortedRewards.length > 1 ? 'premios' : 'premio'} disponible{sortedRewards.length > 1 ? 's' : ''}
+        <div className={`rounded-2xl p-4 border-2 transition-colors ${
+          redeemCount > 0 ? 'bg-mint border-mint' : 'bg-mint/10 border-mint'}`}>
+          <p className={`font-display text-xl tracking-wide ${redeemCount > 0 ? 'text-cream' : 'text-mint'}`}>
+            🎁 {sortedRewards.length > 1 ? `Tienes ${sortedRewards.length} premios de fidelización` : 'Tienes un premio de fidelización'}
           </p>
-          <p className="font-body text-xs text-coal/60 mt-1 leading-relaxed">
-            {LOYALTY_REWARD.name} GRATIS (premio fidelización). Puedes usarlo ahora o guardarlo para otro pedido.
+          <p className={`font-body text-sm mt-1 leading-relaxed ${redeemCount > 0 ? 'text-cream/90' : 'text-coal/75'}`}>
+            {sortedRewards.length > 1 ? 'Cada premio incluye' : 'Incluye'}, <strong>GRATIS</strong>: 🍔 1 Hamburguesa Especial + 🌭 1 Perro Grande con tocineta.
+            {venceTexto(sortedRewards[0]) && <> Vence el <strong>{venceTexto(sortedRewards[0])}</strong>.</>}
           </p>
-          <div className="flex items-center gap-2 mt-3">
-            {Array.from({ length: sortedRewards.length + 1 }, (_, n) => n).map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setRedeemCount(n)}
-                className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
-                  redeemCount === n ? 'border-mint bg-mint/20 text-mint' : 'border-coal/15 text-coal/50'
-                }`}
-              >
-                {n === 0 ? 'Guardar' : `Usar ${n}`}
+          <div className="flex flex-col gap-2 mt-3">
+            {Array.from({ length: sortedRewards.length }, (_, i) => i + 1).map(n => (
+              <button key={n} type="button" onClick={() => setRedeemCount(n)}
+                className={`w-full py-3 rounded-xl border-2 text-sm font-bold font-body transition-colors ${
+                  redeemCount === n ? 'bg-cream text-mint border-cream'
+                    : redeemCount > 0 ? 'border-cream/50 text-cream' : 'border-mint bg-cream text-mint'
+                }`}>
+                {redeemCount === n ? '✅ ' : ''}
+                {sortedRewards.length > 1 ? `Usar ${n} premio${n > 1 ? 's' : ''} en este pedido` : 'Usar mi premio en este pedido'}
               </button>
             ))}
+            <button type="button" onClick={() => setRedeemCount(0)}
+              className={`w-full py-2 text-xs font-semibold font-body underline underline-offset-2 ${
+                redeemCount > 0 ? 'text-cream/80' : 'text-coal/60'}`}>
+              {redeemCount === 0 ? '✓ Por ahora lo guardo para otro pedido' : 'Mejor guardarlo para otro pedido'}
+            </button>
           </div>
+          {redeemCount > 0 && (
+            <p className="font-body text-xs text-cream mt-2 leading-relaxed">
+              Listo: tu pedido llevará {redeemCount > 1 ? `${redeemCount}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta
+              <strong> sin costo</strong>. No tienes que agregarlos al carrito.
+            </p>
+          )}
         </div>
       )}
 
@@ -1893,6 +1944,17 @@ function ClientOrderDetail({ order, onClose }) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* El pedido lleva premio de fidelización: se lo confirmamos en grande */}
+          {order.loyaltyRedemption?.count > 0 && (
+            <div className="bg-mint rounded-2xl p-4">
+              <p className="font-display text-lg tracking-wide text-cream">🎁 Este pedido incluye tu premio</p>
+              <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
+                {order.loyaltyRedemption.count > 1 ? `${order.loyaltyRedemption.count}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta, <strong>GRATIS</strong>.
+                {CLOSED_STATUSES.includes(order.status) && ' Como el pedido no siguió, el premio volvió a tu cuenta.'}
+              </p>
             </div>
           )}
 
@@ -2551,6 +2613,40 @@ function ClientHistoryModal({ orders, onClose, onSelect, onReorder }) {
   )
 }
 
+// Fecha de vencimiento legible de un premio ("12 de noviembre").
+const venceTexto = (r) => r?.expiresAt?.toDate ? format(r.expiresAt.toDate(), "d 'de' MMMM", { locale: es }) : null
+
+// Bloque grande de "tienes tu premio": qué incluye, dónde vale, cuándo vence y
+// cómo usarlo. Se muestra en el panel mientras el premio siga disponible.
+function PremioListo({ rewards, sedeName }) {
+  const count = rewards.length
+  const proximo = [...rewards].sort((a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0))[0]
+  const vence = venceTexto(proximo)
+  return (
+    <div className="rounded-3xl p-5 bg-gradient-to-br from-mint to-[#1f8a6a] text-cream shadow-lg">
+      <p className="text-4xl leading-none">🎁</p>
+      <p className="font-display text-2xl tracking-wide mt-2 leading-tight">
+        {count > 1 ? `¡Tienes ${count} premios listos para usar!` : '¡Tienes tu premio listo para usar!'}
+      </p>
+      <div className="bg-cream/15 rounded-2xl px-4 py-3 mt-3">
+        <p className="font-body text-xs uppercase tracking-wider text-cream/75 font-bold">
+          {count > 1 ? 'Cada premio incluye, GRATIS:' : 'Incluye, GRATIS:'}
+        </p>
+        <p className="font-body text-base font-semibold mt-1">🍔 1 Hamburguesa Especial</p>
+        <p className="font-body text-base font-semibold">🌭 1 Perro Grande con tocineta</p>
+      </div>
+      <ul className="font-body text-sm text-cream/90 mt-3 flex flex-col gap-1 leading-relaxed">
+        <li>📍 Válido en <strong>{sedeName || 'esta sede'}</strong></li>
+        {vence && <li>⏳ {count > 1 ? 'El primero vence' : 'Vence'} el <strong>{vence}</strong></li>}
+        <li>👉 Arma tu pedido en el menú y, al completarlo, toca <strong>"Usar mi premio en este pedido"</strong></li>
+      </ul>
+      <a href="/" className="mt-4 flex items-center justify-center w-full py-3 rounded-full bg-cream text-mint font-body font-bold text-sm">
+        Hacer un pedido y usar mi premio
+      </a>
+    </div>
+  )
+}
+
 // ─── Celebración de premio de fidelización ────────────────────────────────────
 function LoyaltyCelebrationModal({ rewards, onClose }) {
   const count = rewards.length
@@ -2571,6 +2667,19 @@ function LoyaltyCelebrationModal({ rewards, onClose }) {
           Por tus domicilios entregados en <strong>{sedeNames.join(' y ') || 'tu sede'}</strong>. Lo puedes usar ahora
           o guardarlo para tu próximo pedido — tú decides cuándo.
         </p>
+        <div className="bg-mint/10 border border-mint/30 rounded-2xl px-4 py-3 mt-3 text-left flex flex-col gap-1">
+          <p className="font-body text-xs text-coal/75 leading-relaxed">
+            📍 Solo vale pidiendo en <strong>{sedeNames.join(' y ') || 'la sede donde lo ganaste'}</strong>.
+          </p>
+          {venceTexto(rewards[0]) && (
+            <p className="font-body text-xs text-coal/75 leading-relaxed">
+              ⏳ Vence el <strong>{venceTexto(rewards[0])}</strong>.
+            </p>
+          )}
+          <p className="font-body text-xs text-coal/75 leading-relaxed">
+            👉 Para usarlo: arma tu pedido en el menú y, al completarlo, toca <strong>"Usar mi premio en este pedido"</strong>.
+          </p>
+        </div>
         {resetting && (
           <p className="font-body text-xs text-tangelo mt-3 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2">
             Tu progreso de fidelización vuelve a empezar desde 0 — ¡sigue pidiendo para ganar más premios!

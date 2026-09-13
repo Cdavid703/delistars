@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
+import { cashAmount } from '../../utils/payments'
 import {
   X, User, MapPin, CreditCard, Bike,
   Hash, AlertCircle
@@ -31,7 +32,10 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
   const dp    = parseFloat(deliveryPrice) || 0
   const total = qp + dp
   const pa    = parseFloat(payAmount)     || 0
-  const change = !payExact && pa > total ? pa - total : 0
+  // En Mixto el cambio es sobre la parte en efectivo, no sobre el total: con
+  // $20.000 en efectivo pagados con $50.000 se llevan $30.000, no $9.000.
+  const aCobrarEfectivo = cashAmount({ ...order, totalPrice: total })
+  const change = !payExact && pa > aCobrarEfectivo ? pa - aCobrarEfectivo : 0
 
   const handleSend = async () => {
     const errs = []

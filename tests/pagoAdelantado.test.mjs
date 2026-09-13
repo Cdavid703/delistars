@@ -40,11 +40,20 @@ test('transferencia y Nequi: comprobante obligatorio', () => {
   assert.deepEqual(erroresPago({ metodo: 'Nequi', total: 41000, comprobante: { name: 'x.jpg' } }), [])
 })
 
-test('mixto: las dos partes suman el total y lleva comprobante', () => {
-  const ok = { metodo: 'Mixto', total: 41000, mixtoEfectivo: '20000', mixtoTransferencia: '21000', comprobante: {} }
+test('mixto: las dos partes suman el total, billete para el efectivo y comprobante', () => {
+  const ok = { metodo: 'Mixto', total: 41000, mixtoEfectivo: '20000', mixtoTransferencia: '21000', billete: 50000, comprobante: {} }
   assert.deepEqual(erroresPago(ok), [])
   assert.match(erroresPago({ ...ok, mixtoTransferencia: '10000' })[0], /sumar el total/)
   assert.match(erroresPago({ ...ok, comprobante: null })[0], /comprobante/)
+  assert.match(erroresPago({ ...ok, billete: null })[0], /billete/)
+  assert.match(erroresPago({ ...ok, billete: 10000 })[0], /no alcanza/)
+})
+
+test('mixto: el cambio se calcula sobre la parte en efectivo', () => {
+  const c = camposPago({ metodo: 'Mixto', total: 41000, precioProductos: 36000, precioDomicilio: 5000,
+    billete: 50000, mixtoEfectivo: '20000', mixtoTransferencia: '21000' })
+  assert.equal(c.cashBillAmount, 50000)
+  assert.equal(c.cashChange, 30000)
 })
 
 test('sin método no deja enviar', () => {

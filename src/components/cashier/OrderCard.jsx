@@ -58,9 +58,10 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
     >
       {/* Premio de fidelización canjeado — muy visible, para que no se cobre */}
       {order.loyaltyRedemption?.count > 0 && (
-        <div className="mb-2 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
-          <p className="font-body text-xs font-bold text-mint">
-            🎁 Incluye {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta) — NO cobrar
+        <div className="mb-2 bg-mint rounded-xl px-3 py-2.5 shadow-soft">
+          <p className="font-display text-sm tracking-wide text-cream">🎁 USA PREMIO DE FIDELIZACIÓN</p>
+          <p className="font-body text-xs font-semibold text-cream/95 mt-0.5">
+            {order.loyaltyRedemption.count}x Hamburguesa Especial + Perro Grande con tocineta — GRATIS, NO cobrar
           </p>
         </div>
       )}
