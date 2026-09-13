@@ -56,6 +56,15 @@ test('mixto: el cambio se calcula sobre la parte en efectivo', () => {
   assert.equal(c.cashChange, 30000)
 })
 
+test('si el saldo a favor cubre todo, no se pide medio de pago', () => {
+  assert.deepEqual(erroresPago({ metodo: '', total: 0 }), [])
+  const c = camposPago({ metodo: '', total: 0, precioProductos: 36000, precioDomicilio: 5000 })
+  assert.equal(c.payment, 'Saldo a favor')
+  assert.equal(c.cashOnDelivery, false)
+  assert.equal(c.totalPrice, 0)
+  assert.equal(c.quotedPrice, 36000)
+})
+
 test('sin método no deja enviar', () => {
   assert.deepEqual(erroresPago({ metodo: '', total: 41000 }), ['Elige cómo vas a pagar'])
 })

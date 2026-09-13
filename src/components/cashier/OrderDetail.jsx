@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
-import { db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD } from '../../services/firebase'
+import {
+  db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD,
+  acreditarSaldoDevolucion, saldoVerificado, crearSaldoSobrante, restaurarSaldo,
+} from '../../services/firebase'
+import { devolucionInicial, aplicarSaldo } from '../../utils/devolucion'
 import ClientChat from './ClientChat'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
@@ -227,20 +231,39 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           return
         }
       }
+      // Saldo a favor: se verifica contra los saldos reales (no contra lo que
+      // dice el pedido) y lo que sobre vuelve a la cuenta del cliente.
+      let saldo = null
+      if (order.saldoAplicado?.ids?.length) {
+        const disponible = await saldoVerificado(order)
+        saldo = { ...aplicarSaldo(localTotal, disponible), disponible }
+        if (saldo.sobrante > 0) {
+          await crearSaldoSobrante(order, saldo.sobrante, user?.email)
+        }
+      }
+      const totalACobrar = saldo ? saldo.aPagar : localTotal
       await updateDoc(doc(db, 'orders', order.id), {
         status:        'quoted',
         orderNumber:   orderNum,
         quotedPrice:   lqp,
         deliveryPrice: ldp,
-        totalPrice:    localTotal,
+        totalPrice:    totalACobrar,
+        // El saldo cubrió todo: no hay nada que cobrar ni medio de pago que elegir.
+        ...(totalACobrar === 0 && saldo && !order.payment
+          ? { payment: 'Saldo a favor', cashOnDelivery: false } : {}),
+        ...(saldo ? {
+          'saldoAplicado.monto':    saldo.disponible,
+          'saldoAplicado.usado':    saldo.usado,
+          'saldoAplicado.sobrante': saldo.sobrante,
+        } : {}),
         cashierNotes:  localCashierNotes.trim(),
         quotedAt:      serverTimestamp(),
         // Pago adelantado en efectivo: si la caja corrigió el total, el cambio
         // se recalcula; si el billete ya no alcanza, se borra para que el
         // domiciliario no salga con un cambio equivocado.
         ...(order.pagoAdelantado && order.payment === 'Efectivo' && order.cashBillAmount != null
-          ? (Number(order.cashBillAmount) >= localTotal
-              ? { cashChange: Number(order.cashBillAmount) - localTotal }
+          ? (Number(order.cashBillAmount) >= totalACobrar
+              ? { cashChange: Number(order.cashBillAmount) - totalACobrar }
               : { cashBillAmount: null, cashChange: null })
           : {}),
         needsRequote:  false, // el aviso de "el cliente agregó productos" ya quedó atendido
@@ -287,12 +310,31 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     if (!rejectReason.trim()) return
     setLoading(true)
     try {
+      const motivo = rejectReason.trim()
+      const quien  = user?.displayName || user?.email || 'Cajero'
+      // Si ya había pagado por transferencia, queda la devolución pendiente y
+      // se le pregunta al cliente cómo la quiere.
+      const devolucion = devolucionInicial(order)
+      const ahora = Date.now()
       await updateDoc(doc(db, 'orders', order.id), {
         status:          'rejected',
-        rejectionReason: rejectReason.trim(),
+        rejectionReason: motivo,
+        // El motivo queda también en los comentarios del pedido (historial).
+        comments: arrayUnion({ role: 'cashier', name: quien, text: `❌ Pedido rechazado. Motivo: ${motivo}`, ts: ahora }),
+        ...(devolucion ? {
+          devolucion,
+          clientMessages: arrayUnion({
+            role: 'cashier', name: quien, ts: ahora + 1,
+            text: `Lo sentimos, tu pedido fue rechazado. Motivo: ${motivo}. ` +
+              `Como ya pagaste $${devolucion.monto.toLocaleString('es-CO')} por transferencia, te los devolvemos: ` +
+              `entra a tu pedido y elige si los quieres de vuelta por transferencia` +
+              (order.clientEmail ? ' o como saldo a favor para tu próximo pedido.' : '.'),
+          }),
+        } : {}),
         updatedAt:       serverTimestamp(),
       })
       restoreLoyaltyRedemption(order) // si tenía un premio canjeado, se devuelve
+      if (order.saldoAplicado?.ids?.length) restaurarSaldo(order, { comoCaja: true }).catch(() => {})
       onClose()
     } finally { setLoading(false) }
   }
@@ -433,7 +475,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       await updateDoc(doc(db, 'orders', order.id), {
         quotedPrice:   qp,
         deliveryPrice: dp,
-        totalPrice:    qp + dp,
+        totalPrice:    Math.max(0, qp + dp - (Number(order.saldoAplicado?.usado) || 0)),
         updatedAt:     serverTimestamp(),
       })
       setEditingPrice(false)
@@ -941,6 +983,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
                   </div>
                 )}
+                {order.saldoAplicado?.ids?.length > 0 && (
+                  <div className="flex justify-between font-body text-sm text-mint font-semibold">
+                    <span>Saldo a favor del cliente:</span>
+                    <span>−{fmt(order.saldoAplicado.usado ?? order.saldoAplicado.monto)}</span>
+                  </div>
+                )}
                 <div className="border-t border-coal/10 pt-1.5 flex justify-between">
                   <span className="font-body font-bold text-coal">TOTAL · {order.payment}</span>
                   <span className="font-display text-xl text-cherry">{fmt(order.totalPrice)}</span>
@@ -1098,6 +1146,16 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                       </button>
                     )}
                   </div>
+                </div>
+              )}
+
+              {order.saldoAplicado?.ids?.length > 0 && (
+                <div className="bg-mint/10 border border-mint/40 rounded-xl px-4 py-2.5">
+                  <p className="font-body text-xs text-coal/80">
+                    💚 El cliente usa <strong>{fmt(order.saldoAplicado.monto)}</strong> de saldo a favor.
+                    Se descuenta solo al enviar: cobrará{' '}
+                    <strong>{fmt(aplicarSaldo(localTotal, order.saldoAplicado.monto).aPagar)}</strong>.
+                  </p>
                 </div>
               )}
 
@@ -1286,6 +1344,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </div>
           )}
 
+          <BloqueDevolucion order={order} user={user} />
+
           {/* Rejection info */}
           {order.status === 'rejected' && order.rejectionReason && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4">
@@ -1372,6 +1432,98 @@ function Row({ icon: Icon, label, value }) {
         <span className="font-body text-xs text-coal/50">{label}: </span>
         <span className="font-body text-sm text-coal">{value}</span>
       </div>
+    </div>
+  )
+}
+
+// ─── Devolución y saldo a favor (lado caja) ─────────────────────────────────
+// Qué eligió el cliente y qué le toca hacer a la caja: transferirle de vuelta
+// o acreditarle el saldo. También devolver el saldo que había usado en un
+// pedido que no siguió.
+function BloqueDevolucion({ order, user }) {
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState('')
+  const dev = order.devolucion
+  const saldoPorDevolver = order.saldoAplicado?.porDevolver
+  if (!dev && !saldoPorDevolver) return null
+
+  const correr = async (fn) => {
+    setBusy(true); setError('')
+    try { await fn() } catch (_) { setError('No se pudo guardar. Revisa la conexión e intenta de nuevo.') }
+    finally { setBusy(false) }
+  }
+  const marcarTransferida = () => correr(() => updateDoc(doc(db, 'orders', order.id), {
+    'devolucion.estado':      'transferida',
+    'devolucion.resueltaAt':  serverTimestamp(),
+    'devolucion.resueltaPor': user?.email || 'caja',
+    clientMessages: arrayUnion({
+      role: 'cashier', name: user?.displayName || 'Cajero', ts: Date.now(),
+      text: `✅ Ya te transferimos $${Number(dev.monto).toLocaleString('es-CO')} a ${dev.datos?.medio || 'tu cuenta'}.`,
+    }),
+    updatedAt: serverTimestamp(),
+  }))
+  const acreditar = () => correr(() => acreditarSaldoDevolucion(order, user?.email))
+  const devolverSaldo = () => correr(() => restaurarSaldo(order, { comoCaja: true }))
+
+  const pendiente = dev && ['transferencia_solicitada', 'saldo_solicitado'].includes(dev.estado)
+  return (
+    <div className={`rounded-2xl p-4 flex flex-col gap-2 border-2 ${pendiente || saldoPorDevolver ? 'bg-cherry/10 border-cherry' : 'bg-mint/10 border-mint/40'}`}>
+      {dev && (
+        <>
+          <p className="font-display text-lg tracking-wide text-coal">
+            💸 Devolución de {fmt(dev.monto)}
+          </p>
+          {dev.estado === 'por_elegir' && (
+            <p className="font-body text-sm text-coal/75">
+              El cliente pagó por transferencia. <strong>Esperando que elija</strong> cómo quiere la devolución
+              {order.clientEmail ? ' (transferencia o saldo a favor)' : ' (transferencia)'}. Ya se le escribió por el chat.
+            </p>
+          )}
+          {dev.estado === 'transferencia_solicitada' && (
+            <>
+              <p className="font-body text-sm text-coal/80"><strong>Pidió transferencia.</strong> Hazla a:</p>
+              <div className="bg-cream rounded-xl px-4 py-3 font-body text-sm flex flex-col gap-0.5">
+                <p><span className="text-coal/55">Medio:</span> <strong>{dev.datos?.medio}</strong></p>
+                <p><span className="text-coal/55">Número:</span> <strong className="select-all">{dev.datos?.numero}</strong></p>
+                <p><span className="text-coal/55">Titular:</span> <strong>{dev.datos?.titular}</strong></p>
+                {dev.datos?.documento && <p><span className="text-coal/55">Documento:</span> <strong>{dev.datos.documento}</strong></p>}
+              </div>
+              <button onClick={marcarTransferida} disabled={busy} className="btn-primary w-full">
+                {busy ? 'Guardando…' : `Ya le transferí ${fmt(dev.monto)}`}
+              </button>
+            </>
+          )}
+          {dev.estado === 'saldo_solicitado' && (
+            <>
+              <p className="font-body text-sm text-coal/80">
+                <strong>Pidió saldo a favor</strong> para su próximo pedido en {order.sedeName || 'esta sede'}.
+                Confirma que la transferencia sí llegó y acredítalo.
+              </p>
+              <button onClick={acreditar} disabled={busy} className="btn-primary w-full">
+                {busy ? 'Acreditando…' : `Acreditar ${fmt(dev.monto)} a su cuenta`}
+              </button>
+            </>
+          )}
+          {dev.estado === 'transferida' && (
+            <p className="font-body text-sm text-mint font-semibold">✅ Devuelto por transferencia{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
+          )}
+          {dev.estado === 'acreditada' && (
+            <p className="font-body text-sm text-mint font-semibold">✅ Acreditado como saldo a favor{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
+          )}
+        </>
+      )}
+      {saldoPorDevolver && (
+        <>
+          <p className="font-body text-sm text-coal/80">
+            <strong>El cliente había usado {fmt(order.saldoAplicado.usado ?? order.saldoAplicado.monto)} de saldo a favor</strong> y
+            el pedido no siguió. Devuélveselo a su cuenta.
+          </p>
+          <button onClick={devolverSaldo} disabled={busy} className="btn-secondary w-full">
+            {busy ? 'Devolviendo…' : 'Devolver el saldo a su cuenta'}
+          </button>
+        </>
+      )}
+      {error && <p className="font-body text-xs text-pepper">{error}</p>}
     </div>
   )
 }

@@ -17,6 +17,7 @@ import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import AssignDeliveryDetail from './AssignDeliveryDetail'
 import StatusBadge from '../common/StatusBadge'
+import { DEVOLUCION_PENDIENTE_CAJA } from '../../utils/devolucion'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -200,6 +201,12 @@ export default function CashierPanel() {
   const ordersConMensajes = orders
     .filter(o => (unreadChatMap[o.id] || 0) > 0)
     .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
+
+  // Devoluciones que le tocan a la caja (de cualquier día: una devolución
+  // pendiente no se puede perder porque el pedido era de ayer).
+  const devolucionesPendientes = orders
+    .filter(o => DEVOLUCION_PENDIENTE_CAJA.includes(o.devolucion?.estado) || o.saldoAplicado?.porDevolver)
+    .sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0))
 
   useEffect(() => {
     if (!sede) return
@@ -549,6 +556,30 @@ export default function CashierPanel() {
           antes solo decía "toca el pedido resaltado", pero si ese pedido estaba
           en otra pestaña (p. ej. ya cotizado → "Asignar") el cajero no lo
           encontraba y el mensaje quedaba sin responder. */}
+      {devolucionesPendientes.length > 0 && (
+        <div className="mx-4 mt-2 flex flex-col gap-1.5">
+          {devolucionesPendientes.map(o => (
+            <button key={o.id} onClick={() => openOrderDetail(o.id)}
+              className="w-full bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 text-left shadow-soft">
+              <span className="text-2xl">💸</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-bold">
+                  Devolución pendiente{o.orderNumber ? ` · pedido #${o.orderNumber}` : ''}
+                </p>
+                <p className="font-body text-xs text-cream/85 truncate">
+                  {o.saldoAplicado?.porDevolver && !DEVOLUCION_PENDIENTE_CAJA.includes(o.devolucion?.estado)
+                    ? `${o.name || 'Cliente'} — devolverle el saldo a favor que usó`
+                    : o.devolucion.estado === 'transferencia_solicitada'
+                      ? `${o.name || 'Cliente'} pidió transferencia de $${Number(o.devolucion.monto).toLocaleString('es-CO')}`
+                      : `${o.name || 'Cliente'} pidió $${Number(o.devolucion.monto).toLocaleString('es-CO')} como saldo a favor`}
+                </p>
+              </div>
+              <span className="font-body text-xs font-bold">Ver →</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {ordersConMensajes.length > 0 && (
         <div className="mx-4 mt-2 flex flex-col gap-1.5">
           {ordersConMensajes.map(o => (

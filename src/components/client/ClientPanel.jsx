@@ -6,7 +6,7 @@ import {
 import {
   db, storage, createOrderWithNumber, nuevoIdPedido,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
-  restoreLoyaltyRedemption, enablePush, pushPermission,
+  restoreLoyaltyRedemption, enablePush, pushPermission, usarSaldo, restaurarSaldo,
 } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
@@ -20,6 +20,9 @@ import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
+import {
+  devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo,
+} from '../../utils/devolucion'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
@@ -206,6 +209,17 @@ export default function ClientPanel() {
     )
     if (unseen.length > 0) setCelebrateRewards(unseen)
   }, [loyaltyRewards])
+
+  // Saldo a favor por devoluciones. Solo clientes con cuenta de Google.
+  const [creditos, setCreditos] = useState([])
+  useEffect(() => {
+    if (!user?.uid || !user?.email) return
+    return onSnapshot(collection(db, 'customers', user.uid, 'credits'), snap => {
+      setCreditos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }, () => {})
+  }, [user?.uid, user?.email])
+  const creditosSede = creditos.filter(c => c.estado === 'disponible' && c.sedeId === sede?.id)
+  const saldoSede    = saldoDisponible(creditos, sede?.id)
 
   const sedeLoyalty    = (sede?.id && loyaltyProgress[sede.id]) || { count: 0, totalDelivered: 0 }
   const availableForSede = availableRewardsForSede(loyaltyRewards, sede?.id)
@@ -449,6 +463,9 @@ export default function ClientPanel() {
     if (redeemRewardIds.length > 0) {
       redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
     }
+    if (orderData.saldoAplicado?.ids?.length) {
+      await usarSaldo(user.uid, orderData.saldoAplicado.ids, newOrderRef.id).catch(() => {})
+    }
     // Solo AHORA que el pedido existe en Firestore se limpian el carrito
     // entregado por el menú y el borrador — nunca antes, para que una recarga
     // a mitad del formulario no le pierda el pedido al cliente.
@@ -490,7 +507,7 @@ export default function ClientPanel() {
           <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
         </div>
         <div className="p-5 max-w-lg mx-auto pb-16">
-          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} />
+          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} />
         </div>
       </div>
     )
@@ -569,6 +586,30 @@ export default function ClientPanel() {
             🎁 También tienes {premiosOtraSede.length > 1 ? `${premiosOtraSede.length} premios` : 'un premio'} en{' '}
             <strong>{[...new Set(premiosOtraSede.map(r => SEDES[r.sedeId]?.name).filter(Boolean))].join(' y ')}</strong>.
             Solo se puede usar pidiendo en esa sede: cámbiala arriba para usarlo.
+          </p>
+        </div>
+      )}
+
+      {/* Devolución esperando que el cliente elija cómo la quiere */}
+      {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
+        <div key={`dev-${o.id}`} className="mx-4 mt-3">
+          <button onClick={() => openOrderDetail(o.id)}
+            className="w-full text-left rounded-3xl p-5 bg-cherry text-cream shadow-lg">
+            <p className="font-display text-xl tracking-wide">💸 Te debemos {fmt(o.devolucion.monto)}</p>
+            <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
+              Tu pedido{o.orderNumber ? ` #${o.orderNumber}` : ''} no siguió y ya lo habías pagado. Toca aquí y
+              elige cómo quieres la devolución.
+            </p>
+          </button>
+        </div>
+      ))}
+
+      {/* Saldo a favor disponible en esta sede */}
+      {user?.email && saldoSede > 0 && (
+        <div className="mx-4 mt-3 rounded-2xl p-4 bg-mint/15 border-2 border-mint">
+          <p className="font-display text-lg tracking-wide text-mint">💚 Tienes {fmt(saldoSede)} a favor</p>
+          <p className="font-body text-xs text-coal/75 mt-1 leading-relaxed">
+            Se descuenta de tu próximo pedido en <strong>{sede?.name}</strong>. No vence.
           </p>
         </div>
       )}
@@ -900,7 +941,7 @@ function SelectorBillete({ monto, billete, onChange, titulo }) {
 
 // Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
 // la caja le llega el pedido completo para aceptarlo.
-function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, comprobante, setComprobante }) {
+function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante }) {
   const [archivoError, setArchivoError] = useState('')
   const metodo = form.payment
   const billete = form.billete
@@ -927,11 +968,24 @@ function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, compro
           <span className="text-coal/60">Domicilio:</span>
           <span className="font-semibold">{pickup ? 'Recoges en sede' : `$${domicilio.toLocaleString('es-CO')}`}</span>
         </div>
+        {saldoUsado > 0 && (
+          <div className="flex justify-between font-body text-sm text-mint font-semibold">
+            <span>Saldo a favor:</span>
+            <span>−${saldoUsado.toLocaleString('es-CO')}</span>
+          </div>
+        )}
         <div className="border-t border-coal/10 pt-2 flex justify-between items-center">
           <span className="font-body font-bold text-coal">TOTAL A PAGAR:</span>
           <span className="font-display text-2xl text-cherry">${total.toLocaleString('es-CO')}</span>
         </div>
       </div>
+
+      {total === 0 && (
+        <p className="font-body text-sm font-semibold text-mint">
+          ✅ Tu saldo a favor cubre todo el pedido: no tienes que pagar nada.
+        </p>
+      )}
+      {total > 0 && (<>
 
       <div>
         <label className="label-field">¿Cómo vas a pagar? *</label>
@@ -1020,6 +1074,8 @@ function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, compro
         </div>
       )}
 
+      </>)}
+
       <p className="font-body text-[11px] text-coal/55 leading-relaxed">
         Al enviar, tu pedido llega completo a la caja. Apenas lo acepten te avisamos
         y empieza la preparación.
@@ -1028,7 +1084,7 @@ function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, compro
   )
 }
 
-function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [] }) {
+function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [], creditos = [] }) {
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
     (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
@@ -1091,7 +1147,14 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     fromMenu, menuTotal, deliveryMode: form.deliveryMode, domicilioAutomatico: cobroAutomático,
   })
   const precioDom = form.deliveryMode === 'delivery' && cobroAutomático ? tarifa.precio : 0
-  const total = totalAPagar({ menuTotal, deliveryMode: form.deliveryMode, precioDomicilio: precioDom })
+  const totalBruto = totalAPagar({ menuTotal, deliveryMode: form.deliveryMode, precioDomicilio: precioDom })
+  // Saldo a favor: se usa por defecto; el cliente puede guardarlo.
+  const [usarMiSaldo, setUsarMiSaldo] = useState(true)
+  const saldo = creditos.reduce((t, c) => t + (Number(c.monto) || 0), 0)
+  const conSaldo = usarMiSaldo && saldo > 0
+  const saldoCalc = aplicarSaldo(totalBruto, conSaldo ? saldo : 0)
+  // Con pago adelantado el cliente paga el total ya descontado.
+  const total = saldoCalc.aPagar
 
   useEffect(() => {
     // 1) Restaurar el borrador si la página se recargó a mitad del formulario
@@ -1229,6 +1292,15 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           : {}),
         ...(pidioRevisión ? { deliveryPriceReview: true } : {}),
         ...pago,
+        // Saldo usado. Con pago adelantado ya va calculado; si la caja cotiza,
+        // la caja lo descuenta al enviar la cotización.
+        ...(conSaldo ? {
+          saldoAplicado: {
+            ids: creditos.map(c => c.id),
+            monto: saldo,
+            ...(pagoAhora ? { usado: saldoCalc.usado, sobrante: saldoCalc.sobrante } : {}),
+          },
+        } : {}),
       })
     } catch (err) {
       // Falló el envío: se reactiva el autoguardado para no perder el borrador.
@@ -1483,11 +1555,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           placeholder="Sin cebolla, extra salsa, timbre 2B…" />
       </div>
 
+      {saldo > 0 && (
+        <div className={`rounded-2xl p-4 border-2 ${conSaldo ? 'bg-mint/15 border-mint' : 'bg-cream border-coal/15'}`}>
+          <p className="font-display text-base tracking-wide text-mint">💚 Tienes ${saldo.toLocaleString('es-CO')} a favor</p>
+          <label className="flex items-center gap-2 mt-2 font-body text-sm text-coal cursor-pointer">
+            <input type="checkbox" checked={usarMiSaldo} onChange={e => setUsarMiSaldo(e.target.checked)} className="w-5 h-5 accent-[#2a9d7a]" />
+            Usar mi saldo en este pedido
+          </label>
+          {conSaldo && (
+            <p className="font-body text-xs text-coal/70 mt-1.5 leading-relaxed">
+              {pagoAhora
+                ? (saldoCalc.sobrante > 0
+                    ? <>Cubre todo el pedido y te quedan <strong>${saldoCalc.sobrante.toLocaleString('es-CO')}</strong> a favor.</>
+                    : <>Se descuentan <strong>${saldoCalc.usado.toLocaleString('es-CO')}</strong> del total.</>)
+                : 'Se descuenta cuando la caja te envíe la cotización.'}
+            </p>
+          )}
+        </div>
+      )}
+
       {pagoAhora && (
         <PagoEnCheckout
           form={form}
           set={set}
           total={total}
+          saldoUsado={saldoCalc.usado}
           productos={menuTotal}
           domicilio={precioDom}
           pickup={form.deliveryMode === 'pickup'}
@@ -1536,7 +1628,7 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
   const progress = getProgress(order.status)
-  const hasQuote = order.totalPrice > 0
+  const hasQuote = order.totalPrice > 0 || !!order.quotedAt || order.payment === 'Saldo a favor'
 
   return (
     <button onClick={onClick} className={`order-card w-full text-left border-l-4 ${unreadCount > 0 ? 'border-tangelo' : 'border-cherry'}`}>
@@ -1651,6 +1743,121 @@ function PushOptIn({ uid, className = '' }) {
   )
 }
 
+// ─── Devolución (lado cliente) ────────────────────────────────────────────────
+// El pedido no siguió y ya lo había pagado por transferencia: elige si quiere
+// la plata de vuelta por transferencia o como saldo a favor (solo con cuenta
+// de Google, vale en la sede del pedido y no vence).
+const MEDIOS_DEVOLUCION = ['Nequi', 'Daviplata', 'Bancolombia', 'Otro banco']
+function DevolucionCliente({ order }) {
+  const dev = order.devolucion
+  const [opcion,  setOpcion]  = useState('')
+  const [datos,   setDatos]   = useState({ medio: '', numero: '', titular: '', documento: '' })
+  const [errores, setErrores] = useState([])
+  const [busy,    setBusy]    = useState(false)
+  const monto = fmt(dev.monto)
+  const saldoPermitido = puedeElegirSaldo(order)
+
+  const enviar = async () => {
+    if (!opcion) { setErrores(['Elige cómo quieres la devolución']); return }
+    if (opcion === 'transferencia') {
+      const e = erroresDatosDevolucion(datos)
+      if (e.length) { setErrores(e); return }
+    }
+    setErrores([]); setBusy(true)
+    try {
+      await updateDoc(doc(db, 'orders', order.id), opcion === 'transferencia'
+        ? {
+            'devolucion.estado': 'transferencia_solicitada',
+            'devolucion.datos': {
+              medio: datos.medio, numero: datos.numero.trim(), titular: datos.titular.trim(),
+              documento: datos.documento.trim() || null,
+            },
+            'devolucion.elegidaAt': serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }
+        : {
+            'devolucion.estado': 'saldo_solicitado',
+            'devolucion.elegidaAt': serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+    } catch (_) {
+      setErrores(['No se pudo guardar. Revisa tu conexión e intenta de nuevo.'])
+    } finally { setBusy(false) }
+  }
+
+  if (dev.estado !== 'por_elegir') {
+    const textos = {
+      transferencia_solicitada: `Te vamos a transferir ${monto} a ${dev.datos?.medio || 'tu cuenta'} (${dev.datos?.numero || ''}). Te avisamos por el chat cuando esté hecho.`,
+      saldo_solicitado:         `Pediste ${monto} como saldo a favor. La caja lo acredita en tu cuenta en breve.`,
+      transferida:              `✅ Ya te transferimos ${monto}.`,
+      acreditada:               `✅ Tienes ${monto} a favor para tu próximo pedido en ${order.sedeName || 'esta sede'}. No vence.`,
+    }
+    return (
+      <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-4">
+        <p className="font-display text-base tracking-wide text-coal">💸 Devolución de {monto}</p>
+        <p className="font-body text-sm text-coal/80 mt-1 leading-relaxed">{textos[dev.estado] || ''}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-cherry/5 border-2 border-cherry rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-display text-xl tracking-wide text-cherry">💸 Te devolvemos {monto}</p>
+      <p className="font-body text-sm text-coal/80 leading-relaxed">
+        Tu pedido no siguió y ya lo habías pagado por transferencia. ¿Cómo quieres tu plata?
+      </p>
+      <div className="flex flex-col gap-2">
+        <button type="button" onClick={() => setOpcion('transferencia')}
+          className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${opcion === 'transferencia' ? 'border-cherry bg-cherry/10' : 'border-coal/15 bg-cream'}`}>
+          <p className="text-sm font-bold text-coal">🏦 Transferencia de vuelta</p>
+          <p className="text-xs text-coal/60">Te la enviamos a tu cuenta o Nequi.</p>
+        </button>
+        {saldoPermitido && (
+          <button type="button" onClick={() => setOpcion('saldo')}
+            className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${opcion === 'saldo' ? 'border-mint bg-mint/10' : 'border-coal/15 bg-cream'}`}>
+            <p className="text-sm font-bold text-coal">💚 Saldo a favor para mi próximo pedido</p>
+            <p className="text-xs text-coal/60">Queda en tu cuenta para pedir en {order.sedeName || 'esta sede'}. No vence.</p>
+          </button>
+        )}
+      </div>
+
+      {opcion === 'transferencia' && (
+        <div className="flex flex-col gap-2">
+          <div>
+            <label className="label-field">¿A dónde te transferimos? *</label>
+            <select className="input-field" value={datos.medio} onChange={e => setDatos(d => ({ ...d, medio: e.target.value }))}>
+              <option value="">— Elige —</option>
+              {MEDIOS_DEVOLUCION.map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-field">Número de cuenta o celular *</label>
+            <input className="input-field" inputMode="numeric" value={datos.numero}
+              onChange={e => setDatos(d => ({ ...d, numero: e.target.value }))} placeholder="Ej: 3001234567" />
+          </div>
+          <div>
+            <label className="label-field">Nombre del titular *</label>
+            <input className="input-field" value={datos.titular}
+              onChange={e => setDatos(d => ({ ...d, titular: e.target.value }))} placeholder="Como aparece en la cuenta" />
+          </div>
+          {['Bancolombia', 'Otro banco'].includes(datos.medio) && (
+            <div>
+              <label className="label-field">Cédula del titular (opcional)</label>
+              <input className="input-field" inputMode="numeric" value={datos.documento}
+                onChange={e => setDatos(d => ({ ...d, documento: e.target.value }))} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {errores.map(e => <p key={e} className="font-body text-xs text-pepper">{e}</p>)}
+      <button onClick={enviar} disabled={busy} className="btn-primary w-full">
+        {busy ? 'Guardando…' : 'Confirmar'}
+      </button>
+    </div>
+  )
+}
+
 // ─── Order detail ─────────────────────────────────────────────────────────────
 function ClientOrderDetail({ order, onClose }) {
   const { user } = useAuth()
@@ -1720,21 +1927,27 @@ function ClientOrderDetail({ order, onClose }) {
   const canClientCancel = ['pending', 'quoted'].includes(order.status)
   const cancelOrder = async () => {
     if (!canClientCancel) return
-    const pagoDigital = order.pagoAdelantado && order.transferReceiptUrl
+    const devolucion = devolucionInicial(order)
     if (!window.confirm(
       '¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.' +
-      (pagoDigital ? '\n\nYa enviaste una transferencia: escríbenos por el chat para coordinar la devolución.' : '')
+      (devolucion ? `\n\nYa pagaste $${devolucion.monto.toLocaleString('es-CO')} por transferencia: después de cancelar eliges cómo quieres la devolución.` : '')
     )) return
     setCancelling(true)
+    const usóSaldo = order.saldoAplicado?.ids?.length > 0
     try {
       await updateDoc(doc(db, 'orders', order.id), {
         status:       'cancelled',
         cancelReason: 'Cancelado por el cliente',
         cancelledAt:  serverTimestamp(),
+        ...(devolucion ? { devolucion } : {}),
+        // Ya aceptado, la caja pudo haber dejado un sobrante de saldo: que la
+        // caja lo devuelva (si lo hace el cliente quedaría con saldo doble).
+        ...(usóSaldo && order.status !== 'pending' ? { 'saldoAplicado.porDevolver': true } : {}),
         updatedAt:    serverTimestamp(),
       })
       // Devuelve el premio de fidelización si lo había canjeado (best-effort).
       if (order.loyaltyRedemption?.rewardIds?.length) restoreLoyaltyRedemption(order).catch(() => {})
+      if (usóSaldo && order.status === 'pending') restaurarSaldo(order).catch(() => {})
     } catch (_) {
       setCancelling(false)
     }
@@ -1860,7 +2073,7 @@ function ClientOrderDetail({ order, onClose }) {
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
   const progress = getProgress(order.status)
   const isDelivered = DELIVERED_STATUSES.includes(order.status)
-  const hasQuote = order.totalPrice > 0
+  const hasQuote = order.totalPrice > 0 || !!order.quotedAt || order.payment === 'Saldo a favor'
 
   const openDriverMap = () => {
     if (order.driverLat && order.driverLng) {
@@ -1947,6 +2160,8 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {order.devolucion && <DevolucionCliente order={order} />}
+
           {/* El pedido lleva premio de fidelización: se lo confirmamos en grande */}
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint rounded-2xl p-4">
@@ -1988,6 +2203,12 @@ function ClientOrderDetail({ order, onClose }) {
                 <span className="text-coal/60">Domicilio:</span>
                 <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
               </div>
+              {Number(order.saldoAplicado?.usado) > 0 && (
+                <div className="flex justify-between font-body text-sm text-mint font-semibold">
+                  <span>Saldo a favor:</span>
+                  <span>−{fmt(order.saldoAplicado.usado)}</span>
+                </div>
+              )}
               <div className="border-t border-tangelo/20 pt-2 flex justify-between">
                 <span className="font-body font-bold text-coal">TOTAL:</span>
                 <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>

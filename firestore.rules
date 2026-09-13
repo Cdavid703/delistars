@@ -199,6 +199,34 @@ service cloud.firestore {
                     );
     }
 
+    // ── Saldo a favor (devoluciones de pedidos pagados que no siguieron) ────
+    // Solo la caja/admin CREA saldo: el cliente nunca puede inventarse plata.
+    // El cliente solo puede (a) marcar como usado un saldo propio disponible en
+    // un pedido suyo, o (b) recuperarlo cuando cancela ese mismo pedido. En
+    // ambos casos no puede tocar el monto ni la sede.
+    match /customers/{uid}/credits/{creditId} {
+      allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
+      allow create, delete: if isCashier() || isAdmin();
+      allow update: if isCashier() || isAdmin()
+                    || (
+                      isSignedIn() && request.auth.uid == uid &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado','usadoEnOrderId','usadoAt']) &&
+                      (
+                        (
+                          resource.data.estado == 'disponible' &&
+                          request.resource.data.estado == 'usado' &&
+                          get(/databases/$(database)/documents/orders/$(request.resource.data.usadoEnOrderId)).data.clientUid == uid
+                        )
+                        || (
+                          resource.data.estado == 'usado' &&
+                          request.resource.data.estado == 'disponible' &&
+                          get(/databases/$(database)/documents/orders/$(resource.data.usadoEnOrderId)).data.clientUid == uid &&
+                          get(/databases/$(database)/documents/orders/$(resource.data.usadoEnOrderId)).data.status == 'cancelled'
+                        )
+                      )
+                    );
+    }
+
     // ── Turnos (horarios del equipo) ───────────────────────────────────────
     match /turnos/{weekId} {
       allow read:  if true;

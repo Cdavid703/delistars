@@ -30,7 +30,8 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
   const cashOnDelivery = order.payment === 'Efectivo' || order.payment === 'Mixto'
   const qp    = parseFloat(quotedPrice)   || 0
   const dp    = parseFloat(deliveryPrice) || 0
-  const total = qp + dp
+  // Si el cliente usó saldo a favor, ya está descontado: no volver a cobrarlo.
+  const total = Math.max(0, qp + dp - (Number(order.saldoAplicado?.usado) || 0))
   const pa    = parseFloat(payAmount)     || 0
   // En Mixto el cambio es sobre la parte en efectivo, no sobre el total: con
   // $20.000 en efectivo pagados con $50.000 se llevan $30.000, no $9.000.

@@ -38,6 +38,8 @@ export function totalAPagar({ menuTotal, deliveryMode, precioDomicilio }) {
  */
 export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransferencia, comprobante }) {
   const errs = []
+  // El saldo a favor cubre todo el pedido: no hay nada que pagar.
+  if (Number(total) === 0) return errs
   if (!METODOS.includes(metodo)) {
     errs.push('Elige cómo vas a pagar')
     return errs
@@ -72,6 +74,13 @@ export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransf
  * cuadre no noten diferencia.
  */
 export function camposPago({ metodo, total, precioProductos, precioDomicilio, billete, mixtoEfectivo, mixtoTransferencia }) {
+  // Si el saldo a favor cubre todo, no hay medio de pago.
+  if (Number(total) === 0) {
+    return {
+      pagoAdelantado: true, payment: 'Saldo a favor', cashOnDelivery: false,
+      quotedPrice: Number(precioProductos) || 0, deliveryPrice: Number(precioDomicilio) || 0, totalPrice: 0,
+    }
+  }
   const esMixto    = metodo === 'Mixto'
   const esEfectivo = metodo === 'Efectivo'
   return {

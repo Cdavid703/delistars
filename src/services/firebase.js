@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
 import {
   getFirestore, runTransaction, doc,
-  collection, getDocs, addDoc, updateDoc, setDoc, serverTimestamp, Timestamp, arrayUnion,
+  collection, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, Timestamp, arrayUnion,
 } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging'
@@ -284,4 +284,92 @@ export async function restoreLoyaltyRedemption(order) {
       orderId:    null,
     }).catch(() => {})
   ))
+}
+
+// ─── Saldo a favor (devoluciones) ───────────────────────────────────────────
+// customers/{uid}/credits/{id}: { sedeId, monto, estado: 'disponible'|'usado',
+// origenOrderId, motivo, creadoPor, createdAt, usadoEnOrderId, usadoAt }.
+// Solo la CAJA crea saldo (el cliente nunca puede inventarse plata); el
+// cliente solo puede marcar como usado un saldo propio en un pedido propio, o
+// recuperarlo si cancela ese pedido. Reglas en firestore.rules. Lógica pura en
+// src/utils/devolucion.js.
+const creditosCol = (uid) => collection(db, 'customers', uid, 'credits')
+
+/** La caja acredita el saldo que el cliente eligió como devolución. */
+export async function acreditarSaldoDevolucion(order, cajero) {
+  const monto = Number(order?.devolucion?.monto) || 0
+  if (!order?.clientUid || !monto) throw new Error('Sin devolución que acreditar')
+  // Id fijo por pedido: aunque se toque dos veces el botón, no se duplica.
+  const ref = doc(creditosCol(order.clientUid), `dev_${order.id}`)
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) {
+      tx.set(ref, {
+        sedeId:        order.devolucion.sedeId || order.sedeId || '',
+        monto,
+        estado:        'disponible',
+        origenOrderId: order.id,
+        motivo:        'devolucion',
+        creadoPor:     cajero || 'caja',
+        createdAt:     serverTimestamp(),
+        usadoEnOrderId: null,
+        usadoAt:       null,
+      })
+    }
+    tx.update(doc(db, 'orders', order.id), {
+      'devolucion.estado':   'acreditada',
+      'devolucion.resueltaAt': serverTimestamp(),
+      'devolucion.resueltaPor': cajero || 'caja',
+      updatedAt: serverTimestamp(),
+    })
+  })
+}
+
+/** El cliente usa su saldo en un pedido recién creado. */
+export async function usarSaldo(uid, creditIds, orderId) {
+  await Promise.all(creditIds.map(id =>
+    updateDoc(doc(creditosCol(uid), id), { estado: 'usado', usadoEnOrderId: orderId, usadoAt: serverTimestamp() })
+  ))
+}
+
+/** Suma real de los saldos usados en un pedido (la caja no confía en el pedido). */
+export async function saldoVerificado(order) {
+  const ids = order?.saldoAplicado?.ids || []
+  if (!ids.length || !order.clientUid) return 0
+  const snaps = await Promise.all(ids.map(id => getDoc(doc(creditosCol(order.clientUid), id))))
+  return snaps
+    .filter(s => s.exists() && s.data().usadoEnOrderId === order.id)
+    .reduce((t, s) => t + (Number(s.data().monto) || 0), 0)
+}
+
+/** La caja deja en la cuenta lo que sobró del saldo al aceptar el pedido. */
+export async function crearSaldoSobrante(order, monto, cajero) {
+  if (!order?.clientUid || !(monto > 0)) return
+  await setDoc(doc(creditosCol(order.clientUid), `sob_${order.id}`), {
+    sedeId: order.sedeId || '', monto, estado: 'disponible',
+    origenOrderId: order.id, motivo: 'sobrante', creadoPor: cajero || 'caja',
+    createdAt: serverTimestamp(), usadoEnOrderId: null, usadoAt: null,
+  })
+}
+
+/**
+ * Devuelve a la cuenta el saldo usado en un pedido que no siguió: vuelve a
+ * dejar disponibles los saldos originales y borra el sobrante si ya se había
+ * creado (si no, el cliente quedaría con saldo doble).
+ */
+export async function restaurarSaldo(order, { comoCaja = false } = {}) {
+  const ids = order?.saldoAplicado?.ids || []
+  if (!ids.length || !order.clientUid) return
+  await Promise.all(ids.map(id =>
+    updateDoc(doc(creditosCol(order.clientUid), id), { estado: 'disponible', usadoEnOrderId: null, usadoAt: null })
+      .catch(() => {})
+  ))
+  if (comoCaja) {
+    await deleteDoc(doc(creditosCol(order.clientUid), `sob_${order.id}`)).catch(() => {})
+    await updateDoc(doc(db, 'orders', order.id), {
+      'saldoAplicado.porDevolver': false,
+      'saldoAplicado.devuelto':    true,
+      updatedAt: serverTimestamp(),
+    }).catch(() => {})
+  }
 }
