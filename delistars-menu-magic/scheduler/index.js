@@ -327,8 +327,8 @@ async function destinatariosEquipo(msg, sedeId) {
   })
 }
 
-async function sendPushForStaff(orderId, o) {
-  const msg = notifyStaffFor(o)
+async function sendPushForStaff(orderId, o, msgFijo = null) {
+  const msg = msgFijo || notifyStaffFor(o)
   if (!msg) return
   const docs = await destinatariosEquipo(msg, o.sedeId)
   if (!docs.length) return
@@ -351,7 +351,7 @@ async function sendPushForStaff(orderId, o) {
     if (bad.length) {
       await d.ref.update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
     }
-    console.log(`[scheduler] push equipo (${o.status}) pedido ${orderId} → ${d.id}: ${res.successCount}/${tokens.length}`)
+    console.log(`[scheduler] push equipo (${msgFijo ? 'devolución' : o.status}) pedido ${orderId} → ${d.id}: ${res.successCount}/${tokens.length}`)
   }
 }
 
@@ -375,6 +375,52 @@ function watchOrdersForPush() {
       baseline = false
     }, (err) => console.error('[scheduler] watch pedidos error:', err?.message || err))
   console.log('[scheduler] push FCM activo (vigilando cambios de estado de pedidos)')
+}
+
+// ─── Devoluciones: aviso al celular de la caja ──────────────────────────────
+// Elegir la devolución no cambia el estado del pedido (sigue rechazado o
+// cancelado), así que watchOrdersForPush no lo ve. Además ese vigía solo mira
+// los últimos 150 pedidos y la devolución puede ser de un pedido de días atrás.
+// Por eso va aparte, consultando directo los pedidos con devolución pendiente.
+function mensajeDevolucion(o, tipo) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  const monto = `$${Number(o.devolucion?.monto || o.saldoAplicado?.usado || 0).toLocaleString('es-CO')}`
+  if (tipo === 'transferencia_solicitada') {
+    return { rol: 'cashier', title: '💸 Devolución por transferencia', body: `${o.name || 'El cliente'} (pedido${n}) pidió que le transfieran ${monto}. Ábrelo para ver sus datos.` }
+  }
+  if (tipo === 'saldo_solicitado') {
+    return { rol: 'cashier', title: '💚 Devolución como saldo a favor', body: `${o.name || 'El cliente'} (pedido${n}) pidió ${monto} como saldo. Ábrelo para acreditarlo.` }
+  }
+  return { rol: 'cashier', title: '💚 Devolver saldo a favor', body: `El pedido${n} no siguió y el cliente había usado saldo. Ábrelo para devolvérselo.` }
+}
+
+function watchDevoluciones() {
+  const vigilar = (consulta, tipoDe) => {
+    const avisados = new Set()
+    let baseline = true // al arrancar no se re-avisa lo que ya estaba pendiente
+    consulta.onSnapshot((snap) => {
+      for (const d of snap.docs) {
+        const o = d.data()
+        const tipo = tipoDe(o)
+        const clave = `${d.id}:${tipo}`
+        if (avisados.has(clave)) continue
+        avisados.add(clave)
+        if (baseline) continue
+        sendPushForStaff(d.id, o, mensajeDevolucion(o, tipo))
+          .catch((e) => console.error('[scheduler] push devolución error:', e?.message || e))
+      }
+      baseline = false
+    }, (err) => console.error('[scheduler] watch devoluciones error:', err?.message || err))
+  }
+  vigilar(
+    adminDb.collection('orders').where('devolucion.estado', 'in', ['transferencia_solicitada', 'saldo_solicitado']),
+    (o) => o.devolucion.estado,
+  )
+  vigilar(
+    adminDb.collection('orders').where('saldoAplicado.porDevolver', '==', true),
+    () => 'saldo_por_devolver',
+  )
+  console.log('[scheduler] avisos de devoluciones a la caja activos')
 }
 
 async function main() {
@@ -404,6 +450,8 @@ async function main() {
       // Notificaciones push al cliente (usa la misma SA; requiere permiso FCM).
       try { watchOrdersForPush() }
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
+      try { watchDevoluciones() }
+      catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
       // Resumen del día al WhatsApp del dueño (11:45 PM, antes del cierre).
       cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
       // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
