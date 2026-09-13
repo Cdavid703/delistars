@@ -61,6 +61,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [editOrderNum,    setEditOrderNum]    = useState(order.orderNumber || '')
   const [savingOrderNum,  setSavingOrderNum]  = useState(false)
   const [quoteErrors,        setQuoteErrors]         = useState([])
+  // Pedido con pago adelantado: la caja solo acepta. Si algún valor está mal,
+  // abre el formulario de cotización de siempre para corregirlo.
+  const [ajustarValores,     setAjustarValores]      = useState(false)
 
   // Método de pago editable desde la caja. Hace falta porque al cliente se le
   // cierra la sesión por inactividad y se queda sin poder elegir cómo paga;
@@ -232,6 +235,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         totalPrice:    localTotal,
         cashierNotes:  localCashierNotes.trim(),
         quotedAt:      serverTimestamp(),
+        // Pago adelantado en efectivo: si la caja corrigió el total, el cambio
+        // se recalcula; si el billete ya no alcanza, se borra para que el
+        // domiciliario no salga con un cambio equivocado.
+        ...(order.pagoAdelantado && order.payment === 'Efectivo' && order.cashBillAmount != null
+          ? (Number(order.cashBillAmount) >= localTotal
+              ? { cashChange: Number(order.cashBillAmount) - localTotal }
+              : { cashBillAmount: null, cashChange: null })
+          : {}),
         needsRequote:  false, // el aviso de "el cliente agregó productos" ya quedó atendido
         updatedAt:     serverTimestamp(),
       })
@@ -834,7 +845,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {order.totalPrice > 0 && (
             <div className="card bg-tangelo/5 border border-tangelo/20">
               <div className="flex items-center justify-between mb-3">
-                <p className="font-display text-base tracking-wide">💰 Cotización enviada</p>
+                <p className="font-display text-base tracking-wide">
+                  {order.pagoAdelantado ? '💰 Valor del pedido (el cliente ya lo vio)' : '💰 Cotización enviada'}
+                </p>
                 {!['rejected','cancelled','completed'].includes(order.status) && !editingPrice && (
                   <button
                     onClick={() => { setEditQuotedPrice(String(order.quotedPrice ?? '')); setEditDeliveryPrice(String(order.deliveryPrice ?? '')); setEditingPrice(true) }}
@@ -894,8 +907,70 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </div>
           )}
 
+          {/* ── PEDIDO COMPLETO: el cliente ya pagó o eligió pago al enviar ── */}
+          {order.status === 'pending' && !rejecting && order.pagoAdelantado && !ajustarValores && (
+            <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="font-display text-lg text-coal tracking-wide">✅ Pedido completo — listo para aceptar</p>
+              <p className="font-body text-xs text-coal/70 leading-relaxed">
+                El cliente vio el total y ya eligió cómo paga
+                {order.payment === 'Efectivo' && order.cashBillAmount != null && (
+                  order.cashChange > 0
+                    ? <> — paga con <strong>{fmt(order.cashBillAmount)}</strong>, lleva <strong>{fmt(order.cashChange)}</strong> de cambio</>
+                    : <> — paga <strong>exacto</strong></>
+                )}
+                {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) && <> — el comprobante está arriba</>}.
+                Al aceptar queda confirmado para el cliente.
+              </p>
+              <div className="bg-cream rounded-xl px-4 py-3 flex flex-col gap-1">
+                <div className="flex justify-between font-body text-sm">
+                  <span className="text-coal/60">Productos:</span><span className="font-semibold">{fmt(order.quotedPrice)}</span>
+                </div>
+                {!pickup && (
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Domicilio{order.deliveryKm != null ? ` (${order.deliveryKm} km)` : ''}:</span>
+                    <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
+                  </div>
+                )}
+                <div className="border-t border-coal/10 pt-1.5 flex justify-between">
+                  <span className="font-body font-bold text-coal">TOTAL · {order.payment}</span>
+                  <span className="font-display text-xl text-cherry">{fmt(order.totalPrice)}</span>
+                </div>
+              </div>
+              {desajuste && (
+                <div className="bg-mustard/10 border border-mustard/40 rounded-xl p-3 flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-[#8a5a00] flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-body text-coal/75">
+                    El domicilio no cuadra con la distancia: por {distanceKm.toFixed(1)} km corresponde{' '}
+                    <strong>{fmt(sugerido.precio)}</strong> y el pedido trae {fmt(order.deliveryPrice)}. Revísalo antes de aceptar.
+                  </p>
+                </div>
+              )}
+              {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) && !order.transferValidated && (
+                <p className="font-body text-[11px] text-[#8a5a00]">
+                  ⚠️ La transferencia aún no está marcada como recibida. Revisa el comprobante y confírmala arriba.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRejecting(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-pepper/40 text-pepper font-semibold text-sm hover:bg-pepper/10 transition-colors"
+                >
+                  <XCircle size={16} /> Rechazar
+                </button>
+                <button onClick={sendQuote} disabled={loading} className="btn-mint flex-1">
+                  <CheckCircle2 size={16} />
+                  {loading ? 'Aceptando…' : 'Aceptar pedido'}
+                </button>
+              </div>
+              <button type="button" onClick={() => setAjustarValores(true)}
+                className="self-start font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+                Algún valor está mal — corregir antes de aceptar
+              </button>
+            </div>
+          )}
+
           {/* ── COTIZACIÓN FORM (only for pending orders) ── */}
-          {order.status === 'pending' && !rejecting && (
+          {order.status === 'pending' && !rejecting && (!order.pagoAdelantado || ajustarValores) && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
               {/* En "Recoger en sede" no hay domicilio que cotizar: el pedido
                   solo se confirma para preparación. */}
@@ -1045,9 +1120,18 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </button>
                 <button onClick={sendQuote} disabled={loading || !localOrderNumber.trim()} className="btn-primary flex-1">
                   <CheckCircle2 size={16} />
-                  {loading ? 'Enviando…' : pickup ? 'Confirmar pedido' : 'Enviar cotización al cliente'}
+                  {loading ? 'Enviando…'
+                    : order.pagoAdelantado ? 'Guardar y aceptar pedido'
+                    : pickup ? 'Confirmar pedido' : 'Enviar cotización al cliente'}
                 </button>
               </div>
+              {order.pagoAdelantado && (
+                <p className="font-body text-[11px] text-[#8a5a00] leading-relaxed">
+                  ⚠️ El cliente ya pagó o eligió pago con el valor anterior ({fmt(order.totalPrice)}).
+                  Si cambias el total, avísale por el chat
+                  {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) ? ' para cobrar o devolver la diferencia' : ''}.
+                </p>
+              )}
             </div>
           )}
 

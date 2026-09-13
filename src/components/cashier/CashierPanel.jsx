@@ -1248,9 +1248,9 @@ const MANUAL_SECTIONS = [
     content: [
       { type: 'steps', items: [
         'El cliente hace el pedido → aparece en "Activos" como PENDIENTE.',
-        'Abre el pedido y llena: número de orden, precio del pedido, domicilio y nota opcional.',
-        'Toca "Enviar cotización al cliente" → el cliente ve el precio en su app.',
-        'El cliente paga por WhatsApp o presencialmente.',
+        'Si dice "✅ Pedido completo": el cliente ya vio el total y eligió cómo paga (billete o comprobante). Revisa y toca "Aceptar pedido".',
+        'Si no (dirección sin ubicar, pidió revisar el domicilio o pedido escrito a mano): llena número, precio y domicilio y toca "Enviar cotización al cliente".',
+        'Las transferencias se marcan aparte con "Confirmar pago recibido" al ver el comprobante.',
         'Ve a la pestaña "Asignar domicilio", selecciona el pedido y completa el envío al domiciliario.',
         'El domiciliario acepta, va en camino y marca la entrega.',
         'Si fue efectivo, el pedido aparece en "Cuadre" para confirmar el dinero recibido.',
@@ -1290,7 +1290,7 @@ const MANUAL_SECTIONS = [
     id: 'estados', emoji: '🏷️', title: 'Estados de los pedidos', color: 'text-coal',
     content: [
       { type: 'table', rows: [
-        ['📋 PENDIENTE',   'Pedido de cliente esperando cotización'],
+        ['📋 PENDIENTE',   'Pedido nuevo: por aceptar (si llegó completo) o por cotizar'],
         ['💰 COTIZADO',    'Cajero envió precio, esperando pago del cliente'],
         ['🛵 ASIGNADO',    'Domiciliario asignado, esperando que acepte'],
         ['✅ ACEPTADO',     'Domiciliario confirmó que va a entregar'],

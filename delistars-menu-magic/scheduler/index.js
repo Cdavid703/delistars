@@ -195,7 +195,7 @@ async function checkStuckOrders() {
       stuckAlerted.add(d.id)
       const mins = Math.round((now - created) / 60000)
       await sendWhatsApp(
-        `⚠️ Pedido${o.orderNumber ? ` #${o.orderNumber}` : ''} de ${o.sedeName || 'sede ?'} lleva ${mins} min SIN COTIZAR.\nCliente: ${o.name || o.clientName || '—'}. Revisa la caja.`,
+        `⚠️ Pedido${o.orderNumber ? ` #${o.orderNumber}` : ''} de ${o.sedeName || 'sede ?'} lleva ${mins} min ${o.pagoAdelantado ? 'SIN ACEPTAR (ya viene con pago)' : 'SIN COTIZAR'}.\nCliente: ${o.name || o.clientName || '—'}. Revisa la caja.`,
       )
       console.log(`[scheduler] alerta pedido atascado ${d.id} (${mins} min)`)
     }
@@ -234,7 +234,10 @@ function notifyFor(o) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
   switch (o.status) {
     case 'quoted':
-      return { title: '💰 ¡Ya cotizamos tu pedido!', body: `Tu pedido${n} está cotizado. Entra para elegir cómo pagar.` }
+      // Con pago adelantado no hubo cotización: la caja aceptó el pedido.
+      return o.pagoAdelantado
+        ? { title: '✅ ¡Aceptamos tu pedido!', body: `Tu pedido${n} está confirmado y pasa a preparación.` }
+        : { title: '💰 ¡Ya cotizamos tu pedido!', body: `Tu pedido${n} está cotizado. Entra para elegir cómo pagar.` }
     case 'in_transit':
       return { title: '🛵 Tu pedido va en camino', body: `El domiciliario salió con tu pedido${n}. ¡Ya casi!` }
     case 'arrived':
@@ -289,7 +292,9 @@ function notifyStaffFor(o) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
   switch (o.status) {
     case 'pending':
-      return { rol: 'cashier', title: '🔔 Entró un pedido', body: `Pedido${n} sin cotizar. Ábrelo para cotizarlo.` }
+      return o.pagoAdelantado
+        ? { rol: 'cashier', title: '🔔 Entró un pedido completo', body: `Pedido${n} con pago (${o.payment}). Ábrelo para aceptarlo.` }
+        : { rol: 'cashier', title: '🔔 Entró un pedido', body: `Pedido${n} sin cotizar. Ábrelo para cotizarlo.` }
     case 'assigned':
       return { rol: 'driver', soloA: o.driverEmail, title: '🛵 Te asignaron un domicilio', body: `Pedido${n}${o.barrio ? ' — ' + o.barrio : ''}. Ábrelo para aceptarlo.` }
     case 'accepted':

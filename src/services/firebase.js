@@ -141,10 +141,13 @@ export async function getNextOrderNumber(sedeId) {
 // atómica: o pasan las dos cosas o ninguna. Así es imposible "quemar" números
 // (contador que avanza sin pedido) o crear pedidos sin número (que luego
 // recibían uno tardío al cotizar y desordenaban la secuencia).
-export async function createOrderWithNumber(sedeId, orderData) {
+// `orderId` opcional: el checkout con pago adelantado lo genera antes para
+// subir el comprobante a receipts/{orderId}/ ANTES de crear el pedido.
+export const nuevoIdPedido = () => doc(collection(db, 'orders')).id
+export async function createOrderWithNumber(sedeId, orderData, orderId = null) {
   const today = bogotaToday()
   const counterRef = doc(db, 'counters', `orders_${sedeId || 'default'}`)
-  const orderRef = doc(collection(db, 'orders')) // id generado por adelantado
+  const orderRef = orderId ? doc(db, 'orders', orderId) : doc(collection(db, 'orders')) // id generado por adelantado
   const orderNumber = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef)
     const data = snap.exists() ? snap.data() : {}

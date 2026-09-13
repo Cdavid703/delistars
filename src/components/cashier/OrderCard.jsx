@@ -76,6 +76,15 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         </div>
       )}
 
+      {/* Llegó completo: el cliente vio el total y eligió pago. Solo aceptar. */}
+      {order.pagoAdelantado && order.status === 'pending' && (
+        <div className="mb-2 flex items-center gap-1.5 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-bold text-mint">
+            ✅ Pedido completo · {order.payment} — solo aceptar
+          </span>
+        </div>
+      )}
+
       {/* El cliente agregó productos después de enviarlo: hay que recotizar */}
       {order.needsRequote && (
         <div className="mb-2 flex items-center gap-1.5 bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2">

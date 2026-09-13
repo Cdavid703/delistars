@@ -4,7 +4,7 @@ import {
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import {
-  db, storage, createOrderWithNumber,
+  db, storage, createOrderWithNumber, nuevoIdPedido,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
   restoreLoyaltyRedemption, enablePush, pushPermission,
 } from '../../services/firebase'
@@ -17,6 +17,9 @@ import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
+import {
+  aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
+} from '../../utils/pagoAdelantado'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
@@ -58,8 +61,13 @@ const CLOSED_STATUSES    = ['rejected', 'cancelled']
 const pasoCliente = status => (status === 'accepted' ? 'preparing' : status)
 
 // Etiqueta del paso: en "recoger en sede" no hay domiciliario que acepte nada.
-const labelPaso = (step, order) =>
-  (step.key === 'preparing' && order?.deliveryMode === 'pickup') ? 'En preparación' : step.label
+// Con pago adelantado no hubo cotización: 'quoted' significa que la caja aceptó.
+const labelPaso = (step, order) => {
+  if (step.key === 'preparing' && order?.deliveryMode === 'pickup') return 'En preparación'
+  if (step.key === 'quoted'  && order?.pagoAdelantado) return 'Pedido aceptado'
+  if (step.key === 'pending' && order?.pagoAdelantado) return 'Pedido y pago enviados'
+  return step.label
+}
 
 // Hora estimada de llegada: cuándo se creó el pedido + la mediana de la sede.
 // Esa mediana la publica el scheduler en config/eta_stats y está medida de
@@ -94,6 +102,19 @@ const isToday = ts => {
 }
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : null
+
+// Sube el comprobante de transferencia a receipts/{orderId}/ y devuelve la URL.
+// Es la misma ruta que usa el cliente al subirlo desde el seguimiento.
+function subirComprobante(orderId, file, onProgreso) {
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef(storage, `receipts/${orderId}/${Date.now()}_${file.name}`), file)
+    task.on('state_changed',
+      snap => onProgreso?.(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+      reject,
+      () => getDownloadURL(task.snapshot.ref).then(resolve, reject),
+    )
+  })
+}
 
 const isIOS        = /iPad|iPhone|iPod/.test(navigator.userAgent)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone
@@ -399,7 +420,7 @@ export default function ClientPanel() {
       }
     }
 
-    const { redeemRewardIds = [], ...orderData } = data
+    const { redeemRewardIds = [], orderId = null, ...orderData } = data
     // Número + pedido en UNA transacción atómica: el pedido SIEMPRE llega a
     // la caja con su consecutivo asignado, sin saltos ni números quemados.
     // Si falla, no se crea nada y el formulario muestra el error (el borrador
@@ -412,15 +433,16 @@ export default function ClientPanel() {
       sedeId:      sede?.id     || '',
       sedeName:    sede?.name   || '',
       status:      'pending',
-      // El pago se elige tras la cotización de la caja; aún sin definir.
-      payment:        '',
-      cashOnDelivery: false,
+      // Sin pago adelantado, el pago se elige tras la cotización de la caja.
+      // Con pago adelantado, orderData ya trae el medio de pago.
+      payment:        orderData.pagoAdelantado ? orderData.payment : '',
+      cashOnDelivery: orderData.pagoAdelantado ? !!orderData.cashOnDelivery : false,
       ...(redeemRewardIds.length > 0 ? {
         loyaltyRedemption: { sedeId: sede?.id || '', rewardIds: redeemRewardIds, count: redeemRewardIds.length },
       } : {}),
       createdAt:   serverTimestamp(),
       updatedAt:   serverTimestamp(),
-    })
+    }, orderId)
     if (redeemRewardIds.length > 0) {
       redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
     }
@@ -783,6 +805,189 @@ export default function ClientPanel() {
 }
 
 // ─── Order form ───────────────────────────────────────────────────────────────
+// QR y cuenta para transferir. Se usa al pagar en el checkout y en el
+// seguimiento del pedido (cuando la caja cotizó y el cliente paga después).
+function DatosTransferencia() {
+  return (
+    <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
+      <p className="font-body text-xs text-coal/60 text-center font-semibold">
+        Escanea el QR o transfiere a la cuenta
+      </p>
+      <img
+        src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
+        alt="QR Bancolombia DELISTARS"
+        className="w-52 h-52 object-contain"
+      />
+      {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
+      <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
+        <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
+        <p className="font-body text-xs text-coal/70 font-semibold">Bancolombia Ahorros</p>
+        <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
+          420 679 938 91
+        </p>
+        <p className="font-body text-[11px] text-coal/50">DELISTARS</p>
+      </div>
+    </div>
+  )
+}
+
+// Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
+// la caja le llega el pedido completo para aceptarlo.
+function PagoEnCheckout({ form, set, total, productos, domicilio, pickup, comprobante, setComprobante }) {
+  const [archivoError, setArchivoError] = useState('')
+  const metodo = form.payment
+  const billete = form.billete
+
+  const elegirArchivo = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) { setArchivoError('El archivo no puede superar 10 MB'); return }
+    setArchivoError('')
+    setComprobante(file)
+  }
+
+  return (
+    <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-display text-base tracking-wide text-cherry">💳 Paga tu pedido</p>
+
+      {/* Resumen del valor */}
+      <div className="bg-cream rounded-xl px-4 py-3 flex flex-col gap-1.5">
+        <div className="flex justify-between font-body text-sm">
+          <span className="text-coal/60">Productos:</span>
+          <span className="font-semibold">${productos.toLocaleString('es-CO')}</span>
+        </div>
+        <div className="flex justify-between font-body text-sm">
+          <span className="text-coal/60">Domicilio:</span>
+          <span className="font-semibold">{pickup ? 'Recoges en sede' : `$${domicilio.toLocaleString('es-CO')}`}</span>
+        </div>
+        <div className="border-t border-coal/10 pt-2 flex justify-between items-center">
+          <span className="font-body font-bold text-coal">TOTAL A PAGAR:</span>
+          <span className="font-display text-2xl text-cherry">${total.toLocaleString('es-CO')}</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="label-field">¿Cómo vas a pagar? *</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ['Efectivo',      '💵 Efectivo'],
+            ['Transferencia', '🏦 Transferencia'],
+            ['Nequi',         '📲 Nequi'],
+            ['Mixto',         '🔀 Mixto'],
+          ].map(([valor, etiqueta]) => (
+            <button key={valor} type="button" onClick={() => set('payment', valor)}
+              className={`py-2.5 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+                metodo === valor ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/15 text-coal/60 bg-cream'
+              }`}>
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Efectivo: con qué billete, para que el domiciliario lleve el cambio */}
+      {metodo === 'Efectivo' && (
+        <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
+          <p className="font-body text-sm font-semibold text-coal">
+            {pickup ? '¿Con qué billete vas a pagar en la sede?' : '¿Con qué billete le vas a pagar al domiciliario?'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => set('billete', total)}
+              className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+                billete === total ? 'bg-mint text-cream border-mint' : 'bg-cream border-mint/40 text-coal'
+              }`}>
+              Exacto
+            </button>
+            {[20000, 50000, 100000, 200000].filter(b => b > total).map(b => (
+              <button key={b} type="button" onClick={() => set('billete', b)}
+                className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
+                  billete === b ? 'bg-mustard text-cream border-mustard' : 'bg-cream border-mustard/40 text-coal'
+                }`}>
+                ${b.toLocaleString('es-CO')}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="label-field">O escribe con cuánto pagas</label>
+            <input type="number" inputMode="numeric" className="input-field" placeholder="Ej: 50000"
+              value={billete ?? ''}
+              onChange={e => { const v = parseFloat(e.target.value); set('billete', isNaN(v) ? null : v) }} />
+          </div>
+          {billete != null && (
+            billete < total ? (
+              <p className="font-body text-sm text-pepper font-semibold">
+                ⚠️ No alcanza: faltan ${(total - billete).toLocaleString('es-CO')}
+              </p>
+            ) : billete === total ? (
+              <p className="font-body text-sm text-mint font-semibold">✅ Pagas exacto, no necesitas cambio</p>
+            ) : (
+              <div className="flex items-center justify-between">
+                <p className="font-body text-sm text-coal font-semibold">Tu cambio será:</p>
+                <p className="font-display text-2xl text-tangelo">${(billete - total).toLocaleString('es-CO')}</p>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {/* Mixto: cuánto va en cada forma (tiene que sumar el total) */}
+      {metodo === 'Mixto' && (
+        <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
+          <p className="font-body text-xs text-coal/70 font-semibold">
+            ¿Cuánto pagas en cada forma? Debe sumar ${total.toLocaleString('es-CO')}.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label-field">💵 En efectivo</label>
+              <input className="input-field" type="number" min="0" inputMode="numeric" placeholder="$0"
+                value={form.mixtoEfectivo}
+                onChange={e => {
+                  // Se completa sola la otra parte: el cliente escribe una y ya.
+                  const ef = e.target.value
+                  set('mixtoEfectivo', ef)
+                  const n = Number(ef)
+                  if (n > 0 && n < total) set('mixtoTransferencia', String(total - n))
+                }} />
+            </div>
+            <div>
+              <label className="label-field">📲 Por transferencia</label>
+              <input className="input-field" type="number" min="0" inputMode="numeric" placeholder="$0"
+                value={form.mixtoTransferencia}
+                onChange={e => set('mixtoTransferencia', e.target.value)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transferencia / Nequi / Mixto: QR y comprobante OBLIGATORIO */}
+      {llevaComprobante(metodo) && (
+        <div className="flex flex-col gap-3">
+          <DatosTransferencia />
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Transfiere <strong>
+              ${(metodo === 'Mixto' ? (Number(form.mixtoTransferencia) || 0) : total).toLocaleString('es-CO')}
+            </strong> y sube la captura del comprobante. <strong>Sin comprobante no se puede enviar el pedido.</strong>
+          </p>
+          <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+            comprobante ? 'border-mint/50 bg-mint/10' : 'border-coal/20 hover:border-tangelo/50 hover:bg-tangelo/5'
+          }`}>
+            <input type="file" accept="image/*,.pdf" className="hidden" onChange={elegirArchivo} />
+            <span className={`font-body text-sm ${comprobante ? 'text-mint font-semibold' : 'text-coal/60'}`}>
+              {comprobante ? `✅ ${comprobante.name} — tocar para cambiar` : '📤 Subir comprobante (imagen o PDF)'}
+            </span>
+          </label>
+          {archivoError && <p className="font-body text-xs text-pepper">{archivoError}</p>}
+        </div>
+      )}
+
+      <p className="font-body text-[11px] text-coal/55 leading-relaxed">
+        Al enviar, tu pedido llega completo a la caja. Apenas lo acepten te avisamos
+        y empieza la preparación.
+      </p>
+    </div>
+  )
+}
+
 function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [] }) {
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
@@ -805,7 +1010,12 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     notes:              '',
     mixtoEfectivo:      '',
     mixtoTransferencia: '',
+    billete:            null,   // con cuánto paga en efectivo (pago adelantado)
   })
+  // Archivo del comprobante: no va en el borrador (un archivo no se puede
+  // guardar en localStorage); si recarga, lo vuelve a elegir.
+  const [comprobante,       setComprobante]       = useState(null)
+  const [subiendo,          setSubiendo]          = useState(null)  // % de subida
   const [loading,           setLoading]           = useState(false)
   const [errors,            setErrors]            = useState([])
   const [fromMenu,          setFromMenu]          = useState(false)
@@ -834,6 +1044,14 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   const tarifa = precioDomicilio(kmSede)
   // Se le cobra automático solo si hay precio y el cliente no pidió revisión.
   const cobroAutomático = tarifa.estado === 'ok' && !pidioRevisión
+
+  // Con el valor completo conocido, el cliente paga al enviar y la caja solo
+  // acepta. Reglas en src/utils/pagoAdelantado.js.
+  const pagoAhora = aplicaPagoAdelantado({
+    fromMenu, menuTotal, deliveryMode: form.deliveryMode, domicilioAutomatico: cobroAutomático,
+  })
+  const precioDom = form.deliveryMode === 'delivery' && cobroAutomático ? tarifa.precio : 0
+  const total = totalAPagar({ menuTotal, deliveryMode: form.deliveryMode, precioDomicilio: precioDom })
 
   useEffect(() => {
     // 1) Restaurar el borrador si la página se recargó a mitad del formulario
@@ -914,8 +1132,15 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
-    // El método de pago ya NO se elige aquí: el cliente lo escoge después de que
-    // la caja cotice el domicilio (ver flujo de cotización en ClientOrderDetail).
+    // Con el valor completo conocido, el pago se elige aquí mismo. Si no, el
+    // cliente lo escoge después de que la caja cotice (ClientOrderDetail).
+    if (pagoAhora) {
+      errs.push(...erroresPago({
+        metodo: form.payment, total, billete: form.billete,
+        mixtoEfectivo: form.mixtoEfectivo, mixtoTransferencia: form.mixtoTransferencia,
+        comprobante,
+      }))
+    }
     if (errs.length) { setErrors(errs); return }
     setLoading(true)
     submittingRef.current = true
@@ -924,12 +1149,34 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       const items = redeemRewardIds.length > 0
         ? `${form.items}\n${redeemRewardIds.length}x ${LOYALTY_REWARD.name} — GRATIS (premio fidelización, NO cobrar)`
         : form.items
+
+      // Pago adelantado: el id del pedido se genera antes para subir el
+      // comprobante a su carpeta, y el pedido se crea ya con el comprobante.
+      let pago = {}
+      let orderId = null
+      if (pagoAhora) {
+        orderId = nuevoIdPedido()
+        pago = camposPago({
+          metodo: form.payment, total, precioProductos: menuTotal, precioDomicilio: precioDom,
+          billete: form.billete, mixtoEfectivo: form.mixtoEfectivo, mixtoTransferencia: form.mixtoTransferencia,
+        })
+        if (llevaComprobante(form.payment)) {
+          const url = await subirComprobante(orderId, comprobante, setSubiendo)
+          pago = { ...pago, transferReceiptUrl: url, transferReceiptName: comprobante.name }
+        }
+      }
+
       // Si el pedido viene del menú web, traslada el precio ya calculado a la
       // cotización para que el cajero lo reciba pre-llenado (solo agrega el domicilio).
+      // Los campos de pago del formulario solo viajan dentro de `pago`: si el
+      // cliente tocó el selector y luego cambió a un pedido que la caja cotiza,
+      // no deben quedar datos de pago sueltos en el pedido.
+      const { payment: _p, billete: _b, mixtoEfectivo: _me, mixtoTransferencia: _mt, ...datosForm } = form
       await onSubmit({
-        ...form,
+        ...datosForm,
         items,
         redeemRewardIds,
+        orderId,
         ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
         // Domicilio cobrado automáticamente por distancia. Si el cliente pidió
         // revisión, o no había pin, no va precio y la caja cotiza como siempre.
@@ -941,16 +1188,20 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
             }
           : {}),
         ...(pidioRevisión ? { deliveryPriceReview: true } : {}),
+        ...pago,
       })
     } catch (err) {
       // Falló el envío: se reactiva el autoguardado para no perder el borrador.
       submittingRef.current = false
       const msg = err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
-        : 'Error al enviar el pedido. Verifica tu conexión e intenta de nuevo.'
+        : err?.code?.startsWith?.('storage/')
+          ? 'No se pudo subir el comprobante. Revisa tu conexión e intenta de nuevo.'
+          : 'Error al enviar el pedido. Verifica tu conexión e intenta de nuevo.'
       setErrors([msg])
     } finally {
       setLoading(false)
+      setSubiendo(null)
     }
   }
 
@@ -988,14 +1239,17 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         </div>
       </div>
 
-      {/* Notice about quote */}
-      <div className="bg-tangelo/10 border border-tangelo/30 rounded-xl px-4 py-3 flex items-start gap-2">
-        <Info size={16} className="text-tangelo flex-shrink-0 mt-0.5" />
-        <p className="font-body text-xs text-coal/70 leading-relaxed">
-          Después de realizar tu pedido, <strong>espera a que el cajero cotice el precio</strong> y te lo devuelva
-          por este mismo medio. No pagues hasta recibir la cotización.
-        </p>
-      </div>
+      {/* Aviso de cotización: solo cuando la caja tiene que poner el precio.
+          Con pago adelantado el cliente ve el total y paga aquí mismo. */}
+      {!pagoAhora && (
+        <div className="bg-tangelo/10 border border-tangelo/30 rounded-xl px-4 py-3 flex items-start gap-2">
+          <Info size={16} className="text-tangelo flex-shrink-0 mt-0.5" />
+          <p className="font-body text-xs text-coal/70 leading-relaxed">
+            Después de realizar tu pedido, <strong>espera a que el cajero cotice el precio</strong> y te lo devuelva
+            por este mismo medio. No pagues hasta recibir la cotización.
+          </p>
+        </div>
+      )}
 
       {errors.length > 0 && (
         <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
@@ -1178,8 +1432,22 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           placeholder="Sin cebolla, extra salsa, timbre 2B…" />
       </div>
 
+      {pagoAhora && (
+        <PagoEnCheckout
+          form={form}
+          set={set}
+          total={total}
+          productos={menuTotal}
+          domicilio={precioDom}
+          pickup={form.deliveryMode === 'pickup'}
+          comprobante={comprobante}
+          setComprobante={setComprobante}
+        />
+      )}
+
       {/* Aviso: el domicilio se cotiza después; el pago se elige luego.
           En "recoger en sede" no hay domicilio que cotizar. */}
+      {!pagoAhora && (
       <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex items-start gap-3">
         <span className="text-2xl leading-none">⏳</span>
         <div className="flex flex-col gap-1">
@@ -1199,11 +1467,13 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           </p>
         </div>
       </div>
+      )}
 
       <div className="flex gap-3 pt-2">
         <button onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
         <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
-          {loading ? 'Enviando…' : '🚀 Enviar pedido'}
+          {subiendo !== null ? `Subiendo comprobante ${subiendo}%…`
+            : loading ? 'Enviando…' : '🚀 Enviar pedido'}
         </button>
       </div>
     </div>
@@ -1231,7 +1501,7 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
       {hasQuote ? (
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
           <span className="font-body text-xs font-semibold text-tangelo">
-            {order.payment ? '💰 Total cotizado' : '💰 Elige cómo pagar'}
+            {order.pagoAdelantado ? `💰 Total · ${order.payment}` : order.payment ? '💰 Total cotizado' : '💰 Elige cómo pagar'}
           </span>
           <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
         </div>
@@ -1254,7 +1524,7 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
       )}
 
       <div className="mb-2">
-        <p className="font-body text-sm font-semibold text-cherry mb-1">{step.label}</p>
+        <p className="font-body text-sm font-semibold text-cherry mb-1">{labelPaso(step, order)}</p>
         <div className="w-full bg-smoked rounded-full h-2">
           <div className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }} />
@@ -1361,7 +1631,9 @@ function ClientOrderDetail({ order, onClose }) {
   // pedido —pasa seguido: ya cotizado, se antojan de una bebida o un adicional—.
   // Si ya estaba cotizado vuelve a 'pending': el total cambió y la caja tiene
   // que recotizar antes de seguir.
-  const canAddItems = ['pending', 'quoted'].includes(order.status)
+  // Con pago adelantado no: el total ya está pagado (o el cambio ya está
+  // calculado) y sumar productos lo descuadraría. Para eso está el chat.
+  const canAddItems = ['pending', 'quoted'].includes(order.status) && !order.pagoAdelantado
   const addExtraItem = async () => {
     const txt = extraItem.trim()
     if (!txt) { setExtraError('Escribe qué quieres agregar'); return }
@@ -1397,7 +1669,11 @@ function ClientOrderDetail({ order, onClose }) {
   const canClientCancel = ['pending', 'quoted'].includes(order.status)
   const cancelOrder = async () => {
     if (!canClientCancel) return
-    if (!window.confirm('¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.')) return
+    const pagoDigital = order.pagoAdelantado && order.transferReceiptUrl
+    if (!window.confirm(
+      '¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.' +
+      (pagoDigital ? '\n\nYa enviaste una transferencia: escríbenos por el chat para coordinar la devolución.' : '')
+    )) return
     setCancelling(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
@@ -1553,7 +1829,7 @@ function ClientOrderDetail({ order, onClose }) {
             </p>
             <button onClick={onClose} className="text-cream/70 hover:text-cream">✕</button>
           </div>
-          <p className="font-body text-sm font-semibold text-cream mb-2">{step.emoji} {step.label}</p>
+          <p className="font-body text-sm font-semibold text-cream mb-2">{step.emoji} {labelPaso(step, order)}</p>
           <div className="w-full bg-cream/20 rounded-full h-2">
             <div className="bg-cream h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
@@ -1620,10 +1896,28 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* Pagó al enviar: solo falta que la caja lo acepte */}
+          {order.pagoAdelantado && order.status === 'pending' && (
+            <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl leading-none">⏳</span>
+                <p className="font-display text-xl tracking-wide text-mint">Esperando que la caja acepte</p>
+              </div>
+              <p className="font-body text-sm text-coal/80 leading-relaxed">
+                <strong>¡Pedido recibido!</strong>{order.createdAt?.toDate ? ` Enviado a las ${format(order.createdAt.toDate(), 'h:mm a')}.` : ''} Ya
+                llegó a la caja con tu pago. Apenas lo acepten empieza la preparación.
+                Normalmente toma pocos minutos.
+              </p>
+              <PushOptIn uid={user?.uid} />
+            </div>
+          )}
+
           {/* Quote section */}
           {hasQuote && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
-              <p className="font-display text-base tracking-wide text-tangelo">💰 Cotización del cajero</p>
+              <p className="font-display text-base tracking-wide text-tangelo">
+                {order.pagoAdelantado ? '💰 Valor de tu pedido' : '💰 Cotización del cajero'}
+              </p>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-coal/60">Valor pedido:</span>
                 <span className="font-semibold">{fmt(order.quotedPrice)}</span>
@@ -1819,27 +2113,8 @@ function ClientOrderDetail({ order, onClose }) {
               )}
 
               {/* QR + cuenta/llave para transferir */}
-              {!order.transferValidated && (
-                <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
-                  <p className="font-body text-xs text-coal/60 text-center font-semibold">
-                    Escanea el QR o transfiere a la cuenta
-                  </p>
-                  <img
-                    src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
-                    alt="QR Bancolombia DELISTARS"
-                    className="w-52 h-52 object-contain"
-                  />
-                  {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
-                  <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
-                    <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
-                    <p className="font-body text-xs text-coal/70 font-semibold">Bancolombia Ahorros</p>
-                    <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
-                      420 679 938 91
-                    </p>
-                    <p className="font-body text-[11px] text-coal/50">DELISTARS</p>
-                  </div>
-                </div>
-              )}
+              {/* Si ya mandó el comprobante no hace falta volver a mostrar el QR */}
+              {!order.transferValidated && !order.transferReceiptUrl && <DatosTransferencia />}
 
               {order.transferValidated ? (
                 <div className="flex items-center gap-2 text-mint">
