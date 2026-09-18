@@ -1753,7 +1753,7 @@ function PushOptIn({ uid, className = '' }) {
 // borra los datos del sitio, deja de ver sus pedidos y cree que se perdieron.
 // Entrar con Google ENLAZA la cuenta de invitado (no se pierde nada) y desde
 // ahí sus pedidos lo siguen a cualquier dispositivo.
-function AvisoInvitado({ className = '', compacto = false }) {
+function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) {
   const { login } = useAuth()
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
@@ -1768,12 +1768,24 @@ function AvisoInvitado({ className = '', compacto = false }) {
   }
   return (
     <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
-      <p className="font-display text-base tracking-wide text-coal">⚠️ Estás pidiendo sin cuenta</p>
-      <p className="font-body text-xs text-coal/75 mt-1 leading-relaxed">
-        Tus pedidos quedan guardados <strong>solo en este navegador</strong>. Si pides desde otro
-        celular, abres el enlace desde WhatsApp o tu teléfono borra los datos del sitio,
-        <strong> no vas a poder ver tu pedido</strong>.
-        {!compacto && <> Con Google lo sigues desde donde sea y acumulas premios.</>}
+      <p className="font-display text-base tracking-wide text-coal">
+        {siguiendo ? '⚠️ Estás siguiendo tu pedido sin cuenta' : '⚠️ Estás pidiendo sin cuenta'}
+      </p>
+      {/* Lo más importante va primero y en grande: si se sale, pierde el rastro
+          de su pedido y termina pidiendo otra vez creyendo que no entró. */}
+      <div className="bg-cream border border-mustard/50 rounded-xl px-3 py-2.5 mt-2">
+        <p className="font-body text-sm font-bold text-coal leading-snug">
+          👉 No cierres esta página {siguiendo ? 'hasta que te entreguen el pedido' : 'hasta terminar tu pedido'}.
+        </p>
+        <p className="font-body text-[11px] text-coal/70 mt-1 leading-relaxed">
+          Puedes dejarla abierta en segundo plano. Si la cierras o abres el enlace en otro
+          navegador, <strong>vas a perder de vista tu pedido</strong> (el pedido sigue en la
+          cocina: escríbenos por WhatsApp si te pasa).
+        </p>
+      </div>
+      <p className="font-body text-xs text-coal/75 mt-2 leading-relaxed">
+        Sin cuenta, tus pedidos quedan guardados <strong>solo en este navegador</strong>.
+        {!compacto && <> Con Google los sigues desde cualquier celular y acumulas premios.</>}
       </p>
       <button onClick={entrar} disabled={busy} className="btn-primary w-full mt-3">
         {busy ? 'Conectando…' : 'Entrar con Google y guardar mis pedidos'}
@@ -2201,6 +2213,10 @@ function ClientOrderDetail({ order, onClose }) {
                 </div>
               )}
             </div>
+          )}
+
+          {user?.isAnonymous && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
+            <AvisoInvitado siguiendo compacto />
           )}
 
           {order.devolucion && <DevolucionCliente order={order} />}
