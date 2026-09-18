@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { collection, getDocs } from 'firebase/firestore'
-import { auth, db, provider, loginAnon } from '../services/firebase'
+import { auth, db, loginAnon, loginGoogle } from '../services/firebase'
 import { resolveRole, getAllRoles, ROLES } from '../services/roles'
 
 const AuthContext = createContext(null)
@@ -81,7 +81,8 @@ export function AuthProvider({ children }) {
     return unsub
   }, [])
 
-  const login      = () => signInWithPopup(auth, provider)
+  // Enlaza la cuenta de invitado en vez de crear una nueva (ver loginGoogle).
+  const login      = () => loginGoogle()
   const loginGuest = () => loginAnon()
 
   // Persists role choice across page refreshes

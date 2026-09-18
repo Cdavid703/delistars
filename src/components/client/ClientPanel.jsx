@@ -590,6 +590,9 @@ export default function ClientPanel() {
         </div>
       )}
 
+      {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
+      {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" />}
+
       {/* Devolución esperando que el cliente elija cómo la quiere */}
       {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
         <div key={`dev-${o.id}`} className="mx-4 mt-3">
@@ -1363,6 +1366,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         </div>
       )}
 
+      {user?.isAnonymous && <AvisoInvitado compacto />}
+
       {errors.length > 0 && (
         <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
           {errors.map((e, i) => (
@@ -1739,6 +1744,44 @@ function PushOptIn({ uid, className = '' }) {
         : <p className="font-body text-[11px] text-coal/45 mt-1 leading-relaxed">
             Te llega la cotización, cuando salga el domiciliario y cuando llegue — sin tener que dejar la app abierta.
           </p>}
+    </div>
+  )
+}
+
+// Aviso para quien pide SIN cuenta. Sus pedidos viven solo en ese navegador:
+// si entra desde otro celular, desde WhatsApp en vez de Chrome, o el teléfono
+// borra los datos del sitio, deja de ver sus pedidos y cree que se perdieron.
+// Entrar con Google ENLAZA la cuenta de invitado (no se pierde nada) y desde
+// ahí sus pedidos lo siguen a cualquier dispositivo.
+function AvisoInvitado({ className = '', compacto = false }) {
+  const { login } = useAuth()
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState('')
+  const entrar = async () => {
+    setBusy(true); setError('')
+    try { await login() }
+    catch (err) {
+      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
+        setError('No se pudo entrar con Google. Intenta de nuevo.')
+      }
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
+      <p className="font-display text-base tracking-wide text-coal">⚠️ Estás pidiendo sin cuenta</p>
+      <p className="font-body text-xs text-coal/75 mt-1 leading-relaxed">
+        Tus pedidos quedan guardados <strong>solo en este navegador</strong>. Si pides desde otro
+        celular, abres el enlace desde WhatsApp o tu teléfono borra los datos del sitio,
+        <strong> no vas a poder ver tu pedido</strong>.
+        {!compacto && <> Con Google lo sigues desde donde sea y acumulas premios.</>}
+      </p>
+      <button onClick={entrar} disabled={busy} className="btn-primary w-full mt-3">
+        {busy ? 'Conectando…' : 'Entrar con Google y guardar mis pedidos'}
+      </button>
+      <p className="font-body text-[11px] text-coal/55 mt-1.5 text-center">
+        No pierdes nada de lo que ya hiciste: tu pedido actual se conserva.
+      </p>
+      {error && <p className="font-body text-xs text-pepper mt-1">{error}</p>}
     </div>
   )
 }

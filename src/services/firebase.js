@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInAnonymously } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup } from 'firebase/auth'
 import {
   getFirestore, runTransaction, doc,
   collection, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, Timestamp, arrayUnion,
@@ -22,6 +22,36 @@ export const db       = getFirestore(app)
 export const storage  = getStorage(app)
 export const provider = new GoogleAuthProvider()
 export const loginAnon = () => signInAnonymously(auth)
+
+// Entrar con Google SIN perder lo que ya hizo como invitado.
+//
+// El problema real: el cliente pedía como invitado (sesión anónima), después
+// entraba con Google y Firebase le creaba una cuenta NUEVA. Sus pedidos
+// quedaban colgados del usuario anónimo viejo, así que en su panel "no
+// aparecía nada": los daba por perdidos y volvía a pedir. En 90 días, 35 de
+// los 149 clientes que repitieron pidieron con otra cuenta.
+//
+// La solución es ENLAZAR la cuenta anónima con la de Google: el uid se
+// mantiene y los pedidos (y la fidelización) siguen ahí. Si ese correo ya
+// tenía cuenta propia, no se puede enlazar: se entra normal, que es lo que
+// pasaba antes, y el cliente recupera su historial de esa cuenta de Google.
+export async function loginGoogle() {
+  const actual = auth.currentUser
+  if (actual?.isAnonymous) {
+    try {
+      return await linkWithPopup(actual, provider)
+    } catch (err) {
+      const code = err?.code || ''
+      // Ese correo ya tiene cuenta propia (o el anónimo ya no vale): se entra
+      // normal. Cualquier otro error (popup cerrado) se propaga tal cual.
+      if (!['auth/credential-already-in-use', 'auth/email-already-in-use',
+            'auth/provider-already-linked', 'auth/user-token-expired',
+            'auth/user-mismatch', 'auth/invalid-user-token'].includes(code)) throw err
+    }
+  }
+  return signInWithPopup(auth, provider)
+}
+
 
 provider.setCustomParameters({ prompt: 'select_account' })
 
