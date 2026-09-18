@@ -7,6 +7,7 @@ import {
   db, storage, createOrderWithNumber, nuevoIdPedido,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
   restoreLoyaltyRedemption, enablePush, pushPermission, usarSaldo, restaurarSaldo,
+  registrarTelefonoDePedido, pedidosDeTelefono, reclamarPedidoPorTelefono,
 } from '../../services/firebase'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
@@ -23,6 +24,7 @@ import {
 import {
   devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo,
 } from '../../utils/devolucion'
+import { normalizarTelefono, telefonoValido } from '../../utils/recuperarPedido'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
@@ -282,7 +284,10 @@ export default function ClientPanel() {
       // Resetea "ver como cliente" para que el equipo no quede atrapado: al
       // volver a /domicilios/ recupera su panel en vez de re-redirigirse.
       if (effectiveRole !== role) { try { setViewingAs(null) } catch {} }
-      window.location.replace('/')
+      // Al equipo se le manda al menú como siempre. Al cliente NO: puede ser
+      // alguien que sí pidió y perdió la sesión, y mandarlo al menú es
+      // justamente lo que lo hace pedir otra vez. Se le ofrece recuperarlo.
+      if (effectiveRole !== 'client') window.location.replace('/')
     }
   }, [ordersLoaded, orders.length, showForm, effectiveRole, role])
 
@@ -410,6 +415,29 @@ export default function ClientPanel() {
     )
   }
 
+  // Cliente sin pedidos en esta sesión: puede ser alguien nuevo o alguien que
+  // ya pidió y perdió la sesión. Se le dan las dos salidas.
+  if (ordersLoaded && orders.length === 0 && effectiveRole === 'client' && !showForm && !hayPedidoPendiente()) {
+    return (
+      <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-soft px-5 py-10">
+        <div className="w-full max-w-sm flex flex-col gap-4">
+          <div className="text-center">
+            <Logo variant="light" size="lg" />
+            <p className="font-display text-2xl text-coal tracking-wide mt-4">No tienes pedidos aquí</p>
+            <p className="font-body text-sm text-coal/60 mt-1 leading-relaxed">
+              Si ya hiciste un pedido desde otro navegador o celular, recupéralo con tu teléfono.
+            </p>
+          </div>
+          <RecuperarPedido uid={user?.uid} />
+          <a href="/" className="btn-secondary w-full">Ver el menú y pedir</a>
+          <button onClick={logout} className="font-body text-xs text-coal/50 underline underline-offset-2">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const handleCreateOrder = async (data) => {
     // Aviso de pedido duplicado. En los últimos 30 días hubo 8 casos del mismo
     // cliente pidiendo dos veces en menos de 15 minutos, y la caja tuvo que
@@ -448,6 +476,9 @@ export default function ClientPanel() {
       clientEmail: user.email   || null,
       clientName:  data.name    || user.displayName || 'Invitado',
       sedeId:      sede?.id     || '',
+      // Últimos 10 dígitos: con esto el cliente puede recuperar su pedido si
+      // pierde la sesión (ver "Recuperar mi pedido" y firestore.rules).
+      phoneKey:    normalizarTelefono(data.phone),
       sedeName:    sede?.name   || '',
       status:      'pending',
       // Sin pago adelantado, el pago se elige tras la cotización de la caja.
@@ -463,6 +494,8 @@ export default function ClientPanel() {
     if (redeemRewardIds.length > 0) {
       redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
     }
+    const phoneKey = normalizarTelefono(data.phone)
+    if (phoneKey) registrarTelefonoDePedido(phoneKey, newOrderRef.id).catch(() => {})
     if (orderData.saldoAplicado?.ids?.length) {
       await usarSaldo(user.uid, orderData.saldoAplicado.ids, newOrderRef.id).catch(() => {})
     }
@@ -592,6 +625,11 @@ export default function ClientPanel() {
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
       {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" />}
+      {user?.isAnonymous && (
+        <div className="mx-4 mt-3">
+          <RecuperarPedido uid={user?.uid} compacto />
+        </div>
+      )}
 
       {/* Devolución esperando que el cliente elija cómo la quiere */}
       {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
@@ -1794,6 +1832,66 @@ function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) 
         No pierdes nada de lo que ya hiciste: tu pedido actual se conserva.
       </p>
       {error && <p className="font-body text-xs text-pepper mt-1">{error}</p>}
+    </div>
+  )
+}
+
+// Recuperar el pedido con el teléfono. El cliente sin cuenta que abre el
+// enlace en otro navegador (o al que el celular le borró los datos del sitio)
+// no ve nada y cree que su pedido se perdió: escribe su número y vuelve.
+// Solo trae pedidos EN CURSO de las últimas 24 h; las reglas de Firestore
+// validan lo mismo del lado del servidor.
+function RecuperarPedido({ uid, compacto = false }) {
+  const [abierto, setAbierto] = useState(!compacto)
+  const [tel,  setTel]  = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg,  setMsg]  = useState('')
+
+  const buscar = async () => {
+    const clave = normalizarTelefono(tel)
+    if (!telefonoValido(tel)) { setMsg('Escribe tu número completo, de 10 dígitos.'); return }
+    setBusy(true); setMsg('')
+    try {
+      const ids = await pedidosDeTelefono(clave)
+      let recuperados = 0
+      for (const id of ids) {
+        if (await reclamarPedidoPorTelefono(id, clave, uid)) recuperados++
+      }
+      setMsg(recuperados > 0
+        ? `¡Listo! Recuperamos ${recuperados === 1 ? 'tu pedido' : `${recuperados} pedidos`}. Ya puedes seguirlo aquí.`
+        : 'No encontramos pedidos en curso con ese número de las últimas 24 horas. Si tu pedido es de antes, escríbenos por WhatsApp.')
+    } catch (_) {
+      setMsg('No se pudo buscar. Revisa tu conexión e intenta de nuevo.')
+    } finally { setBusy(false) }
+  }
+
+  if (!abierto) {
+    return (
+      <button onClick={() => setAbierto(true)}
+        className="w-full bg-white border-2 border-coal/15 rounded-2xl px-4 py-3 text-left">
+        <p className="font-body text-sm font-bold text-coal">🔎 Ya pedí y no veo mi pedido</p>
+        <p className="font-body text-[11px] text-coal/60 mt-0.5">Recupéralo con tu número de teléfono</p>
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-white border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-2">
+      <p className="font-display text-base tracking-wide text-cherry">🔎 Recuperar mi pedido</p>
+      <p className="font-body text-xs text-coal/70 leading-relaxed">
+        Escribe el teléfono con el que pediste y te lo devolvemos a esta pantalla.
+      </p>
+      <input className="input-field" type="tel" inputMode="numeric" placeholder="3001234567"
+        value={tel} onChange={e => setTel(e.target.value)} />
+      <button onClick={buscar} disabled={busy} className="btn-primary w-full">
+        {busy ? 'Buscando…' : 'Buscar mi pedido'}
+      </button>
+      {msg && <p className="font-body text-xs text-coal/75 leading-relaxed">{msg}</p>}
+      {compacto && (
+        <button onClick={() => setAbierto(false)} className="font-body text-[11px] text-coal/50 underline underline-offset-2">
+          Cerrar
+        </button>
+      )}
     </div>
   )
 }

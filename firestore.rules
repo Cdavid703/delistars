@@ -95,8 +95,36 @@ service cloud.firestore {
                     || (isDriver() && resource.data.driverEmail == userEmail());
       allow update: if isAdmin() || isCashier()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid)
-                    || (isDriver() && resource.data.driverEmail == userEmail());
+                    || (isDriver() && resource.data.driverEmail == userEmail())
+                    // "Recuperar mi pedido con el teléfono": el cliente que
+                    // pidió sin cuenta y perdió la sesión (otro navegador, datos
+                    // borrados) vuelve a poner su pedido en su pantalla. El
+                    // teléfono no es secreto, así que esto SOLO permite:
+                    //   · pedidos EN CURSO (el historial no se puede reclamar),
+                    //   · de las últimas 24 horas,
+                    //   · escribiendo el mismo teléfono que ya tiene el pedido,
+                    //   · y sin tocar nada más que el dueño del pedido.
+                    || (
+                      isSignedIn() &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['clientUid', 'reclamoTelefono', 'reclamadoAt', 'reclamadoPorTelefono', 'updatedAt']) &&
+                      request.resource.data.clientUid == request.auth.uid &&
+                      resource.data.phoneKey is string &&
+                      request.resource.data.reclamoTelefono == resource.data.phoneKey &&
+                      !(resource.data.status in ['delivered_paid', 'delivered_cash', 'pending_cuadre', 'completed', 'rejected', 'cancelled']) &&
+                      resource.data.createdAt > request.time - duration.value(24, 'h')
+                    );
       allow delete: if isAdmin();
+    }
+
+    // ── Índice teléfono → pedidos (para "recuperar mi pedido") ──────────────
+    // Solo guarda ids de pedidos, nada más. Se crea y se lee, nunca se borra
+    // ni se edita: así nadie puede dejar a otro sin su índice. Ver el permiso
+    // de reclamo arriba: conocer el id no da acceso al pedido por sí solo.
+    match /telefonos/{phoneKey}/pedidos/{orderId} {
+      allow read:   if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // ── Config de la app (config/client_platform, config/eta_stats) ────────

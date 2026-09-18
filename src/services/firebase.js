@@ -403,3 +403,41 @@ export async function restaurarSaldo(order, { comoCaja = false } = {}) {
     }).catch(() => {})
   }
 }
+
+// ─── Recuperar el pedido con el teléfono ────────────────────────────────────
+// Índice telefonos/{últimos 10 dígitos}/pedidos/{orderId} con el id del pedido
+// y su fecha. Sirve para que el cliente que perdió la sesión vuelva a ver su
+// pedido. Reglas y límites (solo pedidos en curso de las últimas 24 h) en
+// firestore.rules; la lógica pura está en src/utils/recuperarPedido.js.
+export async function registrarTelefonoDePedido(phoneKey, orderId) {
+  if (!phoneKey || !orderId) return
+  await setDoc(doc(db, 'telefonos', phoneKey, 'pedidos', orderId), { createdAt: serverTimestamp() })
+}
+
+/** Ids de los pedidos recientes hechos con ese teléfono. */
+export async function pedidosDeTelefono(phoneKey) {
+  if (!phoneKey) return []
+  const snap = await getDocs(collection(db, 'telefonos', phoneKey, 'pedidos'))
+  const corte = Date.now() - 24 * 60 * 60 * 1000
+  return snap.docs
+    .filter(d => (d.data().createdAt?.toMillis?.() ?? 0) > corte)
+    .map(d => d.id)
+}
+
+/**
+ * Pone el pedido en la sesión actual del cliente. Devuelve true si quedó.
+ * Las reglas rechazan el intento si el pedido no está en curso, es viejo o el
+ * teléfono no coincide: por eso los fallos se ignoran en silencio.
+ */
+export async function reclamarPedidoPorTelefono(orderId, phoneKey, uid) {
+  try {
+    await updateDoc(doc(db, 'orders', orderId), {
+      clientUid:             uid,
+      reclamoTelefono:       phoneKey,
+      reclamadoPorTelefono:  true,
+      reclamadoAt:           serverTimestamp(),
+      updatedAt:             serverTimestamp(),
+    })
+    return true
+  } catch (_) { return false }
+}
