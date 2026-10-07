@@ -7,6 +7,8 @@ import assert from 'node:assert/strict'
 import {
   generarRotacion, DIAS, DIAS_CON_DESCANSO, CUPO_TERESITA, esFinde,
   SANTA_LUCIA, SANTA_TERESITA, DESCANSO, REGLAS,
+  descansosFijos, diaDeHoy, etiquetaSemana, semanasEntre, lunesDe, lunesDeRegistro, filasSemana,
+  equipoDelCuadro,
 } from '../src/utils/turnos.js'
 
 // La plantilla real al 2026-08-29.
@@ -199,4 +201,193 @@ test('si alguien sale del equipo el cuadro sigue saliendo', () => {
     assert.equal(teresita.length, CUPO_TERESITA, `Teresita el ${dia}`)
     assert.ok(teresita.some((id) => REGLAS.anclasTeresita.includes(id)))
   })
+})
+
+// ─── Rotación a mitad de semana ──────────────────────────────────────────────
+// El admin rota un miércoles: lunes y martes quedan como se publicaron y lo
+// que se sortea de miércoles en adelante tiene en cuenta lo que ya pasó.
+
+const PUBLICADO_EJEMPLO = () => generarRotacion(EQUIPO)
+const FIJOS_MIE = ['lun', 'mar']
+const NUEVOS_MIE = ['mie', 'jue', 'vie', 'sab', 'dom']
+
+const porCadaRotacionDelMiercoles = (fn) => {
+  for (let i = 0; i < VECES; i++) {
+    const publicado = PUBLICADO_EJEMPLO()
+    fn(generarRotacion(EQUIPO, Math.random, { desde: 'mie', publicado }), publicado)
+  }
+}
+
+test('a mitad de semana: lunes y martes quedan exactamente como se publicaron', () => {
+  porCadaRotacionDelMiercoles(({ schedule, caja }, publicado) => {
+    Object.keys(publicado.schedule).forEach((id) => {
+      FIJOS_MIE.forEach((d) => assert.equal(schedule[id][d], publicado.schedule[id][d], `${id} el ${d}`))
+    })
+    FIJOS_MIE.forEach((d) => assert.deepEqual(caja[d], publicado.caja[d], `caja del ${d}`))
+  })
+})
+
+test('a mitad de semana: quien ya descansó no vuelve a descansar y los demás sí descansan', () => {
+  porCadaRotacionDelMiercoles(({ schedule, avisos }, publicado) => {
+    assert.deepEqual(avisos, [])
+    REGULARES.forEach((id) => {
+      const yaDescanso = FIJOS_MIE.some((d) => publicado.schedule[id][d] === DESCANSO)
+      const descansaDespues = NUEVOS_MIE.filter((d) => schedule[id][d] === DESCANSO)
+      if (yaDescanso) assert.deepEqual(descansaDespues, [], `${id} descansó dos veces`)
+      else assert.equal(descansaDespues.length, 1, `${id} se quedó sin descanso`)
+    })
+  })
+})
+
+test('a mitad de semana: a Andrés se le descuentan los días que ya entró', () => {
+  porCadaRotacionDelMiercoles(({ schedule }) => {
+    const diasAndres = DIAS.filter((d) => schedule.andres[d] === SANTA_TERESITA)
+    assert.equal(diasAndres.length, 2, `Andrés entró ${diasAndres.join(', ')}`)
+  })
+})
+
+test('a mitad de semana: se siguen cumpliendo las reglas de sede y caja', () => {
+  porCadaRotacionDelMiercoles(({ schedule, caja }) => {
+    NUEVOS_MIE.forEach((dia) => {
+      const teresita = enSede(schedule, dia, SANTA_TERESITA)
+      assert.equal(teresita.length, CUPO_TERESITA, `Teresita el ${dia}`)
+      assert.ok(teresita.some((id) => REGLAS.anclasTeresita.includes(id)), `ancla el ${dia}`)
+      ;[SANTA_LUCIA, SANTA_TERESITA].forEach((sede) => {
+        assert.equal(schedule[caja[dia][sede]][dia], sede, `${dia}: caja de ${sede}`)
+      })
+    })
+  })
+})
+
+test('a mitad de semana: quien ya no está en el equipo conserva sus días pasados', () => {
+  const publicado = PUBLICADO_EJEMPLO()
+  publicado.schedule.josemanuel = { lun: SANTA_LUCIA, mar: SANTA_LUCIA, mie: SANTA_LUCIA }
+  const { schedule } = generarRotacion(EQUIPO, Math.random, { desde: 'mie', publicado })
+  assert.deepEqual(schedule.josemanuel, { lun: SANTA_LUCIA, mar: SANTA_LUCIA })
+})
+
+test('si no quedan cupos, los que faltan quedan sin descanso y se avisa con nombres', () => {
+  const equipo = EQUIPO.map((e) => ({ ...e, short: e.id[0].toUpperCase() + e.id.slice(1) }))
+  // Lunes descansó Shirly; martes y miércoles nadie (lo cambiaron a mano). Se rota el jueves.
+  const publicado = { schedule: {}, caja: {} }
+  REGULARES.forEach((id) => {
+    publicado.schedule[id] = { lun: SANTA_LUCIA, mar: SANTA_LUCIA, mie: SANTA_LUCIA }
+  })
+  publicado.schedule.shirly.lun = DESCANSO
+  publicado.schedule.andres = { lun: '', mar: '', mie: '' }
+  for (let i = 0; i < VECES; i++) {
+    const { schedule, avisos } = generarRotacion(equipo, Math.random, { desde: 'jue', publicado })
+    // Jueves: 1 cupo + 1 de Andrés (le quedan sus 2 días pero solo cabe uno).
+    const descansanJueves = REGULARES.filter((id) => schedule[id].jue === DESCANSO)
+    assert.equal(descansanJueves.length, 2)
+    assert.equal(schedule.andres.jue, SANTA_TERESITA)
+    assert.ok(!descansanJueves.includes('shirly') && !descansanJueves.includes('sara'))
+    // Sara solo descansa miércoles, y ese día ya pasó.
+    assert.ok(avisos.some((a) => a.startsWith('Sara descansa siempre el miércoles')), avisos.join(' | '))
+    const sinCupo = avisos.find((a) => a.startsWith('No quedan cupos'))
+    assert.ok(sinCupo, avisos.join(' | '))
+    const faltan = REGULARES.filter((id) => !['shirly', 'sara'].includes(id) && !descansanJueves.includes(id))
+    faltan.forEach((id) => assert.ok(sinCupo.includes(equipo.find((e) => e.id === id).short), sinCupo))
+  }
+})
+
+test('si no hay nada publicado de los días anteriores, se avisa', () => {
+  const { avisos, schedule } = generarRotacion(EQUIPO, Math.random, { desde: 'mie', publicado: { schedule: {}, caja: {} } })
+  assert.ok(avisos.some((a) => a.includes('de lunes a martes')), avisos.join(' | '))
+  assert.equal(schedule.joseluis.lun, undefined)
+})
+
+test('rotar un sábado solo rehace el finde, sin descansos', () => {
+  for (let i = 0; i < VECES; i++) {
+    const publicado = PUBLICADO_EJEMPLO()
+    const { schedule, avisos } = generarRotacion(EQUIPO, Math.random, { desde: 'sab', publicado })
+    assert.deepEqual(avisos, [])
+    ;['sab', 'dom'].forEach((dia) => {
+      REGULARES.forEach((id) => assert.notEqual(schedule[id][dia], DESCANSO))
+      assert.equal(schedule.valentina[dia], SANTA_LUCIA)
+      assert.equal(schedule.joseluis[dia], SANTA_TERESITA)
+    })
+    ;['lun', 'mar', 'mie', 'jue', 'vie'].forEach((dia) => {
+      REGULARES.forEach((id) => assert.equal(schedule[id][dia], publicado.schedule[id][dia]))
+    })
+  }
+})
+
+// ─── Sara: miércoles fijo hasta el 25 de noviembre de 2026 ──────────────────
+
+test('Sara descansa el miércoles hasta la semana del 25 de noviembre', () => {
+  ;['2026-10-05', '2026-11-16', '2026-11-23'].forEach((semana) => {
+    assert.deepEqual(descansosFijos(semana), { sara: 'mie' }, semana)
+    for (let i = 0; i < 10; i++) {
+      assert.equal(generarRotacion(EQUIPO, Math.random, { semana }).schedule.sara.mie, DESCANSO)
+    }
+  })
+})
+
+test('desde la semana siguiente al 25 de noviembre y hasta diciembre, Sara rota', () => {
+  ;['2026-11-30', '2026-12-28'].forEach((semana) => {
+    assert.deepEqual(descansosFijos(semana), {}, semana)
+    const diasDeSara = new Set()
+    for (let i = 0; i < 80; i++) {
+      const { schedule, avisos } = generarRotacion(EQUIPO, Math.random, { semana })
+      assert.deepEqual(avisos, [])
+      const dias = DIAS.filter((d) => schedule.sara[d] === DESCANSO)
+      assert.equal(dias.length, 1)
+      diasDeSara.add(dias[0])
+    }
+    assert.ok(diasDeSara.size > 1, `${semana}: Sara siempre descansó ${[...diasDeSara]}`)
+  })
+  // En enero de 2027 vuelve el miércoles fijo.
+  assert.deepEqual(descansosFijos('2027-01-04'), { sara: 'mie' })
+})
+
+// ─── Historial ───────────────────────────────────────────────────────────────
+
+test('historial: etiquetas y rango de semanas', () => {
+  assert.equal(etiquetaSemana('2026-10-05'), '5 al 11 de oct de 2026')
+  assert.equal(etiquetaSemana('2026-09-28'), '28 de sep al 4 de oct de 2026')
+  assert.equal(etiquetaSemana('2026-12-28'), '28 de dic de 2026 al 3 de ene de 2027')
+  assert.deepEqual(semanasEntre('2026-09-21', '2026-10-05'), ['2026-09-21', '2026-09-28', '2026-10-05'])
+  assert.deepEqual(semanasEntre('2026-10-05', '2026-09-21'), [])
+  assert.equal(lunesDe(new Date(2026, 9, 7)), '2026-10-05')
+  assert.equal(lunesDe(new Date(2026, 9, 11)), '2026-10-05')
+  assert.equal(lunesDe(new Date(2026, 9, 12)), '2026-10-12')
+  assert.equal(lunesDeRegistro('2026-W41', {}), '2026-10-05')
+  assert.equal(lunesDeRegistro('2026-W01', {}), '2025-12-29')
+  assert.equal(lunesDeRegistro('cualquiera', { weekStart: '2026-10-05' }), '2026-10-05')
+  assert.equal(diaDeHoy(new Date(2026, 9, 7)), 'mie')
+})
+
+test('historial: filas con el equipo guardado, y con el directorio en semanas viejas', () => {
+  const directorio = [
+    { id: 'sara', short: 'Sara', type: 'regular' },
+    { id: 'josemanuel', short: 'Jose Manuel', type: 'regular' },
+    { id: 'sara', short: 'Repetida', type: 'regular' }, // repetidos: manda el primero
+  ]
+  const schedule = { josemanuel: { lun: SANTA_LUCIA }, sara: { lun: DESCANSO }, raro: { lun: SANTA_TERESITA } }
+  const caja = { lun: { [SANTA_LUCIA]: 'josemanuel' } }
+
+  const viejas = filasSemana({ schedule, caja }, directorio)
+  assert.deepEqual(viejas.map((f) => f.short), ['Sara', 'Jose Manuel', 'raro'])
+  assert.equal(viejas[1].dias.lun.etiqueta, 'Santa Lucía')
+  assert.equal(viejas[1].dias.lun.caja, true)
+  assert.equal(viejas[0].dias.lun.caja, false)
+  assert.equal(viejas[0].dias.mar.etiqueta, '—')
+
+  const equipo = [{ id: 'josemanuel', short: 'José M.', type: 'regular' }, { id: 'sara', short: 'Sara', type: 'regular' }]
+  const nuevas = filasSemana({ schedule, caja, equipo }, directorio)
+  assert.deepEqual(nuevas.map((f) => f.short), ['José M.', 'Sara', 'raro'])
+})
+
+test('al publicar se guarda el equipo, incluso quien ya salió pero trabajó esa semana', () => {
+  const schedule = { sara: { lun: DESCANSO }, josemanuel: { lun: SANTA_LUCIA } }
+  const empleados = [
+    { id: 'sara', short: 'Sara', name: 'Sara Castaño Monsalve', type: 'regular' },
+    { id: 'shirly', short: 'Shirly', name: 'Shirly Elena Rico Daza', type: 'regular' },
+  ]
+  const conocidos = [{ id: 'josemanuel', short: 'Jose Manuel', name: 'Jose Manuel Londoño Rivillas', type: 'regular' }]
+  assert.deepEqual(equipoDelCuadro(schedule, empleados, conocidos), [
+    { id: 'sara', short: 'Sara', name: 'Sara Castaño Monsalve', type: 'regular' },
+    { id: 'josemanuel', short: 'Jose Manuel', name: 'Jose Manuel Londoño Rivillas', type: 'regular' },
+  ])
 })

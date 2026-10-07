@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
-import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc, getDocs, setDoc, serverTimestamp, collection, onSnapshot } from 'firebase/firestore'
 import { onAuthStateChanged, signInWithPopup, getRedirectResult, signOut } from 'firebase/auth'
 import { auth, db, provider } from '../services/firebase'
 import { format, addWeeks, startOfWeek, addDays, getISOWeek } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ADMIN_EMAILS } from '../services/roles'
-import { generarRotacion, esCajero } from '../utils/turnos'
+import {
+  generarRotacion, esCajero, diaDeHoy, lunesDe, sumarDias, semanasEntre, etiquetaSemana,
+  lunesDeRegistro, filasSemana, equipoDelCuadro,
+} from '../utils/turnos'
+import { exportarExcel, exportarPDF } from '../utils/turnosExport'
 import { navegadorEmbebido, esAndroid, enlaceChromeAndroid } from '../utils/navegadorEmbebido'
-import { LogOut, RotateCcw, Save, Calendar, User } from 'lucide-react'
+import { LogOut, RotateCcw, Save, Calendar, User, Download } from 'lucide-react'
 import Logo from '../components/common/Logo'
 
 // ─── Empleados ────────────────────────────────────────────────────────────────
@@ -30,6 +34,16 @@ const EMPLOYEES_BASE = [
   { id: 'melissa',   email: 'varelasmazo3@gmail.com',     doc: '1042151261',    name: 'Melissa Varelas Mazo',        short: 'Melissa',   type: 'regular'   },
   { id: 'andres',    email: 'thebesta4321@gmail.com',     doc: '',              name: 'Andrés Elías Arango Monsalve', short: 'Andrés',   type: 'refuerzo'  },
   { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
+]
+
+// Personas que ya salieron del equipo pero aparecen en cuadros viejos: con
+// esto el historial las muestra con su nombre. Desde 2026-10-07 cada cuadro
+// publicado guarda su propio `equipo`, así que esta lista solo crece si sale
+// alguien cuyos cuadros se publicaron antes de esa fecha. ESPEJO: admin/src/lib/team.ts
+const EX_EMPLEADOS = [
+  { id: 'josemanuel', name: 'Jose Manuel Londoño Rivillas',  short: 'Jose Manuel', type: 'regular' },
+  { id: 'yency',      name: 'Yency Torres Parra',            short: 'Yency',       type: 'regular' },
+  { id: 'juandiego',  name: 'Juan Diego Rodríguez Martínez', short: 'Juan Diego',  type: 'regular' },
 ]
 
 const DAYS = [
@@ -207,6 +221,117 @@ function DescansosSummary({ empleados, schedule }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ─── Historial (solo admin) ──────────────────────────────────────────────────
+// Cómo quedó cada semana (lo último publicado), de la semana tal a la semana
+// tal. Siempre semanas completas de lunes a domingo. Solo consulta.
+function HistorialTurnos({ directorio }) {
+  const hoyLunes = lunesDe()
+  const [registros, setRegistros] = useState(null)
+  const [error,     setError]     = useState('')
+  const [desde,     setDesde]     = useState(sumarDias(hoyLunes, -28))
+  const [hasta,     setHasta]     = useState(hoyLunes)
+  const [exportando, setExportando] = useState('')
+
+  useEffect(() => {
+    getDocs(collection(db, 'turnos'))
+      .then(snap => {
+        const porLunes = {}
+        snap.docs.forEach(d => {
+          const lunes = lunesDeRegistro(d.id, d.data())
+          if (lunes) porLunes[lunes] = d.data()
+        })
+        setRegistros(porLunes)
+        const primera = Object.keys(porLunes).sort()[0]
+        if (primera) setDesde(d => (d < primera ? primera : d))
+      })
+      .catch(() => setError('No se pudo cargar el historial. Revisa la conexión e inténtalo de nuevo.'))
+  }, [])
+
+  if (error) return <p className="font-body text-sm text-cherry text-center py-10">{error}</p>
+  if (!registros) return (
+    <div className="flex justify-center py-20">
+      <div className="w-8 h-8 border-4 border-cherry/20 border-t-cherry rounded-full animate-spin" />
+    </div>
+  )
+
+  // Se puede escoger desde la primera semana publicada hasta la próxima.
+  const primera = Object.keys(registros).sort()[0] ?? hoyLunes
+  const opciones = semanasEntre(primera < hoyLunes ? primera : hoyLunes, sumarDias(hoyLunes, 7)).reverse()
+  const tienePublicado = l => Object.keys(registros[l]?.schedule ?? {}).length > 0
+  const etiqueta = l => `Semana del ${etiquetaSemana(l)}${
+    l === hoyLunes ? ' · esta semana' : l === sumarDias(hoyLunes, 7) ? ' · próxima' : ''
+  }${tienePublicado(l) ? '' : ' · sin cuadro'}`
+
+  const rangoValido = desde <= hasta
+  const semanas = rangoValido
+    ? semanasEntre(desde, hasta).map(lunes => ({
+        lunes,
+        filas: tienePublicado(lunes) ? filasSemana(registros[lunes], directorio) : null,
+      }))
+    : []
+  const publicadas = semanas.filter(s => s.filas).length
+
+  const exportar = async (tipo) => {
+    setExportando(tipo)
+    try { await (tipo === 'excel' ? exportarExcel(semanas) : exportarPDF(semanas)) }
+    catch (e) { console.error(e); setError('No se pudo generar el archivo.') }
+    finally { setExportando('') }
+  }
+
+  const selectCls = 'w-full bg-white rounded-xl border border-coal/10 px-3 py-2.5 font-body text-sm text-coal shadow-soft'
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="bg-white rounded-2xl shadow-soft p-4 flex flex-col gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="font-body text-[11px] font-bold uppercase tracking-wider text-coal/40">Desde la semana</span>
+            <select value={desde} onChange={e => setDesde(e.target.value)} className={selectCls}>
+              {opciones.map(l => <option key={l} value={l}>{etiqueta(l)}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-body text-[11px] font-bold uppercase tracking-wider text-coal/40">Hasta la semana</span>
+            <select value={hasta} onChange={e => setHasta(e.target.value)} className={selectCls}>
+              {opciones.map(l => <option key={l} value={l}>{etiqueta(l)}</option>)}
+            </select>
+          </label>
+        </div>
+        {rangoValido ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-body text-xs text-coal/60">
+              {semanas.length === 1 ? '1 semana' : `${semanas.length} semanas`} · {publicadas} con cuadro publicado
+            </p>
+            <div className="flex gap-2">
+              {[['excel', 'Excel'], ['pdf', 'PDF']].map(([tipo, label]) => (
+                <button key={tipo} onClick={() => exportar(tipo)} disabled={!!exportando || publicadas === 0}
+                  className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl bg-coal text-cream hover:bg-coal/85 transition-colors disabled:opacity-40">
+                  <Download size={14} /> {exportando === tipo ? 'Generando…' : label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="font-body text-xs text-cherry">La semana inicial tiene que ser anterior (o igual) a la final.</p>
+        )}
+      </div>
+
+      {semanas.map(({ lunes, filas }) => (
+        <div key={lunes} className="flex flex-col gap-2">
+          <p className="font-display text-base tracking-wide text-coal px-1">Semana del {etiquetaSemana(lunes)}</p>
+          {filas ? (
+            <ScheduleTable empleados={filas} schedule={registros[lunes].schedule}
+              caja={registros[lunes].caja ?? {}} monday={new Date(`${lunes}T00:00:00`)} isAdmin={false} />
+          ) : (
+            <div className="bg-white/60 rounded-2xl px-4 py-4 text-center">
+              <p className="font-body text-sm text-coal/40 italic">Sin cuadro publicado</p>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
@@ -436,6 +561,9 @@ export default function TurnosPage() {
   const [saving,     setSaving]     = useState(false)
   const [savedOk,    setSavedOk]    = useState(false)
   const [picker,     setPicker]     = useState(null)
+  // Equipo guardado con el cuadro publicado (para nombrar a quien ya salió).
+  const [savedEquipo, setSavedEquipo] = useState([])
+  const [vista,      setVista]      = useState('cuadro') // 'cuadro' | 'historial'
   // Empleados dados de baja desde el panel de administración (roles_disabled).
   // Se escucha EN VIVO: al eliminar a alguien en el admin desaparece del cuadro
   // sin tener que editar el código ni volver a desplegar.
@@ -523,8 +651,9 @@ export default function TurnosPage() {
         const cajas = snap.exists() ? (snap.data().caja ?? {}) : {}
         setSchedule(data); setSaved(data)
         setCaja(cajas); setSavedCaja(cajas)
+        setSavedEquipo(snap.exists() ? (snap.data().equipo ?? []) : [])
       })
-      .catch(() => { setSchedule({}); setSaved({}); setCaja({}); setSavedCaja({}) })
+      .catch(() => { setSchedule({}); setSaved({}); setCaja({}); setSavedCaja({}); setSavedEquipo([]) })
       .finally(() => setLoading(false))
   }, [wid])
 
@@ -555,8 +684,15 @@ export default function TurnosPage() {
 
   const [avisos, setAvisos] = useState([])
 
+  // En la semana en curso se rehace desde hoy: los días anteriores quedan como
+  // se publicaron y la rotación tiene en cuenta quién ya descansó.
+  const desdeRotacion = weekOffset === 0 ? diaDeHoy() : 'lun'
   const rotar = () => {
-    const sugerido = generarRotacion(empleados)
+    const sugerido = generarRotacion(empleados, Math.random, {
+      desde: desdeRotacion,
+      publicado: { schedule: saved, caja: savedCaja },
+      semana: format(monday, 'yyyy-MM-dd'),
+    })
     setSchedule(sugerido.schedule)
     setCaja(sugerido.caja)
     setAvisos(sugerido.avisos)
@@ -570,12 +706,15 @@ export default function TurnosPage() {
         weekStart: format(monday, 'yyyy-MM-dd'),
         schedule,
         caja,
+        // Quién estaba en el cuadro y cómo se llamaba, para el historial.
+        equipo: equipoDelCuadro(schedule, empleados, [...savedEquipo, ...EX_EMPLEADOS]),
         updatedAt: serverTimestamp(),
         updatedBy: user.email,
         published: true,
       })
       setSaved({ ...schedule })
       setSavedCaja({ ...caja })
+      setSavedEquipo(equipoDelCuadro(schedule, empleados, [...savedEquipo, ...EX_EMPLEADOS]))
       setSavedOk(true)
       setTimeout(() => setSavedOk(false), 3000)
     } catch (e) { console.error(e) }
@@ -625,6 +764,20 @@ export default function TurnosPage() {
       <Header isAdmin={isAdmin} isEmployee={isEmployee} user={user} logout={logout} />
       <div className="max-w-5xl mx-auto px-3 py-5 flex flex-col gap-4">
 
+        <div className="grid grid-cols-2 gap-1 bg-white rounded-2xl shadow-soft p-1">
+          {[['cuadro', 'Cuadro de turnos'], ['historial', 'Historial']].map(([key, label]) => (
+            <button key={key} onClick={() => { setVista(key); setPicker(null) }}
+              className={`py-2 rounded-xl font-display text-sm tracking-wide transition-colors ${
+                vista === key ? 'bg-coal text-cream' : 'text-coal/50 hover:bg-smoked/40'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {vista === 'historial' ? (
+          <HistorialTurnos directorio={[...empleados, ...EMPLOYEES_BASE, ...EX_EMPLEADOS]} />
+        ) : (<>
         <WeekSelector weekOffset={weekOffset} setWeekOffset={setWeekOffset} />
 
         {/* Controles admin */}
@@ -642,6 +795,12 @@ export default function TurnosPage() {
             <Save size={14} /> {savedOk ? '✓ Publicado' : saving ? 'Guardando…' : 'Publicar turno'}
           </button>
         </div>
+        {desdeRotacion !== 'lun' && (
+          <p className="font-body text-[11px] text-coal/50 text-right -mt-2">
+            “Sugerir rotación” rehace desde hoy ({DAYS.find(d => d.key === desdeRotacion).label.toLowerCase()}).
+            Los días anteriores quedan como se publicaron y quien ya descansó no vuelve a descansar.
+          </p>
+        )}
 
         {savedOk && (
           <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-2.5 text-center">
@@ -678,6 +837,7 @@ export default function TurnosPage() {
             <DescansosSummary empleados={empleados} schedule={schedule} />
           </>
         )}
+        </>)}
 
         {picker && <div className="fixed inset-0 z-40" onClick={() => setPicker(null)} />}
         <p className="text-center font-body text-[10px] text-coal/25 pb-4">DeliStars · Panel de Turnos</p>

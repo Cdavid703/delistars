@@ -3,8 +3,12 @@ import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot } from 'fi
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
-import { buildShiftEmployees, type ShiftEmployee } from '@/lib/team'
-import { generarRotacion, esCajero, type Caja } from '@/lib/turnos'
+import { buildShiftEmployees, EMPLOYEES, EX_EMPLEADOS, type ShiftEmployee } from '@/lib/team'
+import {
+  generarRotacion, esCajero, diaDeHoy, lunesDe, equipoDelCuadro, type Caja, type MiembroEquipo,
+} from '@/lib/turnos'
+import { PageTabs } from '@/components/PageTabs'
+import TurnosHistorial from './TurnosHistorial'
 
 const DAYS = [
   { key: 'lun', label: 'Lunes' }, { key: 'mar', label: 'Martes' }, { key: 'mie', label: 'Miércoles' },
@@ -22,6 +26,11 @@ const SEDE_OPTS = [
 const SERVICIOS_OPTS = [
   { value: 'trabajo',  label: 'Mañana',   color: 'bg-mustard/20 text-mustard border-mustard/30' },
   { value: 'descanso', label: 'Descanso', color: 'bg-gray-100 text-coal/40 border-gray-200' },
+]
+
+const TABS = [
+  { key: 'cuadro', label: '🗓️ Cuadro de turnos' },
+  { key: 'historial', label: '📚 Historial' },
 ]
 
 type Schedule = Record<string, Record<string, string>>
@@ -68,6 +77,9 @@ export default function Turnos() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [picker, setPicker] = useState<Picker>(null)
+  // Equipo guardado con el cuadro publicado (para nombrar a quien ya salió).
+  const [savedEquipo, setSavedEquipo] = useState<MiembroEquipo[]>([])
+  const [vista, setVista] = useState('cuadro') // 'cuadro' | 'historial'
   // Empleados del cuadro: plantilla base + los que se crean desde Empleados con
   // datos de turnos, menos los dados de baja. Todo en vivo desde Firestore.
   const [empleados, setEmpleados] = useState<ShiftEmployee[]>(() => buildShiftEmployees([], []))
@@ -107,8 +119,9 @@ export default function Turnos() {
         const cajas = (snap.exists() ? (snap.data().caja ?? {}) : {}) as Caja
         setSchedule(data); setSaved(data)
         setCaja(cajas); setSavedCaja(cajas)
+        setSavedEquipo(snap.exists() ? ((snap.data().equipo ?? []) as MiembroEquipo[]) : [])
       })
-      .catch(() => { setSchedule({}); setSaved({}); setCaja({}); setSavedCaja({}) })
+      .catch(() => { setSchedule({}); setSaved({}); setCaja({}); setSavedCaja({}); setSavedEquipo([]) })
       .finally(() => setLoading(false))
   }, [wid])
 
@@ -138,8 +151,15 @@ export default function Turnos() {
     setPicker(null)
   }
 
+  // En la semana en curso se rehace desde hoy: los días anteriores quedan como
+  // se publicaron y la rotación tiene en cuenta quién ya descansó.
+  const desdeRotacion = weekOffset === 0 ? diaDeHoy() : 'lun'
   const rotar = () => {
-    const sugerido = generarRotacion(empleados)
+    const sugerido = generarRotacion(empleados, Math.random, {
+      desde: desdeRotacion,
+      publicado: { schedule: saved, caja: savedCaja },
+      semana: lunesDe(monday),
+    })
     setSchedule(sugerido.schedule)
     setCaja(sugerido.caja)
     setAvisos(sugerido.avisos)
@@ -148,17 +168,21 @@ export default function Turnos() {
 
   const guardar = async () => {
     setSaving(true)
+    // Quién estaba en el cuadro y cómo se llamaba, para el historial.
+    const equipo = equipoDelCuadro(schedule, empleados, [...savedEquipo, ...EX_EMPLEADOS])
     try {
       await setDoc(doc(db, 'turnos', wid), {
-        weekStart: monday.toISOString().slice(0, 10),
+        weekStart: lunesDe(monday),
         schedule,
         caja,
+        equipo,
         updatedAt: serverTimestamp(),
         updatedBy: user?.email,
         published: true,
       })
       setSaved({ ...schedule })
       setSavedCaja({ ...caja })
+      setSavedEquipo(equipo)
       toast.success('Turno publicado — los empleados ya pueden verlo')
     } catch {
       toast.error('Error al publicar el turno')
@@ -167,12 +191,26 @@ export default function Turnos() {
     }
   }
 
+  if (vista === 'historial') return (
+    <div>
+      <PageTabs tabs={TABS} active={vista} onChange={setVista} />
+      <TurnosHistorial directorio={[...empleados, ...EMPLOYEES, ...EX_EMPLEADOS]} />
+    </div>
+  )
+
   return (
     <div onClick={() => picker && setPicker(null)}>
+      <PageTabs tabs={TABS} active={vista} onChange={(v) => { setVista(v); setPicker(null) }} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Turnos</h1>
           <p className="text-muted-fg mt-1">Horario semanal del equipo</p>
+          {desdeRotacion !== 'lun' && (
+            <p className="text-xs text-muted-fg mt-2 max-w-md">
+              “Sugerir rotación” rehace desde hoy ({DAYS.find((d) => d.key === desdeRotacion)?.label.toLowerCase()}).
+              Los días anteriores quedan como se publicaron y quien ya descansó no vuelve a descansar.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={rotar}

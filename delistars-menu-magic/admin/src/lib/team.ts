@@ -54,6 +54,15 @@ export const EMPLOYEES: ShiftEmployee[] = [
   { id: 'deisy',     email: 'deisyhenao670@gmail.com',    doc: '1035916337',    name: 'Deisy Henao Grisales',        short: 'Deisy',     type: 'servicios' },
 ]
 
+// Personas que ya salieron del equipo pero aparecen en cuadros de turnos viejos:
+// con esto el historial las muestra con su nombre. Desde 2026-10-07 cada cuadro
+// publicado guarda su propio `equipo`. ESPEJO: src/pages/TurnosPage.jsx
+export const EX_EMPLEADOS: Omit<ShiftEmployee, 'email'>[] = [
+  { id: 'josemanuel', name: 'Jose Manuel Londoño Rivillas',  short: 'Jose Manuel', type: 'regular' },
+  { id: 'yency',      name: 'Yency Torres Parra',            short: 'Yency',       type: 'regular' },
+  { id: 'juandiego',  name: 'Juan Diego Rodríguez Martínez', short: 'Juan Diego',  type: 'regular' },
+]
+
 // Id estable para un empleado creado desde el admin (a partir de su correo).
 export const shiftIdFromEmail = (email: string) =>
   email.toLowerCase().split('@')[0].replace(/[^a-z0-9]/g, '') || email.toLowerCase()
