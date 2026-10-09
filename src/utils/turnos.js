@@ -6,7 +6,7 @@
 //   · Santa Teresita: siempre 2 personas. El resto va a Santa Lucía.
 //   · Descansos SOLO de lunes a jueves, uno por día. Viernes, sábado y domingo
 //     trabaja todo el mundo — por eso el finde queda con 4 en Santa Lucía.
-//   · Sara descansa siempre el miércoles.
+//   · Sara rota como los demás (su miércoles fijo está suspendido, ver abajo).
 //   · Valentina nunca va a Santa Teresita (lleva la gestión del negocio).
 //   · El finde: Valentina en Santa Lucía y José Luis en Santa Teresita.
 //   · Santa Teresita necesita SIEMPRE a José Luis o a Gendelson.
@@ -30,8 +30,8 @@
 // a Andrés se le descuentan los días que ya entró, y si no quedan cupos para
 // todos los que faltan por descansar, se quedan sin descanso y se avisa.
 //
-// Sara: descanso fijo el miércoles hasta el 25 de noviembre de 2026; desde la
-// semana siguiente y hasta el 31 de diciembre rota como los demás.
+// Sara: tenía descanso fijo el miércoles. Desde la semana del 5 de octubre de
+// 2026 rota como los demás, sin fecha de regreso (2026-10-09: se definirá después).
 
 export const DIAS = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom']
 
@@ -49,7 +49,7 @@ export const REGLAS = {
   descansoFijo: { sara: 'mie' },
   // Semanas en que el descanso fijo NO aplica y la persona rota como los demás.
   // Se mira la fecha que cae el día fijo esa semana (para Sara, el miércoles).
-  descansoFijoLibre: { sara: [{ desde: '2026-11-26', hasta: '2026-12-31' }] },
+  descansoFijoLibre: { sara: [{ desde: '2026-10-05', hasta: '9999-12-31' }] },
   nuncaEnTeresita: ['valentina'],
   findeFijo: { valentina: SANTA_LUCIA, joseluis: SANTA_TERESITA },
   anclasTeresita: ['joseluis', 'gendelson'],
@@ -141,8 +141,9 @@ function planearRefuerzos(refuerzos, diasDescanso, rnd) {
 /**
  * Reparte los descansos de los que aún no han descansado entre `diasDescanso`,
  * respetando el cupo de cada día (1 normal, +1 por cada refuerzo que entra).
- * El descanso fijo (Sara el miércoles) manda y no se corre a otro día: si ese
- * día ya pasó, se queda sin descanso. Devuelve { rest, sinCupo, sinDiaFijo }.
+ * El descanso fijo manda. Si ese día ya pasó (o no tiene cupo), la persona
+ * pasa primera a los días que quedan; sinDiaFijo dice a quién se le corrió.
+ * Devuelve { rest, sinCupo, sinDiaFijo }.
  */
 function repartirDescansos(pendientes, cupo, diasDescanso, fijos, rnd) {
   const rest = {}
@@ -158,7 +159,9 @@ function repartirDescansos(pendientes, cupo, diasDescanso, fijos, rnd) {
     else sinDiaFijo.push(id)
   })
 
-  const libres = shuffle(pendientes.filter((id) => !conDiaFijo.has(id)), rnd)
+  // Primero a quienes se les corrió el día fijo; después el resto, sorteado.
+
+  const libres = [...shuffle(sinDiaFijo, rnd), ...shuffle(pendientes.filter((id) => !conDiaFijo.has(id)), rnd)]
   libres.forEach((id) => {
     const dias = diasDescanso.filter((d) => rest[d].length < cupo[d])
     if (!dias.length) { sinCupo.push(id); return }
@@ -349,7 +352,7 @@ export function generarRotacion(empleados, rnd = Math.random, opciones = {}) {
   }
 
   nueva.sinDiaFijo.forEach((id) => {
-    avisos.push(`${nombre(id)} descansa siempre el ${NOMBRE_DIA[fijos[id]]} y ese día ya pasó sin descanso: queda sin descanso esta semana.`)
+    avisos.push(`${nombre(id)} no descansó el ${NOMBRE_DIA[fijos[id]]}, su día fijo: se le busca otro día esta semana.`)
   })
   if (nueva.sinCupo.length) {
     avisos.push(`No quedan cupos de descanso de lunes a jueves para ${enumerar(nueva.sinCupo.map(nombre))}: quedan sin descanso esta semana.`)

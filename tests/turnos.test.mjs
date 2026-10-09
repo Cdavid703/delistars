@@ -71,7 +71,7 @@ test('nadie descansa dos veces en la misma semana', () => {
   })
 })
 
-test('Sara descansa el miércoles, siempre', () => {
+test('sin semana, el descanso fijo de Sara (miércoles) aplica', () => {
   porCadaSemana(({ schedule }) => {
     assert.equal(schedule.sara.mie, DESCANSO)
   })
@@ -281,12 +281,14 @@ test('si no quedan cupos, los que faltan quedan sin descanso y se avisa con nomb
     const descansanJueves = REGULARES.filter((id) => schedule[id].jue === DESCANSO)
     assert.equal(descansanJueves.length, 2)
     assert.equal(schedule.andres.jue, SANTA_TERESITA)
-    assert.ok(!descansanJueves.includes('shirly') && !descansanJueves.includes('sara'))
-    // Sara solo descansa miércoles, y ese día ya pasó.
-    assert.ok(avisos.some((a) => a.startsWith('Sara descansa siempre el miércoles')), avisos.join(' | '))
+    assert.ok(!descansanJueves.includes('shirly'))
+    // El miércoles fijo de Sara ya pasó sin descanso: pasa primera al jueves.
+    assert.ok(descansanJueves.includes('sara'))
+    assert.ok(avisos.some((a) => a.startsWith('Sara no descansó el miércoles')), avisos.join(' | '))
     const sinCupo = avisos.find((a) => a.startsWith('No quedan cupos'))
     assert.ok(sinCupo, avisos.join(' | '))
-    const faltan = REGULARES.filter((id) => !['shirly', 'sara'].includes(id) && !descansanJueves.includes(id))
+    assert.ok(!sinCupo.includes('Sara'), sinCupo)
+    const faltan = REGULARES.filter((id) => id !== 'shirly' && !descansanJueves.includes(id))
     faltan.forEach((id) => assert.ok(sinCupo.includes(equipo.find((e) => e.id === id).short), sinCupo))
   }
 })
@@ -313,19 +315,17 @@ test('rotar un sábado solo rehace el finde, sin descansos', () => {
   }
 })
 
-// ─── Sara: miércoles fijo hasta el 25 de noviembre de 2026 ──────────────────
+// ─── Sara: rota desde la semana del 5 de octubre de 2026 ────────────────────
 
-test('Sara descansa el miércoles hasta la semana del 25 de noviembre', () => {
-  ;['2026-10-05', '2026-11-16', '2026-11-23'].forEach((semana) => {
-    assert.deepEqual(descansosFijos(semana), { sara: 'mie' }, semana)
-    for (let i = 0; i < 10; i++) {
-      assert.equal(generarRotacion(EQUIPO, Math.random, { semana }).schedule.sara.mie, DESCANSO)
-    }
-  })
+test('antes del 5 de octubre de 2026, Sara descansaba el miércoles', () => {
+  assert.deepEqual(descansosFijos('2026-09-28'), { sara: 'mie' })
+  for (let i = 0; i < 10; i++) {
+    assert.equal(generarRotacion(EQUIPO, Math.random, { semana: '2026-09-28' }).schedule.sara.mie, DESCANSO)
+  }
 })
 
-test('desde la semana siguiente al 25 de noviembre y hasta diciembre, Sara rota', () => {
-  ;['2026-11-30', '2026-12-28'].forEach((semana) => {
+test('desde la semana del 5 de octubre de 2026, Sara rota como los demás', () => {
+  ;['2026-10-05', '2026-11-23', '2026-11-30', '2027-01-04'].forEach((semana) => {
     assert.deepEqual(descansosFijos(semana), {}, semana)
     const diasDeSara = new Set()
     for (let i = 0; i < 80; i++) {
@@ -337,8 +337,6 @@ test('desde la semana siguiente al 25 de noviembre y hasta diciembre, Sara rota'
     }
     assert.ok(diasDeSara.size > 1, `${semana}: Sara siempre descansó ${[...diasDeSara]}`)
   })
-  // En enero de 2027 vuelve el miércoles fijo.
-  assert.deepEqual(descansosFijos('2027-01-04'), { sara: 'mie' })
 })
 
 // ─── Historial ───────────────────────────────────────────────────────────────
