@@ -1,10 +1,14 @@
-// Pruebas de la tarifa del domicilio. Los bordes de cada banda son lo que más
+// Pruebas de la tarifa del domicilio (las primeras son de la tabla en línea
+// recta, que quedó como respaldo; las de recorrido están al final). Los bordes de cada banda son lo que más
 // importa: un kilómetro exacto tiene que cobrar la banda de abajo, y pasar de
 // 5 km tiene que rechazar el domicilio, no cobrar el precio más alto.
 // Corre con: npm test  (node --test, sin dependencias)
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { precioDomicilio, explicarTarifa, tablaTarifas, MAX_KM, TARIFAS } from '../src/utils/tarifaDomicilio.js'
+import {
+  precioDomicilio, explicarTarifa, tablaTarifas, MAX_KM, TARIFAS, TARIFAS_RECORRIDO,
+  RECORRIDO, LINEA_RECTA, maxKm, kmLineaRecta, distanciaParaCobrar,
+} from '../src/utils/tarifaDomicilio.js'
 
 const precio = km => precioDomicilio(km).precio
 
@@ -96,4 +100,56 @@ test('la tabla es la que definió el negocio', () => {
     { hasta: 4, precio: 7000 },
     { hasta: 5, precio: 8000 },
   ])
+})
+
+// ─── Por recorrido (Google Maps) ─────────────────────────────────────────────
+
+const porCalle = km => precioDomicilio(km, RECORRIDO).precio
+
+test('por recorrido: franjas de 1 km desde $4.000', () => {
+  assert.equal(porCalle(0.3), 4000)
+  assert.equal(porCalle(1),   4000)   // hasta 1 km inclusive
+  assert.equal(porCalle(1.01), 5000)
+  assert.equal(porCalle(2.88), 6000)  // pedido 001 de Santa Teresita, Altos de San Javier
+  assert.equal(porCalle(4.44), 8000)  // el más lejano de Teresita desde septiembre
+  assert.equal(porCalle(6.5), 10000)
+  assert.equal(porCalle(7),   10000)
+})
+
+test('por recorrido: más de 7 km no se despacha', () => {
+  const r = precioDomicilio(7.01, RECORRIDO)
+  assert.equal(r.estado, 'fuera_de_rango')
+  assert.equal(r.maxKm, 7)
+  assert.match(explicarTarifa(r, 7.01), /solo llegamos hasta 7 km/)
+})
+
+test('por recorrido: la tabla sube de a $1.000 por km, sin huecos', () => {
+  const filas = tablaTarifas(RECORRIDO)
+  filas.forEach((f, i) => {
+    assert.equal(f.desde, i)
+    assert.equal(f.hasta, i + 1)
+    assert.equal(f.precio, 4000 + i * 1000)
+  })
+  assert.equal(maxKm(RECORRIDO), TARIFAS_RECORRIDO.at(-1).hasta)
+})
+
+test('sin decir cómo se midió, se cobra en línea recta (no cambia a quien ya llamaba)', () => {
+  assert.equal(precioDomicilio(0.9).precio, 5000)
+  assert.equal(maxKm(), MAX_KM)
+})
+
+test('la explicación dice cuando es por calle', () => {
+  assert.match(explicarTarifa(precioDomicilio(2.9, RECORRIDO), 2.9), /2\.9 km por calle/)
+  assert.doesNotMatch(explicarTarifa(precioDomicilio(1.4, LINEA_RECTA), 1.4), /por calle/)
+})
+
+test('se cobra por recorrido si se midió; si no, en línea recta', () => {
+  assert.deepEqual(distanciaParaCobrar({ kmRecorrido: 2.9, kmLinea: 1.7 }), { km: 2.9, medida: RECORRIDO })
+  assert.deepEqual(distanciaParaCobrar({ kmRecorrido: null, kmLinea: 1.7 }), { km: 1.7, medida: LINEA_RECTA })
+  assert.equal(distanciaParaCobrar({ kmRecorrido: null, kmLinea: null }), null)
+})
+
+test('línea recta: la fórmula da 111 km por grado de latitud', () => {
+  // Sanidad de la fórmula: 1 grado de latitud ≈ 111 km.
+  assert.ok(Math.abs(kmLineaRecta({ lat: 6, lng: -75 }, { lat: 7, lng: -75 }) - 111.2) < 0.2)
 })

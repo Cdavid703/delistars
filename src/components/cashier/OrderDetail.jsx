@@ -9,7 +9,9 @@ import ClientChat from './ClientChat'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
-import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
+import { precioDomicilio, maxKm, RECORRIDO, LINEA_RECTA } from '../../utils/tarifaDomicilio'
+import { medirRecorrido } from '../../services/recorrido'
+import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -47,6 +49,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
   const [distanceKm,       setDistanceKm]       = useState(null)
+  // Cómo se midió distanceKm: por calle (Google) o en línea recta (respaldo).
+  const [distanceMedida,   setDistanceMedida]   = useState(LINEA_RECTA)
   const [commentText,      setCommentText]      = useState('')
   const [sendingComment,   setSendingComment]   = useState(false)
   const [validatingTransfer, setValidatingTransfer] = useState(false)
@@ -108,6 +112,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
   useEffect(() => {
     if (!order.fullAddress || !orderSede) { setDistanceKm(-1); return }
+    setDistanceMedida(LINEA_RECTA)
+    // Si el pedido ya trae el recorrido que midió la app del cliente, se usa
+    // ese: es con el que se le cobró.
+    if (order.deliveryKmMedida === RECORRIDO && order.deliveryKm != null) {
+      setDistanceKm(Number(order.deliveryKm))
+      setDistanceMedida(RECORRIDO)
+      return
+    }
     // Si el pedido trae el pin exacto (el cliente ubicó su dirección, o el
     // domiciliario pegó la ubicación de WhatsApp), se mide contra ESE punto.
     // Antes se geocodificaba siempre el texto —y recortado, sin el "#45-10"—
@@ -116,7 +128,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     if (order.addrLat != null && order.addrLng != null) {
       setDistanceKm(haversineKm(orderSede.coords.lat, orderSede.coords.lng,
         Number(order.addrLat), Number(order.addrLng)))
-      return
+      // Con pin se pide el recorrido por calle; mientras tanto (o si falla)
+      // queda la línea recta.
+      let vigente = true
+      medirRecorrido(orderSede.coords, { lat: order.addrLat, lng: order.addrLng }).then(km => {
+        if (!vigente || km === null) return
+        setDistanceKm(km)
+        setDistanceMedida(RECORRIDO)
+      })
+      return () => { vigente = false }
     }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
@@ -143,7 +163,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         }
       })
       .catch(() => setDistanceKm(-1))
-  }, [order.fullAddress, order.addrLat, order.addrLng, orderSede])
+  }, [order.fullAddress, order.addrLat, order.addrLng, order.deliveryKm, order.deliveryKmMedida, orderSede])
 
 
   const time = order.createdAt?.toDate
@@ -159,8 +179,10 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   // precio automático lo calcula el navegador del cliente, así que este es el
   // único punto donde se verifica del lado de la caja.
   const sugerido = (distanceKm !== null && distanceKm >= 0)
-    ? precioDomicilio(distanceKm)
+    ? precioDomicilio(distanceKm, distanceMedida)
     : null
+  const topeKm = maxKm(distanceMedida)
+  const porCalle = distanceMedida === RECORRIDO ? ' por calle' : ''
   const desajuste = !!sugerido && sugerido.estado === 'ok' &&
     order.deliveryPriceAuto && Number(order.deliveryPrice) !== sugerido.precio
   const localTotal = lqp + ldp
@@ -472,10 +494,13 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     const dp = parseFloat(editDeliveryPrice) || 0
     setLoading(true)
     try {
+      const totalPrice = Math.max(0, qp + dp - (Number(order.saldoAplicado?.usado) || 0))
       await updateDoc(doc(db, 'orders', order.id), {
         quotedPrice:   qp,
         deliveryPrice: dp,
-        totalPrice:    Math.max(0, qp + dp - (Number(order.saldoAplicado?.usado) || 0)),
+        totalPrice,
+        // Con el total nuevo cambia el cambio que lleva el domiciliario.
+        ...cambioParaTotal(order, totalPrice),
         updatedAt:     serverTimestamp(),
       })
       setEditingPrice(false)
@@ -485,12 +510,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
   const distColor = distanceKm === null ? 'text-coal/40'
     : distanceKm < 0 ? 'text-coal/30'
-    : distanceKm > 5 ? 'text-pepper'
+    : distanceKm > topeKm ? 'text-pepper'
     : distanceKm > 3 ? 'text-mustard'
     : 'text-mint'
   const distLabel = distanceKm === null ? 'Calculando distancia…'
     : distanceKm < 0 ? 'Distancia no disponible'
-    : `~${distanceKm.toFixed(1)} km de la sede`
+    : `~${distanceKm.toFixed(1)} km${porCalle} de la sede`
 
   // Timestamps
   const timestamps = [
@@ -665,9 +690,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
                 {order.fullAddress && (
                   <div className={`flex items-center gap-1.5 mt-1 ${distColor}`}>
-                    {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && <AlertTriangle size={14} />}
+                    {distanceKm !== null && distanceKm > 0 && distanceKm > topeKm && <AlertTriangle size={14} />}
                     <span className="font-body text-xs font-semibold">{distLabel}</span>
-                    {distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
+                    {distanceKm !== null && distanceKm > 0 && distanceKm > topeKm && (
                       <span className="font-body text-xs text-pepper">(fuera de cobertura recomendada)</span>
                     )}
                   </div>
@@ -998,7 +1023,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <div className="bg-mustard/10 border border-mustard/40 rounded-xl p-3 flex items-start gap-2">
                   <AlertTriangle size={14} className="text-[#8a5a00] flex-shrink-0 mt-0.5" />
                   <p className="text-xs font-body text-coal/75">
-                    El domicilio no cuadra con la distancia: por {distanceKm.toFixed(1)} km corresponde{' '}
+                    El domicilio no cuadra con la distancia: por {distanceKm.toFixed(1)} km{porCalle} corresponde{' '}
                     <strong>{fmt(sugerido.precio)}</strong> y el pedido trae {fmt(order.deliveryPrice)}. Revísalo antes de aceptar.
                   </p>
                 </div>
@@ -1041,11 +1066,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </p>
               )}
 
-              {!pickup && distanceKm !== null && distanceKm > 0 && distanceKm > 5 && (
+              {!pickup && distanceKm !== null && distanceKm > 0 && distanceKm > topeKm && (
                 <div className="flex items-center gap-2 bg-pepper/10 border border-pepper/30 rounded-xl px-3 py-2">
                   <AlertTriangle size={14} className="text-pepper flex-shrink-0" />
                   <p className="font-body text-xs text-pepper">
-                    {distanceKm.toFixed(1)} km de la sede — verifica antes de confirmar.
+                    {distanceKm.toFixed(1)} km{porCalle} de la sede — verifica antes de confirmar.
                   </p>
                 </div>
               )}
@@ -1124,9 +1149,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                       </p>
                       <p className="font-body text-[11px] text-coal/55 mt-0.5">
                         {sugerido.estado === 'fuera_de_rango'
-                          ? `Solo se despacha hasta ${MAX_KM} km. Ofrécele recoger en sede.`
+                          ? `Solo se despacha hasta ${topeKm} km${porCalle}. Ofrécele recoger en sede.`
                           : <>
-                              {distanceKm.toFixed(1)} km desde {orderSede?.name}
+                              {distanceKm.toFixed(1)} km{porCalle} desde {orderSede?.name}
                               {order.addrLat != null ? ' (punto exacto)' : ' (dirección aproximada)'}
                             </>}
                       </p>

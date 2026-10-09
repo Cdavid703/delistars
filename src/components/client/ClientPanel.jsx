@@ -17,7 +17,8 @@ import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
-import { precioDomicilio, MAX_KM } from '../../utils/tarifaDomicilio'
+import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
+import { medirRecorrido } from '../../services/recorrido'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -1165,20 +1166,36 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   // ─── Domicilio automático ──────────────────────────────────────────────────
   // Solo si la sede lo tiene activo Y la dirección trae pin. Sin pin no se
   // inventa precio: cae a la cotización de la caja, como antes.
-  const kmSede = useMemo(() => {
-    if (form.deliveryMode !== 'delivery') return null
-    if (!sede?.tarifaAutomatica || !sede?.coords) return null
-    if (form.addrLat == null || form.addrLng == null) return null
-    const R = 6371
-    const dLat = (form.addrLat - sede.coords.lat) * Math.PI / 180
-    const dLng = (form.addrLng - sede.coords.lng) * Math.PI / 180
-    const a = Math.sin(dLat / 2) ** 2 +
-      Math.cos(sede.coords.lat * Math.PI / 180) * Math.cos(form.addrLat * Math.PI / 180) *
-      Math.sin(dLng / 2) ** 2
-    return R * 2 * Math.asin(Math.sqrt(a))
-  }, [form.deliveryMode, form.addrLat, form.addrLng, sede])
+  // Se cobra por RECORRIDO (Google Maps, vía backend). Mientras se mide no se
+  // muestra precio; si no se pudo medir, se cobra en línea recta (respaldo).
+  const conPin = form.deliveryMode === 'delivery' && !!sede?.tarifaAutomatica && !!sede?.coords &&
+    form.addrLat != null && form.addrLng != null
+  const kmLinea = useMemo(() => (conPin
+    ? kmLineaRecta(sede.coords, { lat: Number(form.addrLat), lng: Number(form.addrLng) })
+    : null), [conPin, form.addrLat, form.addrLng, sede])
 
-  const tarifa = precioDomicilio(kmSede)
+  // { clave, km } del último recorrido medido; km null = no se pudo medir.
+  const claveRuta = conPin ? `${sede.coords.lat},${sede.coords.lng},${form.addrLat},${form.addrLng}` : null
+  const [ruta, setRuta] = useState({ clave: null, km: null })
+  useEffect(() => {
+    if (!claveRuta) return
+    let vigente = true
+    // Espera a que el cliente deje quieto el pin antes de consultar.
+    const t = setTimeout(() => {
+      medirRecorrido(sede.coords, { lat: form.addrLat, lng: form.addrLng })
+        .then(km => { if (vigente) setRuta({ clave: claveRuta, km }) })
+    }, 500)
+    return () => { vigente = false; clearTimeout(t) }
+  }, [claveRuta]) // eslint-disable-line react-hooks/exhaustive-deps
+  const midiendoRuta = !!claveRuta && ruta.clave !== claveRuta
+
+  const distancia = conPin && !midiendoRuta
+    ? distanciaParaCobrar({ kmRecorrido: ruta.km, kmLinea })
+    : null
+  const kmSede = distancia?.km ?? null
+  const tarifa = midiendoRuta
+    ? { estado: 'midiendo', precio: null }
+    : precioDomicilio(kmSede, distancia?.medida ?? LINEA_RECTA)
   // Se le cobra automático solo si hay precio y el cliente no pidió revisión.
   const cobroAutomático = tarifa.estado === 'ok' && !pidioRevisión
 
@@ -1275,6 +1292,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
+    if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
     // Con el valor completo conocido, el pago se elige aquí mismo. Si no, el
     // cliente lo escoge después de que la caja cotice (ClientOrderDetail).
@@ -1329,6 +1347,9 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
               deliveryPrice:     tarifa.precio,
               deliveryPriceAuto: true,
               deliveryKm:        Number(kmSede.toFixed(2)),
+              // Con qué se midió: 'recorrido' (Google) o 'linea_recta' (respaldo).
+              deliveryKmMedida:  distancia.medida,
+              deliveryKmLinea:   Number(kmLinea.toFixed(2)),
             }
           : {}),
         ...(pidioRevisión ? { deliveryPriceReview: true } : {}),
@@ -1462,7 +1483,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
               <p className="font-body text-[11px] text-coal/55 leading-relaxed mt-0.5">
                 {form.barrio && <>📍 {form.barrio} · </>}
                 {form.addrLat != null ? 'Ubicada en el mapa. ' : ''}
-                {!cobroAutomático && tarifa.estado !== 'fuera_de_rango' &&
+                {midiendoRuta && 'Calculando el valor del domicilio…'}
+                {!midiendoRuta && !cobroAutomático && tarifa.estado !== 'fuera_de_rango' &&
                   'El valor del domicilio se confirma en caja antes de que pagues.'}
               </p>
             </div>
@@ -1479,7 +1501,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
                   Domicilio
                 </p>
                 <p className="font-body text-[11px] text-coal/50 mt-0.5">
-                  A {kmSede.toFixed(1)} km de la sede
+                  A {explicarTarifa(tarifa, kmSede)}
                 </p>
               </div>
               <p className="font-display text-2xl text-mint tracking-wide flex-shrink-0">
@@ -1517,10 +1539,10 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         {form.fullAddress && tarifa.estado === 'fuera_de_rango' && (
           <div className="mt-2 bg-cherry/10 border border-cherry/30 rounded-xl px-4 py-3">
             <p className="font-body text-sm font-semibold text-cherry">
-              Estás a {kmSede.toFixed(1)} km — muy lejos para domicilio
+              Estás a {kmSede.toFixed(1)} km{distancia?.medida === 'recorrido' ? ' por calle' : ''} — muy lejos para domicilio
             </p>
             <p className="font-body text-xs text-coal/60 leading-relaxed mt-1">
-              Solo llevamos hasta {MAX_KM} km desde la sede. Puedes pedirlo y
+              Solo llevamos hasta {tarifa.maxKm} km{distancia?.medida === 'recorrido' ? ' por calle' : ''} desde la sede. Puedes pedirlo y
               recogerlo tú en la sede, sin costo de domicilio.
             </p>
             <button
