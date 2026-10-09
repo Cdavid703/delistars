@@ -5,6 +5,7 @@ import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
 import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
 import { ubicarDireccion } from '../../services/recorrido'
+import { kmLineaRecta } from '../../utils/tarifaDomicilio'
 import BarrioPicker from '../common/BarrioPicker'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
@@ -61,7 +62,7 @@ async function geocode(p, sede) {
 }
 
 // ─── Formulario estructurado (agregar/editar una dirección) ────────────────────
-function AddressBuilder({ sede, initial, onSave, onCancel }) {
+function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejarComoEstaba = null }) {
   useBackClose(true, onCancel) // "atrás" cierra el formulario, no sale de la app
   const [p, setP]           = useState(initial || EMPTY)
   const [customLabel, setCustom] = useState(
@@ -69,7 +70,8 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
   )
   const [errors, setErrors]     = useState([])
   const [saving, setSaving]     = useState(false)
-  const [showMap, setShowMap]   = useState(false)
+  // Revisión de un pin viejo: el mapa abre de una con el punto de Google.
+  const [showMap, setShowMap]   = useState(!!aviso)
   const [locating, setLocating] = useState(false)
 
   const set = (k, v) => setP(f => ({ ...f, [k]: v }))
@@ -264,6 +266,18 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
             )}
           </div>
 
+          {aviso && (
+            <div className="bg-mustard/10 border border-mustard/40 rounded-xl px-3 py-2.5">
+              <p className="font-body text-xs text-coal/80 leading-relaxed">{aviso}</p>
+              {onDejarComoEstaba && (
+                <button type="button" onClick={onDejarComoEstaba}
+                  className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+                  El pin anterior estaba bien, déjalo así
+                </button>
+              )}
+            </div>
+          )}
+
           {errors.length > 0 && (
             <div className="bg-red-50 border border-red-300 rounded-xl p-3 flex flex-col gap-1">
               {errors.map(e => <p key={e} className="font-body text-xs text-red-600">• {e}</p>)}
@@ -289,7 +303,8 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
 export default function AddressBook({ user, sede, currentAddress, onSelect }) {
   const [places,   setPlaces]   = useState([])
   const [loaded,   setLoaded]   = useState(false)
-  const [builder,  setBuilder]  = useState(null) // { mode:'new'|'edit', place }
+  const [builder,  setBuilder]  = useState(null) // { mode:'new'|'edit', place, revisar? }
+  const [revisando, setRevisando] = useState(null) // id de la dirección que se está verificando
 
   const uid   = user?.uid
   const canSave = !!uid   // el login anónimo también tiene uid → guarda igual
@@ -310,7 +325,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
     } catch (_) {}
   }
 
-  const selectPlace = (p) => {
+  const seleccionar = (p) => {
     onSelect({
       fullAddress: fullAddressOf(p),
       barrio:      p.barrio || '',
@@ -321,13 +336,52 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
     })
   }
 
+  const reemplazar = (place) => persist(places.some(x => x.id === place.id)
+    ? places.map(x => x.id === place.id ? place : x)
+    : [...places, place])
+
+  // Direcciones guardadas antes del 2026-10-09 no dicen de dónde salió su pin
+  // (muchos los puso Photon en la mitad de la calle; la auditoría encontró 179
+  // de 398 a más de 200 m). Al elegirla se vuelve a ubicar con Google: si
+  // queda cerca se marca como verificada sin molestar; si no, se le muestra el
+  // mapa con el punto nuevo para que el cliente confirme. Nunca se cambia sola.
+  const selectPlace = async (p) => {
+    // Las muy viejas (sin calle/número por separado) no se pueden armar ni
+    // editar con el formulario: se usan como están.
+    if (p.pinFuente || revisando || !p.viaNum || !p.cruceNum) { seleccionar(p); return }
+    setRevisando(p.id)
+    const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
+    const google = await ubicarDireccion(q, p.referencia?.trim())
+    setRevisando(null)
+    const g = google?.[0]
+    if (!g || !PRECISAS.includes(g.precision)) { seleccionar(p); return }
+    const tienePin = p.lat != null && p.lng != null
+    const metros = tienePin ? Math.round(kmLineaRecta({ lat: Number(p.lat), lng: Number(p.lng) }, g) * 1000) : null
+    if (tienePin && metros <= 200) {
+      const verificada = { ...p, pinFuente: 'google', pinPrecision: g.precision }
+      reemplazar(verificada)
+      seleccionar(verificada)
+      return
+    }
+    setBuilder({
+      mode: 'edit',
+      place: { ...p, lat: g.lat, lng: g.lng, pinFuente: 'google', pinPrecision: g.precision },
+      revisar: { anterior: p, metros },
+    })
+  }
+
   const handleSaved = async (place) => {
-    const next = places.some(x => x.id === place.id)
-      ? places.map(x => x.id === place.id ? place : x)
-      : [...places, place]
-    await persist(next)
+    await reemplazar(place)
     setBuilder(null)
-    selectPlace(place)   // seleccionar automáticamente la recién guardada
+    seleccionar(place)   // seleccionar automáticamente la recién guardada
+  }
+
+  // El cliente dice que el pin viejo estaba bien: se respeta y no se vuelve a preguntar.
+  const dejarComoEstaba = async () => {
+    const anterior = { ...builder.revisar.anterior, pinFuente: 'mapa' }
+    await reemplazar(anterior)
+    setBuilder(null)
+    seleccionar(anterior)
   }
 
   const removePlace = async (place, e) => {
@@ -362,6 +416,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
             </div>
             <p className="font-body text-xs text-coal/60 truncate">{fullAddressOf(p)}</p>
             {p.barrio && <p className="font-body text-[11px] text-coal/40">📍 {p.barrio}{p.lat != null ? ' · ubicada en el mapa' : ''}</p>}
+            {revisando === p.id && <p className="font-body text-[11px] text-tangelo">Verificando la ubicación…</p>}
           </div>
           <span className="flex items-center gap-1 flex-shrink-0">
             <span onClick={e => { e.stopPropagation(); setBuilder({ mode: 'edit', place: p }) }}
@@ -394,6 +449,12 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
           initial={builder.mode === 'edit' ? builder.place : null}
           onSave={handleSaved}
           onCancel={() => setBuilder(null)}
+          aviso={builder.revisar
+            ? (builder.revisar.metros === null
+                ? 'Ubicamos tu dirección en el mapa. Revisa que el pin esté en tu casa (muévelo si hace falta) y guarda.'
+                : `Mejoramos nuestro mapa y tu dirección quedó a ${builder.revisar.metros >= 1000 ? (builder.revisar.metros / 1000).toFixed(1) + ' km' : builder.revisar.metros + ' m'} de donde la tenías. ¿Tu casa está aquí? Mueve el pin si hace falta y guarda.`)
+            : null}
+          onDejarComoEstaba={builder.revisar?.anterior?.lat != null ? dejarComoEstaba : null}
         />
       )}
     </div>
