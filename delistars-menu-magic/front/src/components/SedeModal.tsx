@@ -5,6 +5,7 @@ import { useCart } from "@/context/CartContext";
 import logo from "@/assets/logo.svg";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/services/api";
+import { CoberturaCheck } from "@/components/CoberturaCheck";
 
 // Elección de sede. Es el PRIMER contacto con la marca, así que las dos sedes
 // tienen que caber en pantalla sin hacer scroll.
@@ -99,6 +100,11 @@ export const SedeModal = () => {
                 )}
               </div>
             ))
+          )}
+          {!isLoading && sedes.length > 1 && (
+            <div className="md:col-span-2">
+              <CoberturaCheck sedes={sedes} onElegir={setSede} />
+            </div>
           )}
         </div>
       </DialogContent>

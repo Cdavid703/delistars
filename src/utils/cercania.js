@@ -42,3 +42,41 @@ export function pedidosCerca(pos, orders, { geoCache = {}, avisados = new Set(),
     .filter(x => x && x.metros <= radioM)
     .sort((a, b) => a.metros - b.metros)
 }
+
+// ─── Pedidos que van para el mismo lado (para la caja al asignar) ────────────
+
+/** Estados en los que un pedido todavía puede salir con el mismo domiciliario. */
+export const SIN_SALIR = ['quoted', 'assigned', 'accepted', 'preparing']
+
+/** Distancia (km) del punto P al segmento A→B, en un plano local (sirve en una ciudad). */
+function kmAlSegmento(p, a, b) {
+  const kx = 111.32 * Math.cos(a.lat * Math.PI / 180) // km por grado de longitud
+  const ky = 110.57                                   // km por grado de latitud
+  const px = (p.lng - a.lng) * kx, py = (p.lat - a.lat) * ky
+  const bx = (b.lng - a.lng) * kx, by = (b.lat - a.lat) * ky
+  const largo2 = bx * bx + by * by
+  const t = largo2 ? Math.max(0, Math.min(1, (px * bx + py * by) / largo2)) : 0
+  return Math.hypot(px - t * bx, py - t * by)
+}
+
+/**
+ * Otros pedidos de la misma sede, aún sin salir, que convienen llevar con
+ * `order`: su destino está cerca (≤ radioKm) o queda de camino (a ≤ desvioKm
+ * del trayecto sede → destino, en cualquiera de los dos sentidos). Solo con
+ * pin exacto. Devuelve [{ order, metros, deCamino }] del más cercano al más lejano.
+ */
+export function pedidosMismoLado(order, otros, sedeCoords, { radioKm = 0.6, desvioKm = 0.3 } = {}) {
+  const a = geoDelPedido(order)
+  if (!a?.exacto) return []
+  return otros
+    .filter(o => o.id !== order.id && o.sedeId === order.sedeId && o.deliveryMode !== 'pickup' && SIN_SALIR.includes(o.status))
+    .map(o => {
+      const b = geoDelPedido(o)
+      if (!b?.exacto) return null
+      const km = kmLineaRecta(a, b)
+      const deCamino = !!sedeCoords && (kmAlSegmento(b, sedeCoords, a) <= desvioKm || kmAlSegmento(a, sedeCoords, b) <= desvioKm)
+      return km <= radioKm || deCamino ? { order: o, metros: Math.round(km * 1000), deCamino: km > radioKm } : null
+    })
+    .filter(Boolean)
+    .sort((x, y) => x.metros - y.metros)
+}

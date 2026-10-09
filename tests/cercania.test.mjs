@@ -59,3 +59,43 @@ test('sin posición del GPS no avisa nada', () => {
   assert.deepEqual(pedidosCerca({ lat: NaN, lng: 1 }, orders), [])
   assert.equal(RADIO_AVISO_M, 250)
 })
+
+// ─── Mismo lado ──────────────────────────────────────────────────────────────
+import { pedidosMismoLado } from '../src/utils/cercania.js'
+
+const SEDE = { lat: 6.2447, lng: -75.6132 }
+// Pedido hacia el norte, ~2,2 km de la sede.
+const A = { id: 'A', sedeId: 's', status: 'quoted', deliveryMode: 'delivery', addrLat: 6.2647, addrLng: -75.6132 }
+const otro = (id, lat, lng, extra = {}) => ({ id, sedeId: 's', status: 'quoted', deliveryMode: 'delivery', addrLat: lat, addrLng: lng, ...extra })
+
+test('mismo lado: destino cercano (≤ 600 m) o de camino', () => {
+  const r = pedidosMismoLado(A, [
+    otro('cerca', 6.2667, -75.6135),     // ~220 m de A
+    otro('camino', 6.2547, -75.6140),    // a mitad del trayecto, ~90 m del segmento
+    otro('lejos', 6.2447, -75.5900),     // hacia el oriente: ni cerca ni de camino
+  ], SEDE)
+  assert.deepEqual(r.map(x => x.order.id), ['cerca', 'camino'])
+  assert.equal(r[0].deCamino, false)
+  assert.equal(r[1].deCamino, true)
+})
+
+test('mismo lado: también si A queda de camino hacia el otro', () => {
+  const lejosNorte = otro('masAlla', 6.2847, -75.6135) // A queda en su trayecto
+  assert.deepEqual(pedidosMismoLado(A, [lejosNorte], SEDE).map(x => x.order.id), ['masAlla'])
+})
+
+test('mismo lado: solo de la misma sede, sin salir, con pin, y no el mismo pedido', () => {
+  const r = pedidosMismoLado(A, [
+    A,
+    otro('otraSede', 6.2667, -75.6135, { sedeId: 'x' }),
+    otro('enCamino', 6.2667, -75.6135, { status: 'in_transit' }),
+    otro('recoge', 6.2667, -75.6135, { deliveryMode: 'pickup' }),
+    { id: 'sinPin', sedeId: 's', status: 'quoted', fullAddress: 'Cra 1' },
+    otro('asignado', 6.2667, -75.6135, { status: 'assigned', driverEmail: 'juan@x.com' }),
+  ], SEDE)
+  assert.deepEqual(r.map(x => x.order.id), ['asignado'])
+})
+
+test('mismo lado: sin pin propio no sugiere nada', () => {
+  assert.deepEqual(pedidosMismoLado({ ...A, addrLat: null }, [otro('cerca', 6.2667, -75.6135)], SEDE), [])
+})

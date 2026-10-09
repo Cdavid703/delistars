@@ -160,3 +160,11 @@ test('la tabla del scheduler (revisión en el servidor) es la misma de la app', 
   const espejo = require('../delistars-menu-magic/scheduler/verificarDomicilio.js')
   assert.deepEqual(espejo.TARIFAS_RECORRIDO, TARIFAS_RECORRIDO)
 })
+
+test('la tabla de "¿Cuál me queda más cerca?" (página principal) es la misma de la app', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const ts = await readFile(new URL('../delistars-menu-magic/front/src/lib/cobertura.ts', import.meta.url), 'utf8')
+  const bloque = ts.match(/TARIFAS_RECORRIDO = (\[[\s\S]*?\n\])/)[1]
+  const tabla = [...bloque.matchAll(/hasta:\s*([\d.]+),\s*precio:\s*(\d+)/g)].map(m => ({ hasta: Number(m[1]), precio: Number(m[2]) }))
+  assert.deepEqual(tabla, TARIFAS_RECORRIDO)
+})

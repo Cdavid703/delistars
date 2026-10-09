@@ -747,6 +747,7 @@ export default function CashierPanel() {
           key={assigningLive.id}   // mismo motivo que en OrderDetail
           order={assigningLive}
           drivers={drivers}
+          pedidos={orders}
           unreadClientMsgs={unreadChatMap[assigningLive.id] || 0}
           onClose={() => setAssigning(null)}
         />

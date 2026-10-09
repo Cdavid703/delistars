@@ -8,12 +8,14 @@ import {
 } from 'lucide-react'
 import StatusBadge from '../common/StatusBadge'
 import ClientChat from './ClientChat'
+import { SEDES } from '../../services/roles'
+import { pedidosMismoLado } from '../../utils/cercania'
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 // Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
-export default function AssignDeliveryDetail({ order, drivers, onClose, unreadClientMsgs = 0 }) {
+export default function AssignDeliveryDetail({ order, drivers, onClose, unreadClientMsgs = 0, pedidos = [] }) {
   const [quotedPrice,   setQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
   const [deliveryPrice, setDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
   const [orderNumber,   setOrderNumber]   = useState(order.orderNumber || '')
@@ -26,6 +28,8 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
   const [payAmount,     setPayAmount]     = useState(String(order.payAmount || order.cashBillAmount || ''))
   const [loading,       setLoading]       = useState(false)
   const [errors,        setErrors]        = useState([])
+
+  const mismoLado = pedidosMismoLado(order, pedidos, SEDES[order.sedeId]?.coords)
 
   const cashOnDelivery = order.payment === 'Efectivo' || order.payment === 'Mixto'
   const qp    = parseFloat(quotedPrice)   || 0
@@ -212,6 +216,36 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Pedidos que van para el mismo lado: salen juntos y no en dos viajes. */}
+          {mismoLado.length > 0 && (
+            <div className="bg-mint/10 border border-mint/40 rounded-xl px-4 py-3">
+              <p className="font-body text-xs font-bold text-coal mb-1.5">
+                🧭 Van para el mismo lado — mándalos con el mismo domiciliario
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {mismoLado.map(({ order: o, metros, deCamino }) => {
+                  const asignadoA = o.driverEmail && drivers.find(d => String(d.id).toLowerCase() === o.driverEmail.toLowerCase())
+                  return (
+                    <div key={o.id} className="flex items-center justify-between gap-2">
+                      <p className="font-body text-xs text-coal/75 min-w-0">
+                        <strong>{o.orderNumber ? `#${o.orderNumber}` : (o.name || 'Pedido')}</strong>
+                        {o.barrio ? ` · ${o.barrio}` : ''}
+                        {' · '}{deCamino ? 'de camino' : `a ${metros} m`}
+                        {o.driverEmail ? ` · ya lo tiene ${o.driverName || o.driverEmail}` : ' · sin asignar'}
+                      </p>
+                      {asignadoA && driverId !== asignadoA.id && (
+                        <button type="button" onClick={() => setDriverId(asignadoA.id)}
+                          className="flex-shrink-0 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+                          Asignar a {(asignadoA.name || asignadoA.id).split(' ')[0]}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
