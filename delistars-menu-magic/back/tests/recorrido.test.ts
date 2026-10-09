@@ -169,3 +169,58 @@ describe('orden óptimo de entregas', () => {
     expect(await s.optimizar(TERESITA, paradas.slice(0, 2))).toEqual({ ok: false, motivo: 'tope_diario' })
   })
 })
+
+describe('ubicar direcciones (Geocoding)', () => {
+  const googleGeo = (results: any[] = [{
+    formatted_address: 'Cra. 109 # 43-7, Antonio Narino, Medellín, Antioquia, Colombia',
+    geometry: { location: { lat: 6.256999, lng: -75.622705 }, location_type: 'ROOFTOP' },
+  }], status = 'OK') => {
+    const urls: string[] = []
+    const fetchFn = async (url: string) => {
+      urls.push(url)
+      return { ok: true, status: 200, json: async () => ({ status, results }) }
+    }
+    return { fetchFn, urls }
+  }
+
+  it('ubica la Cra 109 #43-7 en la casa exacta, sin el ", Colombia"', async () => {
+    const g = googleGeo()
+    const r = await new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn }).ubicar('Carrera 109 #43-7')
+    expect(r).toEqual({ ok: true, lugares: [{
+      lat: 6.256999, lng: -75.622705, precision: 'ROOFTOP',
+      direccion: 'Cra. 109 # 43-7, Antonio Narino, Medellín, Antioquia',
+    }] })
+    const params = new URL(g.urls[0]).searchParams
+    expect(params.get('address')).toBe('Carrera 109 #43-7, Medellín, Antioquia')
+    expect(params.get('components')).toBe('country:CO')
+  })
+
+  it('no repite "Medellín" si ya viene en el texto', async () => {
+    const g = googleGeo()
+    await new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn }).ubicar('Calle 50 #40-10, Medellín')
+    expect(new URL(g.urls[0]).searchParams.get('address')).toBe('Calle 50 #40-10, Medellín')
+  })
+
+  it('descarta lo que cae fuera de Medellín y responde vacío si no encuentra', async () => {
+    const fuera = [{ formatted_address: 'Bogotá', geometry: { location: { lat: 4.6, lng: -74.08 }, location_type: 'ROOFTOP' } }]
+    expect(await new RecorridoService({ apiKey: 'k', fetchFn: googleGeo(fuera).fetchFn }).ubicar('Calle 1 #2-3'))
+      .toEqual({ ok: true, lugares: [] })
+    expect(await new RecorridoService({ apiKey: 'k', fetchFn: googleGeo([], 'ZERO_RESULTS').fetchFn }).ubicar('xyz abc'))
+      .toEqual({ ok: true, lugares: [] })
+  })
+
+  it('la misma dirección no se vuelve a consultar', async () => {
+    const g = googleGeo()
+    const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
+    await s.ubicar('Carrera 109 #43-7')
+    await s.ubicar('  carrera 109   #43-7 ')
+    expect(g.urls).toHaveLength(1)
+  })
+
+  it('valida el texto y avisa si Google rechaza la llave', async () => {
+    const s = new RecorridoService({ apiKey: 'k', fetchFn: googleGeo([], 'REQUEST_DENIED').fetchFn })
+    expect(await s.ubicar('')).toEqual({ ok: false, motivo: 'invalido' })
+    expect(await s.ubicar(42)).toEqual({ ok: false, motivo: 'invalido' })
+    expect(await s.ubicar('Calle 10 #20-30')).toEqual({ ok: false, motivo: 'google' })
+  })
+})

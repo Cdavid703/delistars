@@ -10,7 +10,7 @@ import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
 import { precioDomicilio, maxKm, RECORRIDO, LINEA_RECTA } from '../../utils/tarifaDomicilio'
-import { medirRecorrido } from '../../services/recorrido'
+import { medirRecorrido, ubicarDireccion } from '../../services/recorrido'
 import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
@@ -138,31 +138,52 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       })
       return () => { vigente = false }
     }
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8000)
-    // Las direcciones colombianas tipo "Carrera 85 C, número 34 a 27" o "Cra 50 #45-10"
-    // confunden a Photon con los números secundarios. Se extrae solo la calle principal.
-    const street = order.fullAddress
-      .replace(/\bnum[eé]ro\b.*/i, '')  // quita "número X a Y"
-      .replace(/#[^\s,]*/g, '')          // quita "#45-10"
-      .split(',')[0]
-      .trim()
-    const barrio = order.barrio ? `, ${order.barrio}` : ''
-    const q = encodeURIComponent(`${street}${barrio}, Medellín, Colombia`)
-    const url = `https://photon.komoot.io/api/?q=${q}&limit=1&lat=6.2442&lon=-75.5812`
-    fetch(url, { signal: controller.signal })
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
-      .then(data => {
-        clearTimeout(timer)
-        const feature = data.features?.[0]
-        if (feature) {
-          const [lon, lat] = feature.geometry.coordinates
-          setDistanceKm(haversineKm(orderSede.coords.lat, orderSede.coords.lng, lat, lon))
-        } else {
-          setDistanceKm(-1)
-        }
+    // Sin pin: se ubica el texto. Primero Google (entiende el "#45-10");
+    // si no responde, Photon con la calle principal, como antes.
+    let vigente = true
+    const medirDesde = (lat, lng) => {
+      setDistanceKm(haversineKm(orderSede.coords.lat, orderSede.coords.lng, lat, lng))
+      medirRecorrido(orderSede.coords, { lat, lng }).then(km => {
+        if (!vigente || km === null) return
+        setDistanceKm(km)
+        setDistanceMedida(RECORRIDO)
       })
-      .catch(() => setDistanceKm(-1))
+    }
+    const porPhoton = () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+      // Las direcciones colombianas tipo "Carrera 85 C, número 34 a 27" o "Cra 50 #45-10"
+      // confunden a Photon con los números secundarios. Se extrae solo la calle principal.
+      const street = order.fullAddress
+        .replace(/\bnum[eé]ro\b.*/i, '')  // quita "número X a Y"
+        .replace(/#[^\s,]*/g, '')          // quita "#45-10"
+        .split(',')[0]
+        .trim()
+      const barrio = order.barrio ? `, ${order.barrio}` : ''
+      const q = encodeURIComponent(`${street}${barrio}, Medellín, Colombia`)
+      const url = `https://photon.komoot.io/api/?q=${q}&limit=1&lat=6.2442&lon=-75.5812`
+      fetch(url, { signal: controller.signal })
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.json() })
+        .then(data => {
+          clearTimeout(timer)
+          const feature = data.features?.[0]
+          if (feature) {
+            const [lon, lat] = feature.geometry.coordinates
+            if (vigente) setDistanceKm(haversineKm(orderSede.coords.lat, orderSede.coords.lng, lat, lon))
+          } else {
+            setDistanceKm(-1)
+          }
+        })
+        .catch(() => setDistanceKm(-1))
+    }
+    const barrioTxt = order.barrio ? `, ${order.barrio}` : ''
+    ubicarDireccion(`${order.fullAddress}${barrioTxt}`).then(google => {
+      if (!vigente) return
+      if (google?.length) { medirDesde(google[0].lat, google[0].lng); return }
+      if (google) { setDistanceKm(-1); return } // Google respondió: no existe
+      porPhoton()
+    })
+    return () => { vigente = false }
   }, [order.fullAddress, order.addrLat, order.addrLng, order.deliveryKm, order.deliveryKmMedida, orderSede])
 
 
@@ -192,6 +213,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     setSearchingAddr(true)
     setAddrSuggestions([])
     setAddrSearched(false)
+    // Google primero: entiende el "#45-10" y devuelve la dirección completa.
+    const google = await ubicarDireccion(addrDraft.trim())
+    if (google) {
+      setAddrSuggestions(google.map(l => l.direccion))
+      setAddrSearched(true)
+      setSearchingAddr(false)
+      return
+    }
     try {
       const cleaned = addrDraft.replace(/#[^\s,]*/g, '').split(',')[0].trim()
       const q = encodeURIComponent(cleaned + ', Medellín, Colombia')

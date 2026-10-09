@@ -23,7 +23,7 @@ import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
 import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
-import { optimizarRuta } from '../../services/recorrido'
+import { optimizarRuta, ubicarDireccion } from '../../services/recorrido'
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 
@@ -50,8 +50,12 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 // Umbral para considerar 2 pedidos "cercanos" (en km)
 const NEARBY_THRESHOLD_KM = 0.4
 
-// Geocoder via Photon (komoot.io) — OSM-based, no API key, CORS habilitado.
+// Ubica una dirección: Google primero (vía backend, entiende el "#45-10"); si
+// no responde, Photon (komoot.io, OpenStreetMap) con la calle principal.
 async function geocodeAddress(fullAddress) {
+  const google = await ubicarDireccion(fullAddress)
+  if (google?.length) return { lat: google[0].lat, lng: google[0].lng }
+  if (google) return null // Google respondió que no existe
   try {
     const street = fullAddress
       .replace(/\bnum[eé]ro\b.*/i, '')   // quitar "número X a Y"
@@ -92,7 +96,7 @@ export default function DeliveryPanel() {
   const [showReturnNav,   setShowReturnNav]  = useState(null)
   // Cache persistente { fullAddress: { lat, lng } | null }
   const [geoCache, setGeoCache] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('ds_geo_cache_v1') || '{}') } catch { return {} }
+    try { return JSON.parse(localStorage.getItem('ds_geo_cache_v2') || '{}') } catch { return {} }
   })
   const prevCount        = useRef(0)
   // Foto de los estados de la tanda anterior. null en la primera carga, para no
@@ -278,10 +282,11 @@ export default function DeliveryPanel() {
 
   // Persistir cache de geocoding
   useEffect(() => {
-    try { localStorage.setItem('ds_geo_cache_v1', JSON.stringify(geoCache)) } catch {}
+    try { localStorage.setItem('ds_geo_cache_v2', JSON.stringify(geoCache)) } catch {}
   }, [geoCache])
 
-  // Geocodificar direcciones nuevas (rate-limited a 1.2s entre requests para respetar Photon fair-use)
+  // Geocodificar direcciones nuevas (1.2 s entre consultas: respeta el uso justo
+  // de Photon cuando cae al respaldo). El caché v2 descarta lo que dio Photon antes.
   const routableAddrKey = routableOrders.map(o => o.fullAddress).join('|')
   useEffect(() => {
     const toGeocode = routableOrders
@@ -724,6 +729,13 @@ function DriverOrderDetail({ order, onClose }) {
     setSearchingAddr(true)
     setAddrSuggestions([])
     setAddrSearched(false)
+    const google = await ubicarDireccion(addrDraft.trim())
+    if (google) {
+      setAddrSuggestions(google.map(l => l.direccion))
+      setAddrSearched(true)
+      setSearchingAddr(false)
+      return
+    }
     try {
       const cleaned = addrDraft.replace(/#[^\s,]*/g, '').split(',')[0].trim()
       const q = encodeURIComponent(cleaned + ', Medellín, Colombia')

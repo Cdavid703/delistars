@@ -4,6 +4,7 @@ import { db } from '../../services/firebase'
 import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
 import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
+import { ubicarDireccion } from '../../services/recorrido'
 import BarrioPicker from '../common/BarrioPicker'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
@@ -35,9 +36,13 @@ const EMPTY = {
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
 // Geocodifica la dirección armada para obtener el pin exacto (best-effort).
+// Primero Google (entiende la placa y suele dar la casa exacta); si no
+// responde, Photon como antes.
 async function geocode(p, sede) {
+  const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
+  const google = await ubicarDireccion(q)
+  if (google?.length) return { lat: google[0].lat, lng: google[0].lng }
   try {
-    const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
     const lat = sede?.coords?.lat ?? 6.24, lon = sede?.coords?.lng ?? -75.58
     const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lat=${lat}&lon=${lon}`)
     if (!res.ok) return null

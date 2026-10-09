@@ -22,6 +22,16 @@ export type ResultadoRuta =
   | { ok: true; orden: string[]; km: number; min: number | null; tramos: { km: number; min: number | null }[] }
   | { ok: false; motivo: 'invalido' | 'sin_llave' | 'tope_diario' | 'tope_ip' | 'google' }
 
+export interface Lugar extends Punto {
+  direccion: string
+  /** ROOFTOP = la casa exacta; RANGE_INTERPOLATED = sobre la cuadra; el resto, aproximado. */
+  precision: string
+}
+
+export type ResultadoUbicar =
+  | { ok: true; lugares: Lugar[] }
+  | { ok: false; motivo: 'invalido' | 'sin_llave' | 'tope_diario' | 'tope_ip' | 'google' }
+
 /** Máximo de paradas por ruta optimizada (Google admite hasta 25). */
 export const MAX_PARADAS = 10
 
@@ -54,13 +64,16 @@ export class RecorridoService {
   private usadasHoy = 0
   private porIp = new Map<string, number[]>()
   private usadasOptHoy = 0
+  private usadasUbicarHoy = 0
   private cacheOpt = new Map<string, { r: ResultadoRuta; hasta: number }>()
+  private cacheUbicar = new Map<string, { lugares: Lugar[]; hasta: number }>()
 
   constructor(
     private readonly opts: {
       apiKey?: string
       maxDiarias?: number
       maxOptimizarDiarias?: number
+      maxUbicarDiarias?: number
       fetchFn?: Fetch
       ahora?: () => number
     } = {},
@@ -95,20 +108,87 @@ export class RecorridoService {
     return { ok: true, ...ruta, cache: false }
   }
 
+  private get maxUbicarDiarias() {
+    return this.opts.maxUbicarDiarias ?? Number(process.env.RUTAS_MAX_UBICAR_DIARIAS ?? 500)
+  }
+
   /** Cuenta una consulta contra los topes; devuelve el motivo si ya no se puede. */
-  private gastar(tipo: 'basica' | 'optimizar', ip: string): 'tope_diario' | 'tope_ip' | null {
+  private gastar(tipo: 'basica' | 'optimizar' | 'ubicar', ip: string): 'tope_diario' | 'tope_ip' | null {
     const ahora = this.ahora
     const hoy = diaColombia(ahora)
-    if (hoy !== this.dia) { this.dia = hoy; this.usadasHoy = 0; this.usadasOptHoy = 0 }
+    if (hoy !== this.dia) { this.dia = hoy; this.usadasHoy = 0; this.usadasOptHoy = 0; this.usadasUbicarHoy = 0 }
     if (tipo === 'basica' && this.usadasHoy >= this.maxDiarias) return 'tope_diario'
     if (tipo === 'optimizar' && this.usadasOptHoy >= this.maxOptimizarDiarias) return 'tope_diario'
+    if (tipo === 'ubicar' && this.usadasUbicarHoy >= this.maxUbicarDiarias) return 'tope_diario'
     const recientes = (this.porIp.get(ip) ?? []).filter((t) => t > ahora - 3600 * 1000)
     if (recientes.length >= POR_IP_HORA) return 'tope_ip'
     recientes.push(ahora)
     this.porIp.set(ip, recientes)
     if (tipo === 'basica') this.usadasHoy++
-    else this.usadasOptHoy++
+    else if (tipo === 'optimizar') this.usadasOptHoy++
+    else this.usadasUbicarHoy++
     return null
+  }
+
+  /**
+   * Ubica una dirección escrita ("Carrera 109 #43-7, Medellín") con Google
+   * Geocoding. A diferencia de Photon/OpenStreetMap, entiende el "#43-7" y
+   * suele dar la casa exacta. Devuelve hasta 4 lugares dentro de Medellín.
+   */
+  async ubicar(texto: unknown, ip = ''): Promise<ResultadoUbicar> {
+    const q = typeof texto === 'string' ? texto.replace(/\s+/g, ' ').trim() : ''
+    if (q.length < 3 || q.length > 200) return { ok: false, motivo: 'invalido' }
+    if (!this.apiKey) return { ok: false, motivo: 'sin_llave' }
+
+    const ahora = this.ahora
+    const clave = q.toLowerCase()
+    const enCache = this.cacheUbicar.get(clave)
+    if (enCache && enCache.hasta > ahora) return { ok: true, lugares: enCache.lugares }
+
+    const tope = this.gastar('ubicar', ip)
+    if (tope) return { ok: false, motivo: tope }
+
+    const fetchFn: Fetch = this.opts.fetchFn ?? (globalThis as any).fetch
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    // Si no dice ciudad, se asume Medellín (todas las direcciones son de acá).
+    const conCiudad = /medell[ií]n|bello|itag[uü][ií]|envigado/i.test(q) ? q : `${q}, Medellín, Antioquia`
+    const params = new URLSearchParams({
+      address: conCiudad,
+      region: 'co',
+      language: 'es',
+      components: 'country:CO',
+      bounds: `${AREA.latMin},${AREA.lngMin}|${AREA.latMax},${AREA.lngMax}`,
+      key: this.apiKey,
+    })
+    try {
+      const res = await fetchFn(`https://maps.googleapis.com/maps/api/geocode/json?${params}`, {
+        method: 'GET', signal: controller.signal,
+      })
+      const data = res.ok ? await res.json() : null
+      if (!data || !['OK', 'ZERO_RESULTS'].includes(data.status)) {
+        console.warn(`Geocoding respondió ${res.status} ${data?.status ?? ''}`)
+        return { ok: false, motivo: 'google' }
+      }
+      const lugares: Lugar[] = (data.results ?? [])
+        .map((r: any) => ({
+          lat: r.geometry?.location?.lat,
+          lng: r.geometry?.location?.lng,
+          direccion: String(r.formatted_address ?? '').replace(/, Colombia$/, ''),
+          precision: String(r.geometry?.location_type ?? 'APPROXIMATE'),
+        }))
+        .filter((l: Lugar) => puntoValido(l))
+        .slice(0, 4)
+      if (this.cacheUbicar.size >= CACHE_MAX) this.cacheUbicar.delete(this.cacheUbicar.keys().next().value as string)
+      // Una dirección no se mueve: 7 días de caché.
+      this.cacheUbicar.set(clave, { lugares, hasta: ahora + 7 * CACHE_MS })
+      return { ok: true, lugares }
+    } catch (err) {
+      console.warn('Geocoding falló:', err instanceof Error ? err.message : err)
+      return { ok: false, motivo: 'google' }
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   /**

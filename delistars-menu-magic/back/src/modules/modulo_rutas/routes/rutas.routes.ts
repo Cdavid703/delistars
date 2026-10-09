@@ -70,4 +70,31 @@ router.post('/optimizar', async (req: Request, res: Response) => {
   res.status(r.motivo === 'invalido' ? 400 : 503).json({ orden: null, motivo: r.motivo });
 });
 
+/**
+ * @swagger
+ * /api/v1/rutas/ubicar:
+ *   post:
+ *     tags:
+ *       - Rutas
+ *     summary: Ubicar una dirección escrita (Google Geocoding)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           example: { "texto": "Carrera 109 #43-7, Medellín" }
+ *     responses:
+ *       200:
+ *         description: "{ lugares: [{ lat, lng, direccion, precision }] } (hasta 4; vacío si no la encontró)"
+ *       503:
+ *         description: "No se pudo consultar: { lugares: null, motivo }"
+ */
+router.post('/ubicar', async (req: Request, res: Response) => {
+  const r = await recorrido.ubicar(req.body?.texto, req.ip ?? '');
+  if (r.ok) {
+    res.json({ lugares: r.lugares });
+    return;
+  }
+  res.status(r.motivo === 'invalido' ? 400 : 503).json({ lugares: null, motivo: r.motivo });
+});
+
 export default router;
