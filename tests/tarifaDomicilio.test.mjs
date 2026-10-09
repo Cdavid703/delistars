@@ -153,3 +153,10 @@ test('línea recta: la fórmula da 111 km por grado de latitud', () => {
   // Sanidad de la fórmula: 1 grado de latitud ≈ 111 km.
   assert.ok(Math.abs(kmLineaRecta({ lat: 6, lng: -75 }, { lat: 7, lng: -75 }) - 111.2) < 0.2)
 })
+
+test('la tabla del scheduler (revisión en el servidor) es la misma de la app', async () => {
+  const { createRequire } = await import('node:module')
+  const require = createRequire(import.meta.url)
+  const espejo = require('../delistars-menu-magic/scheduler/verificarDomicilio.js')
+  assert.deepEqual(espejo.TARIFAS_RECORRIDO, TARIFAS_RECORRIDO)
+})

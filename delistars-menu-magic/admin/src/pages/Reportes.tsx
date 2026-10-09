@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { type Order, DELIVERED_STATUSES, fmtCOP } from '@/lib/orders'
+import { informeSemana, ultimasSemanas, etiquetaSemana, pesosPorKm, type FilaKm, type PedidoKm } from '@/lib/informeKm'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -262,6 +263,8 @@ export default function Reportes() {
           </Card>
         </div>
 
+        <KmSemana orders={orders} sede={sede} />
+
         <Card title="Productos más vendidos" subtitle="Leído del detalle de cada pedido (aproximado)">
           {topProducts.length === 0 ? <p className="text-sm text-muted-fg">Sin datos.</p> : (
             <div className="space-y-1.5">
@@ -281,5 +284,80 @@ export default function Reportes() {
         </Card>
       </div>
     </div>
+  )
+}
+
+// ─── Kilómetros de la semana ────────────────────────────────────────────────
+// Distancia por calle (Google) que guarda cada pedido. Sirve para pagarle
+// justo al domiciliario y para ver qué zonas dejan menos por km.
+function TablaKm({ titulo, filas }: { titulo: string; filas: FilaKm[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-fg border-b border-gray-200">
+            <th className="py-1.5 pr-2 font-medium">{titulo}</th>
+            <th className="py-1.5 px-2 font-medium text-right">Entregas</th>
+            <th className="py-1.5 px-2 font-medium text-right">Km (ida)</th>
+            <th className="py-1.5 px-2 font-medium text-right">Domicilio cobrado</th>
+            <th className="py-1.5 pl-2 font-medium text-right">$/km</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => {
+            const pk = pesosPorKm(f)
+            return (
+              <tr key={f.clave} className="border-b border-gray-100 last:border-0">
+                <td className="py-1.5 pr-2 text-coal">{f.clave}</td>
+                <td className="py-1.5 px-2 text-right">{f.entregas}</td>
+                <td className="py-1.5 px-2 text-right">
+                  {f.conKm ? f.km.toFixed(1) : '—'}
+                  {f.conKm > 0 && f.conKm < f.entregas && (
+                    <span className="text-[10px] text-muted-fg"> ({f.conKm} con km)</span>
+                  )}
+                </td>
+                <td className="py-1.5 px-2 text-right">{fmtCOP(f.domicilio)}</td>
+                <td className="py-1.5 pl-2 text-right">{pk === null ? '—' : fmtCOP(pk)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function KmSemana({ orders, sede }: { orders: Order[]; sede: string }) {
+  const semanas = useMemo(() => ultimasSemanas(4), [])
+  const [idx, setIdx] = useState(0)
+  const inf = useMemo(() => informeSemana(orders as PedidoKm[], semanas[idx], sede), [orders, semanas, idx, sede])
+  const pk = pesosPorKm(inf.total)
+  return (
+    <Card title="Kilómetros de la semana" subtitle="Distancia por calle de cada domicilio entregado (de ida; con el regreso es cerca del doble)">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={idx}
+          onChange={(e) => setIdx(Number(e.target.value))}>
+          {semanas.map((l, i) => <option key={l.getTime()} value={i}>Semana del {etiquetaSemana(l)}</option>)}
+        </select>
+        <span className="text-sm text-coal">
+          <strong>{inf.total.entregas}</strong> domicilios · <strong>{inf.total.km.toFixed(1)} km</strong>
+          {' '}· {fmtCOP(inf.total.domicilio)} cobrado{pk !== null && <> · {fmtCOP(pk)}/km</>}
+        </span>
+      </div>
+      {inf.total.entregas === 0 ? (
+        <p className="text-sm text-muted-fg">No hay domicilios entregados esa semana.</p>
+      ) : (
+        <div className="flex flex-col gap-5">
+          {inf.total.conKm < inf.total.entregas && (
+            <p className="text-xs text-muted-fg">
+              {inf.total.entregas - inf.total.conKm} domicilio(s) sin distancia por calle (de antes del 9 de octubre,
+              sin pin, o con precio de la caja): no suman km.
+            </p>
+          )}
+          <TablaKm titulo="Domiciliario" filas={inf.porDomiciliario} />
+          <TablaKm titulo="Barrio" filas={inf.porBarrio.slice(0, 15)} />
+        </div>
+      )}
+    </Card>
   )
 }

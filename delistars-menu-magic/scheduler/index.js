@@ -7,6 +7,7 @@ const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
 const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firestore')
 const cron = require('node-cron')
+const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
 const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
@@ -360,8 +361,39 @@ async function sendPushForStaff(orderId, o, msgFijo = null) {
     if (bad.length) {
       await d.ref.update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
     }
-    console.log(`[scheduler] push equipo (${msgFijo ? 'devolución' : o.status}) pedido ${orderId} → ${d.id}: ${res.successCount}/${tokens.length}`)
+    console.log(`[scheduler] push equipo (${msgFijo ? (msgFijo.tipo || 'devolución') : o.status}) pedido ${orderId} → ${d.id}: ${res.successCount}/${tokens.length}`)
   }
+}
+
+// ─── Revisión del precio del domicilio ───────────────────────────────────────
+// Ver verificarDomicilio.js. Se mide por calle con el backend (misma red
+// Docker), que guarda la llave de Google y aplica los topes.
+const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || 'http://backend:3000'
+const revisados = new Set()
+
+async function medirPorCalle(origen, destino) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/v1/rutas/recorrido`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origen, destino }),
+      signal: AbortSignal.timeout(8000),
+    })
+    return res.ok ? await res.json() : null
+  } catch { return null }
+}
+
+async function revisarDomicilioNuevo(id, o) {
+  if (revisados.has(id)) return
+  revisados.add(id)
+  const r = await revisarPrecio(o, medirPorCalle)
+  if (!r) return
+  if (r.cuadra) {
+    console.log(`[scheduler] domicilio OK pedido ${id}: ${r.km} km → ${r.precioCorrecto}`)
+    return
+  }
+  console.warn(`[scheduler] domicilio NO CUADRA pedido ${id}: trae ${r.precioPedido}, ${r.km} km → ${r.precioCorrecto}`)
+  await sendPushForStaff(id, o, mensajeDescuadre(o, r))
 }
 
 // Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
@@ -377,6 +409,9 @@ function watchOrdersForPush() {
         const o  = chg.doc.data()
         const prev = seen.get(id)
         seen.set(id, o.status)
+        if (!baseline && chg.type === 'added') {
+          revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
+        }
         if (baseline || prev === o.status) continue
         sendPushForOrder(id, o).catch((e) => console.error('[scheduler] push error:', e?.message || e))
         sendPushForStaff(id, o).catch((e) => console.error('[scheduler] push equipo error:', e?.message || e))

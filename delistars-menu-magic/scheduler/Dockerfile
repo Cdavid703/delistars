@@ -5,6 +5,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-COPY index.js ./
+COPY index.js verificarDomicilio.js ./
 
 CMD ["node", "index.js"]
