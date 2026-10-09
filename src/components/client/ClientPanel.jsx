@@ -82,13 +82,24 @@ const labelPaso = (step, order) => {
 // Existe porque el tramo "asignado → en camino" se toma ~31 minutos (la mitad
 // larga del pedido) y el cliente lo pasaba sin ninguna información.
 //
-// Con el pedido en camino y la ubicación del domiciliario, manda el tiempo
-// real de la ruta (Google, `vivo` = { min, en }) sobre la mediana.
+// Con el pedido en camino manda la ruta real (Google) sobre la mediana:
+//   1. `vivo` = { min, en }: desde la ubicación reciente del domiciliario.
+//   2. order.etaLlegadaAt: la hora calculada cuando el domiciliario salió.
+//      Es lo normal: al navegar con Google Maps su celular pausa la página
+//      y deja de mandar ubicación.
+/** ¿La ubicación del domiciliario tiene menos de 3 minutos? */
+const ubicFresca = ts => !!ts?.toMillis && Date.now() - ts.toMillis() < 3 * 60000
+
 function calcularEta(order, sedeEta, vivo = null) {
   if (vivo && order?.status === 'in_transit') {
     const llegada = new Date(vivo.en + vivo.min * 60000)
     const faltan  = Math.max(0, Math.round((llegada.getTime() - Date.now()) / 60000))
     return { llegada, faltan, tarde: false, enVivo: true }
+  }
+  if (order?.status === 'in_transit' && Number.isFinite(order.etaLlegadaAt)) {
+    const llegada = new Date(order.etaLlegadaAt)
+    const faltan  = Math.round((llegada.getTime() - Date.now()) / 60000)
+    return { llegada, faltan, tarde: faltan < -8, porRuta: true }
   }
   const creado = order?.createdAt?.toDate?.()
   if (!creado || !(sedeEta?.medianMin > 0)) return null
@@ -2251,18 +2262,22 @@ function ClientOrderDetail({ order, onClose }) {
 
   // Tiempo real de llegada: con el pedido en camino, cada 2 min se pide la
   // ruta desde donde va el domiciliario hasta el pin del cliente.
+  // Solo con ubicación reciente (≤ 3 min): si el domiciliario va navegando
+  // con Google Maps su página está en pausa y la última ubicación es vieja;
+  // medir desde ahí correría la hora de llegada sin fin.
   const [vivo, setVivo] = useState(null)
   const posDomiRef = useRef(null)
   useEffect(() => {
-    posDomiRef.current = order.driverLat != null ? { lat: order.driverLat, lng: order.driverLng } : null
-  }, [order.driverLat, order.driverLng])
+    posDomiRef.current = order.driverLat != null
+      ? { lat: order.driverLat, lng: order.driverLng, ts: order.driverUpdatedAt } : null
+  }, [order.driverLat, order.driverLng, order.driverUpdatedAt])
   const conRutaVivo = order.status === 'in_transit' && order.driverLat != null &&
-    order.addrLat != null && order.addrLng != null
+    ubicFresca(order.driverUpdatedAt) && order.addrLat != null && order.addrLng != null
   useEffect(() => {
     if (!conRutaVivo) return
     let vigente = true
     const medir = () => {
-      if (!posDomiRef.current) return
+      if (!posDomiRef.current || !ubicFresca(posDomiRef.current.ts)) { setVivo(null); return }
       medirRuta(posDomiRef.current, { lat: order.addrLat, lng: order.addrLng }).then(r => {
         if (vigente && r?.min) setVivo({ min: r.min, en: Date.now() })
       })
@@ -2692,7 +2707,8 @@ function ClientOrderDetail({ order, onClose }) {
               {eta && !eta.tarde && eta.faltan > 0 && (
                 <div className="bg-white/70 rounded-xl px-3 py-2.5">
                   <p className="font-body text-xs text-coal/60">
-                    {eta.enVivo ? 'Llegada según la ruta del domiciliario' : 'Llegada estimada'}
+                    {eta.enVivo ? 'Llegada según dónde va el domiciliario'
+                      : eta.porRuta ? 'Llegada según la ruta hasta tu casa' : 'Llegada estimada'}
                   </p>
                   <p className="font-display text-2xl text-cherry leading-tight">{horaCorta(eta.llegada)}</p>
                   <p className="font-body text-xs text-coal/55">faltan ~{eta.faltan} min</p>

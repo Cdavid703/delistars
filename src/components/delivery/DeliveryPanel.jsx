@@ -23,7 +23,7 @@ import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
 import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
-import { optimizarRuta, ubicarDireccion } from '../../services/recorrido'
+import { optimizarRuta, ubicarDireccion, medirRuta } from '../../services/recorrido'
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 
@@ -74,6 +74,9 @@ async function geocodeAddress(fullAddress) {
   } catch (_) {}
   return null
 }
+
+/** Hora (ms) de llegada si se sale ya y el recorrido toma `min` minutos. */
+const llegadaEn = min => Date.now() + min * 60000
 
 const isToday = ts => {
   if (!ts?.toDate) return false
@@ -777,7 +780,32 @@ function DriverOrderDetail({ order, onClose }) {
 
   const accept    = () => update({ status: 'accepted',   acceptedAt:   serverTimestamp() })
   const prepare   = () => update({ status: 'preparing',  preparingAt:  serverTimestamp() })
-  const transit   = () => update({ status: 'in_transit', inTransitAt:  serverTimestamp() })
+  // Al salir se calcula a qué hora llega: es el único momento seguro con la
+  // página abierta (después el domiciliario navega con Google Maps o Waze y
+  // el celular pausa la página y su GPS). Se guarda en el pedido para que el
+  // cliente vea una hora real aunque no lleguen más ubicaciones.
+  const transit = async () => {
+    await update({ status: 'in_transit', inTransitAt: serverTimestamp() })
+    if (!navCoords) return
+    const gps = await new Promise(res => {
+      if (!navigator.geolocation) { res(null); return }
+      navigator.geolocation.getCurrentPosition(
+        p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => res(null),
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 },
+      )
+    })
+    const desde = gps || SEDES[order.sedeId]?.coords
+    if (!desde) return
+    const ruta = await medirRuta(desde, navCoords)
+    if (!ruta?.min) return
+    await updateDoc(doc(db, 'orders', order.id), {
+      etaMin:       ruta.min,
+      etaLlegadaAt: llegadaEn(ruta.min),
+      etaDesde:     gps ? 'gps' : 'sede',
+      ...(gps ? { driverLat: gps.lat, driverLng: gps.lng, driverUpdatedAt: serverTimestamp() } : {}),
+    }).catch(err => console.error('[DeliveryPanel] eta update failed:', err))
+  }
   const arrived   = () => update({ status: 'arrived',    arrivedAt:    serverTimestamp() })
 
   const markDelivered = () => {
