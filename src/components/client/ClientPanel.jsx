@@ -18,7 +18,7 @@ import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
-import { medirRecorrido } from '../../services/recorrido'
+import { medirRecorrido, medirRuta } from '../../services/recorrido'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -81,7 +81,15 @@ const labelPaso = (step, order) => {
 //
 // Existe porque el tramo "asignado → en camino" se toma ~31 minutos (la mitad
 // larga del pedido) y el cliente lo pasaba sin ninguna información.
-function calcularEta(order, sedeEta) {
+//
+// Con el pedido en camino y la ubicación del domiciliario, manda el tiempo
+// real de la ruta (Google, `vivo` = { min, en }) sobre la mediana.
+function calcularEta(order, sedeEta, vivo = null) {
+  if (vivo && order?.status === 'in_transit') {
+    const llegada = new Date(vivo.en + vivo.min * 60000)
+    const faltan  = Math.max(0, Math.round((llegada.getTime() - Date.now()) / 60000))
+    return { llegada, faltan, tarde: false, enVivo: true }
+  }
   const creado = order?.createdAt?.toDate?.()
   if (!creado || !(sedeEta?.medianMin > 0)) return null
   const llegada = new Date(creado.getTime() + sedeEta.medianMin * 60000)
@@ -2240,9 +2248,33 @@ function ClientOrderDetail({ order, onClose }) {
       .catch(() => {})
   }, [])
   const sedeEta = (order.sedeId && etaStats?.[order.sedeId]) || null
+
+  // Tiempo real de llegada: con el pedido en camino, cada 2 min se pide la
+  // ruta desde donde va el domiciliario hasta el pin del cliente.
+  const [vivo, setVivo] = useState(null)
+  const posDomiRef = useRef(null)
+  useEffect(() => {
+    posDomiRef.current = order.driverLat != null ? { lat: order.driverLat, lng: order.driverLng } : null
+  }, [order.driverLat, order.driverLng])
+  const conRutaVivo = order.status === 'in_transit' && order.driverLat != null &&
+    order.addrLat != null && order.addrLng != null
+  useEffect(() => {
+    if (!conRutaVivo) return
+    let vigente = true
+    const medir = () => {
+      if (!posDomiRef.current) return
+      medirRuta(posDomiRef.current, { lat: order.addrLat, lng: order.addrLng }).then(r => {
+        if (vigente && r?.min) setVivo({ min: r.min, en: Date.now() })
+      })
+    }
+    medir()
+    const id = setInterval(medir, 120000)
+    return () => { vigente = false; clearInterval(id) }
+  }, [conRutaVivo, order.addrLat, order.addrLng])
+
   // Se recalcula en cada render; el intervalo de `elapsed` (30 s) mantiene
   // fresca la cuenta regresiva mientras el pedido está en curso.
-  const eta = calcularEta(order, sedeEta)
+  const eta = calcularEta(order, sedeEta, conRutaVivo ? vivo : null)
 
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]
@@ -2278,6 +2310,10 @@ function ClientOrderDetail({ order, onClose }) {
             <p className="font-body text-xs text-cream/80 mt-2">
               {eta.tarde
                 ? <>⏳ Se está demorando un poco más de lo normal — escríbenos por el chat si necesitas algo</>
+                : eta.enVivo
+                  ? (eta.faltan > 1
+                      ? <>🛵 Tu domiciliario llega en ~<strong>{eta.faltan} min</strong> · {horaCorta(eta.llegada)}</>
+                      : <>🛵 Tu domiciliario está por llegar</>)
                 : eta.faltan > 0
                   ? <>🕒 Te llega alrededor de las <strong>{horaCorta(eta.llegada)}</strong> · faltan ~{eta.faltan} min</>
                   : <>🕒 Debe estar llegando en cualquier momento</>}
@@ -2655,7 +2691,9 @@ function ClientOrderDetail({ order, onClose }) {
                   en camino), así que es donde más falta hace la hora concreta. */}
               {eta && !eta.tarde && eta.faltan > 0 && (
                 <div className="bg-white/70 rounded-xl px-3 py-2.5">
-                  <p className="font-body text-xs text-coal/60">Llegada estimada</p>
+                  <p className="font-body text-xs text-coal/60">
+                    {eta.enVivo ? 'Llegada según la ruta del domiciliario' : 'Llegada estimada'}
+                  </p>
                   <p className="font-display text-2xl text-cherry leading-tight">{horaCorta(eta.llegada)}</p>
                   <p className="font-body text-xs text-coal/55">faltan ~{eta.faltan} min</p>
                 </div>

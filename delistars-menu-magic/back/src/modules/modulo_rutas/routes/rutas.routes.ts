@@ -22,7 +22,7 @@ const recorrido = new RecorridoService();
  *           example: { "origen": { "lat": 6.25, "lng": -75.6 }, "destino": { "lat": 6.26, "lng": -75.61 } }
  *     responses:
  *       200:
- *         description: "{ km: number }"
+ *         description: "{ km: number, min: number } (min = minutos en carro, sin tráfico)"
  *       400:
  *         description: Puntos fuera de Medellín o mal formados
  *       503:
@@ -32,10 +32,42 @@ router.post('/recorrido', async (req: Request, res: Response) => {
   const { origen, destino } = req.body ?? {};
   const r = await recorrido.medir(origen, destino, req.ip ?? '');
   if (r.ok) {
-    res.json({ km: r.km });
+    res.json({ km: r.km, min: r.min });
     return;
   }
   res.status(r.motivo === 'invalido' ? 400 : 503).json({ km: null, motivo: r.motivo });
+});
+
+/**
+ * @swagger
+ * /api/v1/rutas/optimizar:
+ *   post:
+ *     tags:
+ *       - Rutas
+ *     summary: Mejor orden para entregar varios pedidos
+ *     description: >
+ *       Sale de la sede, pasa por las paradas (2 a 10) y vuelve a la sede.
+ *       Devuelve el orden de los ids, km y minutos totales y por tramo.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           example: { "origen": { "lat": 6.25, "lng": -75.6 }, "paradas": [{ "id": "a", "lat": 6.26, "lng": -75.61 }, { "id": "b", "lat": 6.24, "lng": -75.6 }] }
+ *     responses:
+ *       200:
+ *         description: "{ orden: string[], km, min, tramos: [{ km, min }] }"
+ *       503:
+ *         description: "No se pudo optimizar: { orden: null, motivo }"
+ */
+router.post('/optimizar', async (req: Request, res: Response) => {
+  const { origen, paradas } = req.body ?? {};
+  const r = await recorrido.optimizar(origen, paradas, req.ip ?? '');
+  if (r.ok) {
+    const { ok: _ok, ...datos } = r;
+    res.json(datos);
+    return;
+  }
+  res.status(r.motivo === 'invalido' ? 400 : 503).json({ orden: null, motivo: r.motivo });
 });
 
 export default router;

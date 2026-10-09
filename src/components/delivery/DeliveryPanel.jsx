@@ -23,6 +23,7 @@ import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
 import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
+import { optimizarRuta } from '../../services/recorrido'
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 
@@ -1499,14 +1500,15 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
     }
   }
 
-  // Nearest-neighbor desde startCoords (o desde el primer pedido si no hay sede)
-  const route = []
+  // Nearest-neighbor desde startCoords (o desde el primer pedido si no hay sede).
+  // Es el respaldo: si Google da el orden óptimo por calle, se usa ese.
+  const rutaCercania = []
   const remaining = [...ordersWithGeo]
   let current = startCoords
   while (remaining.length > 0) {
     if (!current) {
-      route.push(remaining.shift())
-      current = route[route.length - 1].geo
+      rutaCercania.push(remaining.shift())
+      current = rutaCercania[rutaCercania.length - 1].geo
       continue
     }
     let bestIdx = 0
@@ -1515,10 +1517,33 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
       const d = haversineKm(current.lat, current.lng, remaining[k].geo.lat, remaining[k].geo.lng)
       if (d < bestDist) { bestDist = d; bestIdx = k }
     }
-    route.push({ ...remaining[bestIdx], distFromPrev: bestDist })
+    rutaCercania.push({ ...remaining[bestIdx], distFromPrev: bestDist })
     current = remaining[bestIdx].geo
     remaining.splice(bestIdx, 1)
   }
+
+  // Orden óptimo por calle (Google): sale de la sede, entrega todo y vuelve.
+  // Se pide una vez por grupo de pedidos; el backend lo guarda 10 min.
+  const claveOpt = startCoords && ordersWithGeo.length >= 2 && ordersWithGeo.length <= 10
+    ? ordersWithGeo.map(o => `${o.id}@${o.geo.lat},${o.geo.lng}`).sort().join('|') + `|${startCoords.lat},${startCoords.lng}`
+    : null
+  const [opt, setOpt] = useState({ clave: null, r: null })
+  useEffect(() => {
+    if (!claveOpt) return
+    let vigente = true
+    optimizarRuta(startCoords, ordersWithGeo.map(o => ({ id: o.id, lat: o.geo.lat, lng: o.geo.lng })))
+      .then(r => { if (vigente) setOpt({ clave: claveOpt, r }) })
+    return () => { vigente = false }
+  }, [claveOpt]) // eslint-disable-line react-hooks/exhaustive-deps
+  const optimizando = !!claveOpt && opt.clave !== claveOpt
+  const optima = claveOpt && opt.clave === claveOpt ? opt.r : null
+  const porId = Object.fromEntries(ordersWithGeo.map(o => [o.id, o]))
+  const route = optima && optima.orden.every(id => porId[id])
+    ? optima.orden.map((id, i) => ({
+        ...porId[id], distFromPrev: optima.tramos[i]?.km ?? 0, minFromPrev: optima.tramos[i]?.min, porCalle: true,
+      }))
+    : rutaCercania
+  const regreso = optima?.tramos?.[optima.tramos.length - 1]
 
   // Mapa: orderId → cluster index (para mostrar etiqueta de zona)
   const orderClusterTag = {}
@@ -1561,7 +1586,9 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
               <Route size={22} /> Ruta sugerida
             </p>
             <p className="font-body text-xs text-cream/80">
-              {route.length} pedido{route.length !== 1 ? 's' : ''} · ~{totalKm.toFixed(1)} km en total
+              {route.length} pedido{route.length !== 1 ? 's' : ''} · {optima
+                ? <>~{optima.km.toFixed(1)} km · ~{optima.min} min por calle, con regreso</>
+                : <>~{totalKm.toFixed(1)} km en total{optimizando ? ' · buscando la mejor ruta…' : ''}</>}
             </p>
           </div>
           <button onClick={onClose} className="text-cream/80 hover:text-cream"><X size={22} /></button>
@@ -1640,7 +1667,9 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
                         <p className="font-body text-xs text-coal/60 truncate">{o.fullAddress}</p>
                       </div>
                       <span className="font-body text-[11px] text-coal/40 font-semibold whitespace-nowrap">
-                        {i === 0 && startCoords
+                        {o.porCalle
+                          ? `${o.distFromPrev.toFixed(1)} km${o.minFromPrev ? ` · ${o.minFromPrev} min` : ''}`
+                          : i === 0 && startCoords
                           ? `${haversineKm(startCoords.lat, startCoords.lng, o.geo.lat, o.geo.lng).toFixed(2)} km`
                           : i === 0
                             ? '—'
@@ -1656,6 +1685,17 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
                 )
               })}
             </div>
+          )}
+
+          {regreso && route[0]?.porCalle && (
+            <p className="font-body text-[11px] text-coal/50 pl-10">
+              Regreso a {startLabel || 'la sede'}: {regreso.km.toFixed(1)} km{regreso.min ? ` · ${regreso.min} min` : ''}
+            </p>
+          )}
+          {optima && (
+            <p className="font-body text-[11px] text-mint font-semibold text-center">
+              ✓ Orden calculado por calle con Google Maps
+            </p>
           )}
 
           {/* Acciones */}

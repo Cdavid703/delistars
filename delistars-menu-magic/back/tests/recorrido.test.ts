@@ -6,24 +6,30 @@ const TERESITA = { lat: 6.2508, lng: -75.6069 }
 const CLIENTE = { lat: 6.2559, lng: -75.6164 }
 
 /** fetch falso que cuenta llamadas y responde `metros`. */
-function googleFalso(metros: number | null = 2880, status = 200) {
+function googleFalso(metros: number | null = 2880, status = 200, duration = '754s') {
   const llamadas: any[] = []
   const fetchFn = async (url: string, init: any) => {
     llamadas.push({ url, init })
     return {
       ok: status === 200,
       status,
-      json: async () => (metros === null ? { routes: [] } : { routes: [{ distanceMeters: metros }] }),
+      json: async () => (metros === null ? { routes: [] } : { routes: [{ distanceMeters: metros, duration }] }),
     }
   }
   return { fetchFn, llamadas }
 }
 
 describe('recorrido por Google', () => {
-  it('devuelve los km por calle', async () => {
+  it('devuelve los km por calle y los minutos', async () => {
     const g = googleFalso(2880)
     const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
-    expect(await s.medir(TERESITA, CLIENTE)).toEqual({ ok: true, km: 2.88, cache: false })
+    expect(await s.medir(TERESITA, CLIENTE)).toEqual({ ok: true, km: 2.88, min: 13, cache: false })
+  })
+
+  it('mismo punto: 0 km y al menos 1 minuto', async () => {
+    const fetchFn = async () => ({ ok: true, status: 200, json: async () => ({ routes: [{}] }) })
+    expect(await new RecorridoService({ apiKey: 'k', fetchFn }).medir(TERESITA, TERESITA))
+      .toEqual({ ok: true, km: 0, min: 1, cache: false })
   })
 
   it('pide la ruta básica en carro sin tráfico y solo la distancia (tarifa Essentials)', async () => {
@@ -33,7 +39,7 @@ describe('recorrido por Google', () => {
     const body = JSON.parse(init.body)
     expect(body.travelMode).toBe('DRIVE')
     expect(body.routingPreference).toBe('TRAFFIC_UNAWARE')
-    expect(init.headers['X-Goog-FieldMask']).toBe('routes.distanceMeters')
+    expect(init.headers['X-Goog-FieldMask']).toBe('routes.distanceMeters,routes.duration')
     expect(init.headers['X-Goog-Api-Key']).toBe('k')
   })
 
@@ -42,7 +48,7 @@ describe('recorrido por Google', () => {
     const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
     await s.medir(TERESITA, CLIENTE)
     const r = await s.medir({ ...TERESITA }, { lat: CLIENTE.lat + 0.00001, lng: CLIENTE.lng })
-    expect(r).toEqual({ ok: true, km: 2.88, cache: true })
+    expect(r).toEqual({ ok: true, km: 2.88, min: 13, cache: true })
     expect(g.llamadas).toHaveLength(1)
   })
 
@@ -98,5 +104,68 @@ describe('recorrido por Google', () => {
     const caido = async () => { throw new Error('ECONNRESET') }
     expect(await new RecorridoService({ apiKey: 'k', fetchFn: caido }).medir(TERESITA, CLIENTE))
       .toEqual({ ok: false, motivo: 'google' })
+  })
+})
+
+describe('orden óptimo de entregas', () => {
+  const paradas = [
+    { id: 'p1', lat: 6.255, lng: -75.61 },
+    { id: 'p2', lat: 6.24, lng: -75.6 },
+    { id: 'p3', lat: 6.26, lng: -75.62 },
+  ]
+  const googleOpt = (indices = [2, 0, 1]) => {
+    const llamadas: any[] = []
+    const fetchFn = async (_url: string, init: any) => {
+      llamadas.push(init)
+      return {
+        ok: true, status: 200,
+        json: async () => ({ routes: [{
+          optimizedIntermediateWaypointIndex: indices,
+          distanceMeters: 8400, duration: '1500s',
+          legs: [1, 2, 3, 4].map((i) => ({ distanceMeters: i * 1000, duration: `${i * 120}s` })),
+        }] }),
+      }
+    }
+    return { fetchFn, llamadas }
+  }
+
+  it('devuelve los pedidos en el orden que propone Google, ida y vuelta a la sede', async () => {
+    const g = googleOpt()
+    const r = await new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn }).optimizar(TERESITA, paradas)
+    expect(r).toEqual({
+      ok: true, orden: ['p3', 'p1', 'p2'], km: 8.4, min: 25,
+      tramos: [{ km: 1, min: 2 }, { km: 2, min: 4 }, { km: 3, min: 6 }, { km: 4, min: 8 }],
+    })
+    const body = JSON.parse(g.llamadas[0].body)
+    expect(body.optimizeWaypointOrder).toBe(true)
+    expect(body.destination).toEqual(body.origin)
+    expect(body.intermediates).toHaveLength(3)
+  })
+
+  it('el mismo grupo de pedidos no se vuelve a consultar en 10 minutos', async () => {
+    const g = googleOpt()
+    const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
+    await s.optimizar(TERESITA, paradas)
+    await s.optimizar(TERESITA, [...paradas].reverse())
+    expect(g.llamadas).toHaveLength(1)
+  })
+
+  it('valida: entre 2 y 10 paradas, con id y dentro de Medellín', async () => {
+    const g = googleOpt()
+    const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
+    const mala = (p: unknown) => s.optimizar(TERESITA, p)
+    expect(await mala([paradas[0]])).toEqual({ ok: false, motivo: 'invalido' })
+    expect(await mala(Array.from({ length: 11 }, (_, i) => ({ id: String(i), lat: 6.25, lng: -75.6 }))))
+      .toEqual({ ok: false, motivo: 'invalido' })
+    expect(await mala([{ lat: 6.25, lng: -75.6 }, paradas[1]])).toEqual({ ok: false, motivo: 'invalido' })
+    expect(await mala([{ id: 'x', lat: 4.6, lng: -74.08 }, paradas[1]])).toEqual({ ok: false, motivo: 'invalido' })
+    expect(g.llamadas).toHaveLength(0)
+  })
+
+  it('tiene su propio tope diario, aparte del de las consultas básicas', async () => {
+    const g = googleOpt()
+    const s = new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn, maxOptimizarDiarias: 1 })
+    expect((await s.optimizar(TERESITA, paradas)).ok).toBe(true)
+    expect(await s.optimizar(TERESITA, paradas.slice(0, 2))).toEqual({ ok: false, motivo: 'tope_diario' })
   })
 })

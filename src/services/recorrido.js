@@ -1,29 +1,47 @@
-// Pide al backend la distancia por calle (Google Maps) entre la sede y el
-// cliente. La llave de Google vive en el servidor, nunca en el navegador.
-// Devuelve los km, o null si no se pudo medir (sin llave, tope, Google caído,
-// sin conexión): quien llama cobra en línea recta como respaldo.
+// Consultas de rutas por calle (Google Maps) a través del backend. La llave de
+// Google vive en el servidor, nunca en el navegador. Si algo falla (sin llave,
+// tope, Google caído, sin conexión) se devuelve null y quien llama sigue con
+// su respaldo: línea recta, mediana histórica o vecino más cercano.
 
-const TIMEOUT_MS = 6000
-
-export async function medirRecorrido(origen, destino) {
+async function post(ruta, cuerpo, timeoutMs) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch('/api/v1/rutas/recorrido', {
+    const res = await fetch(`/api/v1/rutas/${ruta}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        origen: { lat: Number(origen.lat), lng: Number(origen.lng) },
-        destino: { lat: Number(destino.lat), lng: Number(destino.lng) },
-      }),
+      body: JSON.stringify(cuerpo),
       signal: controller.signal,
     })
-    if (!res.ok) return null
-    const { km } = await res.json()
-    return Number.isFinite(km) ? km : null
+    return res.ok ? await res.json() : null
   } catch {
     return null
   } finally {
     clearTimeout(timer)
   }
+}
+
+const punto = p => ({ lat: Number(p.lat), lng: Number(p.lng) })
+
+/** { km, min } del recorrido en carro entre dos puntos, o null. */
+export async function medirRuta(origen, destino) {
+  const r = await post('recorrido', { origen: punto(origen), destino: punto(destino) }, 6000)
+  return r && Number.isFinite(r.km) ? { km: r.km, min: Number.isFinite(r.min) ? r.min : null } : null
+}
+
+/** Solo los km por calle, o null. */
+export async function medirRecorrido(origen, destino) {
+  return (await medirRuta(origen, destino))?.km ?? null
+}
+
+/**
+ * Mejor orden para entregar `paradas` ([{ id, lat, lng }], de 2 a 10) saliendo
+ * de `origen` y volviendo a él. Devuelve { orden: [ids], km, min, tramos } o null.
+ */
+export async function optimizarRuta(origen, paradas) {
+  const r = await post('optimizar', {
+    origen: punto(origen),
+    paradas: paradas.map(p => ({ id: String(p.id), ...punto(p) })),
+  }, 9000)
+  return r && Array.isArray(r.orden) ? r : null
 }
