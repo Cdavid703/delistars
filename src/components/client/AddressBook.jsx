@@ -31,24 +31,32 @@ const EMPTY = {
   cruceNum: '', cruceLetra: '', placa: '',
   complemento: '', barrio: '', referencia: '',
   lat: null, lng: null, formatted: '',
+  // De dónde salió el pin: 'mapa' (el cliente lo puso), 'google' o 'photon'.
+  pinFuente: null, pinPrecision: null,
 }
 
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
+// Precisiones de Google que ya dan la casa (o el conjunto por su nombre).
+const PRECISAS = ['ROOFTOP', 'RANGE_INTERPOLATED', 'LUGAR']
+
 // Geocodifica la dirección armada para obtener el pin exacto (best-effort).
-// Primero Google (entiende la placa y suele dar la casa exacta); si no
-// responde, Photon como antes.
+// Primero Google (entiende la placa y suele dar la casa exacta; con la
+// referencia busca también el conjunto o edificio por su nombre); si no
+// responde, Photon como antes. Devuelve { lat, lng, fuente, precision }.
 async function geocode(p, sede) {
   const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
-  const google = await ubicarDireccion(q)
-  if (google?.length) return { lat: google[0].lat, lng: google[0].lng }
+  const google = await ubicarDireccion(q, p.referencia?.trim())
+  if (google?.length) {
+    return { lat: google[0].lat, lng: google[0].lng, fuente: 'google', precision: google[0].precision }
+  }
   try {
     const lat = sede?.coords?.lat ?? 6.24, lon = sede?.coords?.lng ?? -75.58
     const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lat=${lat}&lon=${lon}`)
     if (!res.ok) return null
     const data = await res.json()
     const c = data.features?.[0]?.geometry?.coordinates
-    return c ? { lat: c[1], lng: c[0] } : null
+    return c ? { lat: c[1], lng: c[0], fuente: 'photon', precision: null } : null
   } catch { return null }
 }
 
@@ -67,14 +75,20 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
   const set = (k, v) => setP(f => ({ ...f, [k]: v }))
   // Cambiar un campo que afecta la geolocalización invalida la coordenada y el
   // pin anteriores (se recalcularán al volver a abrir el mapa / guardar).
-  const setAddr = (k, v) => { setP(f => ({ ...f, [k]: v, lat: null, lng: null })); setShowMap(false) }
+  const setAddr = (k, v) => {
+    setP(f => ({ ...f, [k]: v, lat: null, lng: null, pinFuente: null, pinPrecision: null }))
+    setShowMap(false)
+  }
   const preview = buildFormatted(p)
 
   // Geocodifica la dirección armada y abre el mapa para afinar el pin.
   const openMap = async () => {
     setLocating(true)
-    const coords = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : await geocode(p, sede)
-    if (coords) setP(f => ({ ...f, lat: coords.lat, lng: coords.lng }))
+    const coords = (p.lat != null && p.lng != null)
+      ? { lat: p.lat, lng: p.lng, fuente: p.pinFuente, precision: p.pinPrecision }
+      : await geocode(p, sede)
+    if (coords) setP(f => ({ ...f, lat: coords.lat, lng: coords.lng,
+      pinFuente: coords.fuente ?? null, pinPrecision: coords.precision ?? null }))
     setLocating(false)
     setShowMap(true)
   }
@@ -96,13 +110,28 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
     setSaving(true)
     // Si el cliente ya ajustó el pin en el mapa, se respeta esa coordenada;
     // si no, se geocodifica la dirección armada como respaldo.
-    const coords = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : await geocode(p, sede)
+    const yaTeniaPin = p.lat != null && p.lng != null
+    const coords = yaTeniaPin
+      ? { lat: p.lat, lng: p.lng, fuente: p.pinFuente, precision: p.pinPrecision }
+      : await geocode(p, sede)
+    // Pin adivinado (mitad de la calle o el barrio): se le pide al cliente que
+    // lo ponga en su casa antes de guardar. De ese punto sale el precio del
+    // domicilio. La segunda vez se guarda como esté.
+    if (!yaTeniaPin && coords && !PRECISAS.includes(coords.precision)) {
+      setP(f => ({ ...f, lat: coords.lat, lng: coords.lng, pinFuente: coords.fuente, pinPrecision: coords.precision }))
+      setShowMap(true)
+      setErrors(['Encontramos tu calle, pero no la casa exacta. Mueve el pin hasta tu casa en el mapa y vuelve a guardar.'])
+      setSaving(false)
+      return
+    }
     const place = {
       ...p,
       id:        p.id || `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       label:     (isOtra ? (customLabel || p.label) : p.label).trim(),
       lat:       coords?.lat ?? null,
       lng:       coords?.lng ?? null,
+      pinFuente:    coords?.fuente ?? null,
+      pinPrecision: coords?.precision ?? null,
       formatted: buildFormatted(p),
     }
     setSaving(false)
@@ -226,7 +255,7 @@ function AddressBuilder({ sede, initial, onSave, onCancel }) {
                 <p className="font-body text-[11px] text-coal/55">Arrastra el pin 📍 (o toca el mapa) hasta la puerta exacta.</p>
                 <Suspense fallback={<div className="h-[220px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
                   <MapPicker initialLat={p.lat} initialLng={p.lng}
-                    onChange={(lat, lng) => setP(f => ({ ...f, lat, lng }))} />
+                    onChange={(lat, lng) => setP(f => ({ ...f, lat, lng, pinFuente: 'mapa', pinPrecision: null }))} />
                 </Suspense>
                 <p className="font-body text-[11px] text-mint flex items-center gap-1">
                   <Check size={12} /> Pin ubicado — el domiciliario llegará justo aquí.
@@ -288,6 +317,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
       reference:   p.referencia || '',
       lat:         p.lat ?? null,
       lng:         p.lng ?? null,
+      pinFuente:   p.pinFuente ?? null,
     })
   }
 

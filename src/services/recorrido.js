@@ -47,11 +47,13 @@ export async function optimizarRuta(origen, paradas) {
 }
 
 /**
- * Ubica una dirección escrita con Google (entiende el "#43-7").
- * Devuelve [{ lat, lng, direccion, precision }] (vacío si no la encontró) o
- * null si no se pudo consultar: ahí quien llama usa su respaldo (Photon).
+ * Ubica una dirección escrita con Google (entiende el "#43-7"). Con
+ * `referencia` ("Urbanización Altos de San Javier"), si la dirección no da la
+ * casa exacta se busca también el lugar por su nombre.
+ * Devuelve [{ lat, lng, direccion, precision, nombre? }] (vacío si no la
+ * encontró) o null si no se pudo consultar: ahí quien llama usa su respaldo.
  */
-export async function ubicarDireccion(texto) {
-  const r = await post('ubicar', { texto }, 6000)
+export async function ubicarDireccion(texto, referencia) {
+  const r = await post('ubicar', { texto, ...(referencia ? { referencia } : {}) }, 8000)
   return r && Array.isArray(r.lugares) ? r.lugares : null
 }

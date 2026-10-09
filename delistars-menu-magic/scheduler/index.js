@@ -68,17 +68,26 @@ async function updateEtaStats() {
       .limit(200)
       .get()
     const bySede = {}
+    // Creado → en camino: lo que tarda la sede en despacharlo. El checkout le
+    // suma el recorrido por calle hasta la casa del cliente.
+    const salidaBySede = {}
     snap.forEach((d) => {
       const o = d.data()
       if (!o.deliveredAt?.toMillis || !o.createdAt?.toMillis || !o.sedeId) return
       const min = (o.deliveredAt.toMillis() - o.createdAt.toMillis()) / 60000
       if (min < 10 || min > 180) return // atípicos: pruebas, pedidos olvidados
       ;(bySede[o.sedeId] = bySede[o.sedeId] || []).push(min)
+      if (o.deliveryMode !== 'pickup' && o.inTransitAt?.toMillis) {
+        const salida = (o.inTransitAt.toMillis() - o.createdAt.toMillis()) / 60000
+        if (salida >= 3 && salida <= 150) (salidaBySede[o.sedeId] = salidaBySede[o.sedeId] || []).push(salida)
+      }
     })
+    const mediana = (arr) => { arr.sort((a, b) => a - b); return Math.round(arr[Math.floor(arr.length / 2)]) }
     const stats = {}
     for (const [sede, arr] of Object.entries(bySede)) {
-      arr.sort((a, b) => a - b)
-      stats[sede] = { medianMin: Math.round(arr[Math.floor(arr.length / 2)]), sample: arr.length }
+      stats[sede] = { medianMin: mediana(arr), sample: arr.length }
+      const salidas = salidaBySede[sede] || []
+      if (salidas.length >= 10) stats[sede].salidaMedianMin = mediana(salidas)
     }
     if (Object.keys(stats).length === 0) { console.log('[scheduler] eta_stats: sin datos suficientes'); return }
     await setDoc(doc(db, 'config', 'eta_stats'), {

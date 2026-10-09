@@ -18,7 +18,8 @@ import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
-import { medirRecorrido, medirRuta } from '../../services/recorrido'
+import { medirRuta } from '../../services/recorrido'
+import { sugerirOtraSede, minutosHastaLlegar } from '../../utils/checkoutRuta'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -560,7 +561,7 @@ export default function ClientPanel() {
           <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
         </div>
         <div className="p-5 max-w-lg mx-auto pb-16">
-          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} />
+          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} onCambiarSede={selectSede} />
         </div>
       </div>
     )
@@ -1145,7 +1146,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
   )
 }
 
-function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [], creditos = [] }) {
+function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
     (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
@@ -1160,6 +1161,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     // de depender de re-geocodificar el texto (que fallaba si había un typo).
     addrLat:            null,
     addrLng:            null,
+    // De dónde salió el pin ('mapa', 'google', 'photon'): sirve para auditar.
+    addrPinFuente:      null,
     barrio:             '',
     reference:          '',
     items:              '',
@@ -1193,16 +1196,23 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     ? kmLineaRecta(sede.coords, { lat: Number(form.addrLat), lng: Number(form.addrLng) })
     : null), [conPin, form.addrLat, form.addrLng, sede])
 
-  // { clave, km } del último recorrido medido; km null = no se pudo medir.
+  // { clave, km, min } del último recorrido medido; km null = no se pudo medir.
+  // Se mide también desde la otra sede, para sugerirla si le queda más cerca.
   const claveRuta = conPin ? `${sede.coords.lat},${sede.coords.lng},${form.addrLat},${form.addrLng}` : null
-  const [ruta, setRuta] = useState({ clave: null, km: null })
+  const otraSede = sede?.id ? Object.values(SEDES).find(s => s.id !== sede.id && s.tarifaAutomatica && s.coords) : null
+  const [ruta, setRuta] = useState({ clave: null, km: null, min: null, otra: null })
   useEffect(() => {
     if (!claveRuta) return
     let vigente = true
+    const pin = { lat: form.addrLat, lng: form.addrLng }
     // Espera a que el cliente deje quieto el pin antes de consultar.
     const t = setTimeout(() => {
-      medirRecorrido(sede.coords, { lat: form.addrLat, lng: form.addrLng })
-        .then(km => { if (vigente) setRuta({ clave: claveRuta, km }) })
+      Promise.all([
+        medirRuta(sede.coords, pin),
+        otraSede ? medirRuta(otraSede.coords, pin) : null,
+      ]).then(([propia, otra]) => {
+        if (vigente) setRuta({ clave: claveRuta, km: propia?.km ?? null, min: propia?.min ?? null, otra })
+      })
     }, 500)
     return () => { vigente = false; clearTimeout(t) }
   }, [claveRuta]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1217,6 +1227,23 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     : precioDomicilio(kmSede, distancia?.medida ?? LINEA_RECTA)
   // Se le cobra automático solo si hay precio y el cliente no pidió revisión.
   const cobroAutomático = tarifa.estado === 'ok' && !pidioRevisión
+
+  // ¿Le queda más cerca la otra sede? Solo con ambas medidas por calle.
+  const sugerencia = distancia?.medida === 'recorrido' && otraSede
+    ? sugerirOtraSede({ kmPropia: kmSede, precioPropio: tarifa.precio }, ruta.otra)
+    : null
+
+  // ¿En cuánto le llega? Lo que la sede suele tardar en despacharlo + el
+  // recorrido por calle hasta su casa (medianas en config/eta_stats).
+  const [etaStats, setEtaStats] = useState(null)
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'eta_stats'))
+      .then(snap => { if (snap.exists()) setEtaStats(snap.data()) })
+      .catch(() => {})
+  }, [])
+  const minLlegada = distancia?.medida === 'recorrido' && cobroAutomático
+    ? minutosHastaLlegar(etaStats?.[sede?.id], ruta.min)
+    : null
 
   // Con el valor completo conocido, el cliente paga al enviar y la caja solo
   // acepta. Reglas en src/utils/pagoAdelantado.js.
@@ -1490,6 +1517,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
             reference:   a.reference,
             addrLat:     a.lat,
             addrLng:     a.lng,
+            addrPinFuente: a.pinFuente ?? null,
           }))}
         />
 
@@ -1522,6 +1550,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
                 <p className="font-body text-[11px] text-coal/50 mt-0.5">
                   A {explicarTarifa(tarifa, kmSede)}
                 </p>
+                {minLlegada && (
+                  <p className="font-body text-[11px] text-coal/60 font-semibold mt-0.5">
+                    🕒 Te llega en ~{minLlegada} min
+                  </p>
+                )}
               </div>
               <p className="font-display text-2xl text-mint tracking-wide flex-shrink-0">
                 ${tarifa.precio.toLocaleString('es-CO')}
@@ -1534,6 +1567,28 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
             >
               ¿Te parece caro? Pide que la caja lo revise
             </button>
+          </div>
+        )}
+
+        {/* La otra sede le queda más cerca: se le sugiere, sin obligarlo. */}
+        {form.fullAddress && sugerencia && (
+          <div className="mt-2 bg-mint/10 border border-mint/40 rounded-xl px-4 py-3">
+            <p className="font-body text-xs text-coal/80 leading-relaxed">
+              📍 <strong>{otraSede.name}</strong> te queda más cerca: {sugerencia.km.toFixed(1)} km por calle
+              {sugerencia.ahorro > 0
+                ? <> y el domicilio vale <strong>${sugerencia.precio.toLocaleString('es-CO')}</strong> (ahorras ${sugerencia.ahorro.toLocaleString('es-CO')}).</>
+                : <>, así te llega más rápido.</>}
+            </p>
+            {fromMenu ? (
+              <p className="font-body text-[11px] text-coal/55 mt-1">
+                Tu carrito es del menú de {sede.name}. Si prefieres {otraSede.name}, vuelve al menú y elige esa sede.
+              </p>
+            ) : onCambiarSede && (
+              <button type="button" onClick={() => onCambiarSede(otraSede)}
+                className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+                Pedir en {otraSede.name}
+              </button>
+            )}
           </div>
         )}
 

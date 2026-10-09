@@ -224,3 +224,56 @@ describe('ubicar direcciones (Geocoding)', () => {
     expect(await s.ubicar('Calle 10 #20-30')).toEqual({ ok: false, motivo: 'google' })
   })
 })
+
+describe('ubicar por la referencia (Places)', () => {
+  // Geocoding responde con `geo`; Places con `lugar`.
+  const google = (geo: any[], lugar: any = null) => {
+    const llamadas: string[] = []
+    const fetchFn = async (url: string) => {
+      llamadas.push(url)
+      const json = url.includes('places.googleapis.com')
+        ? { places: lugar ? [lugar] : [] }
+        : { status: geo.length ? 'OK' : 'ZERO_RESULTS', results: geo }
+      return { ok: true, status: 200, json: async () => json }
+    }
+    return { fetchFn, llamadas }
+  }
+  const calle = { formatted_address: 'Cra. 109, Veinte de Julio, Medellín, Antioquia, Colombia',
+    geometry: { location: { lat: 6.2525, lng: -75.6195 }, location_type: 'GEOMETRIC_CENTER' } }
+  const casa = { ...calle, geometry: { ...calle.geometry, location_type: 'ROOFTOP' } }
+  const urbanizacion = {
+    location: { latitude: 6.257, longitude: -75.6227 },
+    formattedAddress: 'Cra. 109 #43-7, Antonio Narino, Medellín, Antioquia',
+    displayName: { text: 'Urbanización altos de San Javier' },
+  }
+
+  it('si la dirección cae en la mitad de la calle, usa el lugar de la referencia primero', async () => {
+    const g = google([calle], urbanizacion)
+    const r = await new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn })
+      .ubicar('Carrera 109 #43-7', '', 'Urbanización Altos de San Javier')
+    expect(r.ok && r.lugares[0]).toEqual({
+      lat: 6.257, lng: -75.6227, precision: 'LUGAR', nombre: 'Urbanización altos de San Javier',
+      direccion: 'Cra. 109 #43-7, Antonio Narino, Medellín, Antioquia',
+    })
+    expect(r.ok && r.lugares[1].precision).toBe('GEOMETRIC_CENTER')
+  })
+
+  it('si la dirección ya da la casa, no gasta la consulta de Places', async () => {
+    const g = google([casa], urbanizacion)
+    await new RecorridoService({ apiKey: 'k', fetchFn: g.fetchFn }).ubicar('Carrera 109 #43-7', '', 'Altos de San Javier')
+    expect(g.llamadas.some((u) => u.includes('places.googleapis.com'))).toBe(false)
+  })
+
+  it('sin referencia, o si Places no encuentra nada, queda lo de la dirección', async () => {
+    const sinRef = await new RecorridoService({ apiKey: 'k', fetchFn: google([calle], urbanizacion).fetchFn }).ubicar('Carrera 109 #43-7')
+    expect(sinRef.ok && sinRef.lugares[0].precision).toBe('GEOMETRIC_CENTER')
+    const nada = await new RecorridoService({ apiKey: 'k', fetchFn: google([calle], null).fetchFn }).ubicar('Carrera 109 #43-7', '', 'casa azul')
+    expect(nada.ok && nada.lugares.map((l) => l.precision)).toEqual(['GEOMETRIC_CENTER'])
+  })
+
+  it('si Geocoding no encuentra la dirección, la referencia igual puede ubicarla', async () => {
+    const r = await new RecorridoService({ apiKey: 'k', fetchFn: google([], urbanizacion).fetchFn })
+      .ubicar('Cra 109 sin numero', '', 'Altos de San Javier')
+    expect(r.ok && r.lugares.map((l) => l.precision)).toEqual(['LUGAR'])
+  })
+})

@@ -81,7 +81,7 @@ router.post('/optimizar', async (req: Request, res: Response) => {
  *       required: true
  *       content:
  *         application/json:
- *           example: { "texto": "Carrera 109 #43-7, Medellín" }
+ *           example: { "texto": "Carrera 109 #43-7, Medellín", "referencia": "Urbanización Altos de San Javier" }
  *     responses:
  *       200:
  *         description: "{ lugares: [{ lat, lng, direccion, precision }] } (hasta 4; vacío si no la encontró)"
@@ -89,7 +89,7 @@ router.post('/optimizar', async (req: Request, res: Response) => {
  *         description: "No se pudo consultar: { lugares: null, motivo }"
  */
 router.post('/ubicar', async (req: Request, res: Response) => {
-  const r = await recorrido.ubicar(req.body?.texto, req.ip ?? '');
+  const r = await recorrido.ubicar(req.body?.texto, req.ip ?? '', req.body?.referencia);
   if (r.ok) {
     res.json({ lugares: r.lugares });
     return;

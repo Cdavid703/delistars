@@ -24,8 +24,14 @@ export type ResultadoRuta =
 
 export interface Lugar extends Punto {
   direccion: string
-  /** ROOFTOP = la casa exacta; RANGE_INTERPOLATED = sobre la cuadra; el resto, aproximado. */
+  /**
+   * ROOFTOP = la casa exacta; RANGE_INTERPOLATED = sobre la cuadra;
+   * LUGAR = encontrado por el nombre de la referencia (conjunto, edificio);
+   * GEOMETRIC_CENTER / APPROXIMATE = aproximado (mitad de la calle, barrio).
+   */
   precision: string
+  /** Nombre del lugar cuando se encontró por la referencia. */
+  nombre?: string
 }
 
 export type ResultadoUbicar =
@@ -65,6 +71,7 @@ export class RecorridoService {
   private porIp = new Map<string, number[]>()
   private usadasOptHoy = 0
   private usadasUbicarHoy = 0
+  private usadasLugarHoy = 0
   private cacheOpt = new Map<string, { r: ResultadoRuta; hasta: number }>()
   private cacheUbicar = new Map<string, { lugares: Lugar[]; hasta: number }>()
 
@@ -74,6 +81,7 @@ export class RecorridoService {
       maxDiarias?: number
       maxOptimizarDiarias?: number
       maxUbicarDiarias?: number
+      maxLugarDiarias?: number
       fetchFn?: Fetch
       ahora?: () => number
     } = {},
@@ -112,21 +120,30 @@ export class RecorridoService {
     return this.opts.maxUbicarDiarias ?? Number(process.env.RUTAS_MAX_UBICAR_DIARIAS ?? 500)
   }
 
+  // Buscar por nombre (Places Text Search) es tarifa Pro: tope bajo.
+  private get maxLugarDiarias() {
+    return this.opts.maxLugarDiarias ?? Number(process.env.RUTAS_MAX_LUGAR_DIARIAS ?? 100)
+  }
+
   /** Cuenta una consulta contra los topes; devuelve el motivo si ya no se puede. */
-  private gastar(tipo: 'basica' | 'optimizar' | 'ubicar', ip: string): 'tope_diario' | 'tope_ip' | null {
+  private gastar(tipo: 'basica' | 'optimizar' | 'ubicar' | 'lugar', ip: string): 'tope_diario' | 'tope_ip' | null {
     const ahora = this.ahora
     const hoy = diaColombia(ahora)
-    if (hoy !== this.dia) { this.dia = hoy; this.usadasHoy = 0; this.usadasOptHoy = 0; this.usadasUbicarHoy = 0 }
+    if (hoy !== this.dia) {
+      this.dia = hoy; this.usadasHoy = 0; this.usadasOptHoy = 0; this.usadasUbicarHoy = 0; this.usadasLugarHoy = 0
+    }
     if (tipo === 'basica' && this.usadasHoy >= this.maxDiarias) return 'tope_diario'
     if (tipo === 'optimizar' && this.usadasOptHoy >= this.maxOptimizarDiarias) return 'tope_diario'
     if (tipo === 'ubicar' && this.usadasUbicarHoy >= this.maxUbicarDiarias) return 'tope_diario'
+    if (tipo === 'lugar' && this.usadasLugarHoy >= this.maxLugarDiarias) return 'tope_diario'
     const recientes = (this.porIp.get(ip) ?? []).filter((t) => t > ahora - 3600 * 1000)
     if (recientes.length >= POR_IP_HORA) return 'tope_ip'
     recientes.push(ahora)
     this.porIp.set(ip, recientes)
     if (tipo === 'basica') this.usadasHoy++
     else if (tipo === 'optimizar') this.usadasOptHoy++
-    else this.usadasUbicarHoy++
+    else if (tipo === 'ubicar') this.usadasUbicarHoy++
+    else this.usadasLugarHoy++
     return null
   }
 
@@ -135,7 +152,75 @@ export class RecorridoService {
    * Geocoding. A diferencia de Photon/OpenStreetMap, entiende el "#43-7" y
    * suele dar la casa exacta. Devuelve hasta 4 lugares dentro de Medellín.
    */
-  async ubicar(texto: unknown, ip = ''): Promise<ResultadoUbicar> {
+  async ubicar(texto: unknown, ip = '', referencia?: unknown): Promise<ResultadoUbicar> {
+    const r = await this.ubicarTexto(texto, ip)
+    // Si la dirección no dio la casa (o la cuadra) y el cliente escribió una
+    // referencia ("Urbanización Altos de San Javier"), se busca ese lugar por
+    // su nombre: en conjuntos y lomas suele ser más fácil que la nomenclatura.
+    const precisa = r.ok && ['ROOFTOP', 'RANGE_INTERPOLATED'].includes(r.lugares[0]?.precision)
+    const ref = typeof referencia === 'string' ? referencia.replace(/\s+/g, ' ').trim() : ''
+    if (precisa || ref.length < 4 || ref.length > 120 || (!r.ok && r.motivo === 'invalido')) return r
+    const lugar = await this.buscarLugar(ref, ip)
+    if (!lugar) return r
+    return { ok: true, lugares: [lugar, ...(r.ok ? r.lugares : [])].slice(0, 4) }
+  }
+
+  /** Busca un lugar por su nombre con Places Text Search, dentro de Medellín. */
+  private async buscarLugar(nombre: string, ip: string): Promise<Lugar | null> {
+    if (!this.apiKey) return null
+    const ahora = this.ahora
+    const clave = `lugar:${nombre.toLowerCase()}`
+    const enCache = this.cacheUbicar.get(clave)
+    if (enCache && enCache.hasta > ahora) return enCache.lugares[0] ?? null
+    if (this.gastar('lugar', ip)) return null
+
+    const fetchFn: Fetch = this.opts.fetchFn ?? (globalThis as any).fetch
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    const conCiudad = /medell[ií]n/i.test(nombre) ? nombre : `${nombre}, Medellín`
+    try {
+      const res = await fetchFn('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': this.apiKey,
+          'X-Goog-FieldMask': 'places.location,places.formattedAddress,places.displayName',
+        },
+        body: JSON.stringify({
+          textQuery: conCiudad,
+          languageCode: 'es',
+          regionCode: 'co',
+          pageSize: 1,
+          locationRestriction: {
+            rectangle: {
+              low: { latitude: AREA.latMin, longitude: AREA.lngMin },
+              high: { latitude: AREA.latMax, longitude: AREA.lngMax },
+            },
+          },
+        }),
+      })
+      if (!res.ok) { console.warn(`Places respondió ${res.status}`); return null }
+      const p = (await res.json())?.places?.[0]
+      const lugar: Lugar | null = p ? {
+        lat: p.location?.latitude,
+        lng: p.location?.longitude,
+        direccion: String(p.formattedAddress ?? '').replace(/, Colombia$/, ''),
+        precision: 'LUGAR',
+        nombre: p.displayName?.text,
+      } : null
+      const valido = lugar && puntoValido(lugar) ? lugar : null
+      this.cacheUbicar.set(clave, { lugares: valido ? [valido] : [], hasta: ahora + 7 * CACHE_MS })
+      return valido
+    } catch (err) {
+      console.warn('Places falló:', err instanceof Error ? err.message : err)
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private async ubicarTexto(texto: unknown, ip = ''): Promise<ResultadoUbicar> {
     const q = typeof texto === 'string' ? texto.replace(/\s+/g, ' ').trim() : ''
     if (q.length < 3 || q.length > 200) return { ok: false, motivo: 'invalido' }
     if (!this.apiKey) return { ok: false, motivo: 'sin_llave' }
