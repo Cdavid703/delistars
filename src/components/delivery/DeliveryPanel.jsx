@@ -22,6 +22,7 @@ import CashChangeNotice from '../common/CashChangeNotice'
 import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
+import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 
@@ -97,6 +98,16 @@ export default function DeliveryPanel() {
   // sonar por pedidos que ya venían así desde antes de abrir el panel.
   const prevEstadoRef    = useRef(null)
   const geoWatchId       = useRef(null)
+  // El GPS lee siempre lo último (pedidos y ubicaciones) por refs: si los
+  // capturara al crearse, se quedaría con los pedidos de ese momento.
+  const ordersRef        = useRef(orders)
+  const geoCacheRef      = useRef(geoCache)
+  useEffect(() => { ordersRef.current = orders }, [orders])
+  useEffect(() => { geoCacheRef.current = geoCache }, [geoCache])
+  const ultimaUbicRef    = useRef(0)
+  // Pedidos de los que ya se avisó que están cerca (uno por pedido).
+  const avisadosCercaRef = useRef(new Set())
+  const [avisoCerca,      setAvisoCerca]     = useState(null)
   const locShareWatchId  = useRef(null)
 
 
@@ -156,32 +167,58 @@ export default function DeliveryPanel() {
     }
   }, [])
 
+  // GPS mientras haya pedidos activos. Antes el efecto dependía de `orders`
+  // (que se recarga cada 5 s) y al recargar apagaba el GPS sin volver a
+  // prenderlo: la ubicación dejaba de llegarle al cliente a los pocos segundos.
+  const hayActivos = orders.some(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
   useEffect(() => {
-    const hasActive = orders.some(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
-    if (hasActive && !geoWatchId.current && navigator.geolocation) {
-      geoWatchId.current = navigator.geolocation.watchPosition(
-        async pos => {
-          const active = orders.find(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
-          if (active) {
-            await updateDoc(doc(db, 'orders', active.id), {
-              driverLat: pos.coords.latitude,
-              driverLng: pos.coords.longitude,
+    if (!hayActivos || !navigator.geolocation) return
+    geoWatchId.current = navigator.geolocation.watchPosition(
+      pos => {
+        const aqui = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        const activos = ordersRef.current.filter(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
+
+        // Ubicación a TODOS sus pedidos activos (antes solo al primero), como
+        // mucho cada 10 s para no gastar escrituras.
+        if (Date.now() - ultimaUbicRef.current >= 10000) {
+          ultimaUbicRef.current = Date.now()
+          activos.forEach(o => {
+            updateDoc(doc(db, 'orders', o.id), {
+              driverLat: aqui.lat,
+              driverLng: aqui.lng,
               driverUpdatedAt: serverTimestamp(),
             }).catch(err => console.error('[DeliveryPanel] location update failed:', err))
+          })
+        }
+
+        // ¿Pasa cerca de un pedido que lleva en sus manos?
+        const cerca = pedidosCerca(aqui, activos, {
+          geoCache: geoCacheRef.current, avisados: avisadosCercaRef.current,
+        })
+        if (cerca.length) {
+          cerca.forEach(c => avisadosCercaRef.current.add(c.order.id))
+          const { order, metros } = cerca[0]
+          setAvisoCerca({ order, metros, otros: cerca.length - 1 })
+          sonar('atencion')
+          try { navigator.vibrate?.([300, 150, 300]) } catch { /* sin vibración */ }
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification('📍 Tienes un pedido cerca', {
+                body: `A ${metros} m: ${order.orderNumber ? `#${order.orderNumber} · ` : ''}${order.fullAddress || ''}`,
+                tag: `cerca-${order.id}`,
+              })
+            } catch { /* algunos navegadores no dejan crear notificaciones así */ }
           }
-        },
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 10000 }
-      )
-    }
-    if (!hasActive && geoWatchId.current) {
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    )
+    return () => {
       navigator.geolocation.clearWatch(geoWatchId.current)
       geoWatchId.current = null
     }
-    return () => {
-      if (geoWatchId.current) navigator.geolocation.clearWatch(geoWatchId.current)
-    }
-  }, [orders])
+  }, [hayActivos])
 
   // GPS compartido (para que el cajero vea la ubicación aunque no haya pedido activo)
   useEffect(() => {
@@ -267,7 +304,7 @@ export default function DeliveryPanel() {
   // Clusters de pedidos cercanos entre sí (≤ NEARBY_THRESHOLD_KM)
   const nearbyClusters = useMemo(() => {
     const geocoded = routableOrders
-      .map(o => ({ ...o, geo: geoCache[o.fullAddress] }))
+      .map(o => ({ ...o, geo: geoDelPedido(o, geoCache) }))
       .filter(o => o.geo)
     if (geocoded.length < 2) return []
     const clusters = []
@@ -301,6 +338,33 @@ export default function DeliveryPanel() {
 
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
+      {avisoCerca && (
+        <div className="fixed top-3 inset-x-3 z-[120] mx-auto max-w-lg rounded-2xl border-2 border-mint bg-cream shadow-xl p-4 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <MapPin size={22} className="text-mint flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-lg text-coal tracking-wide leading-tight">
+                📍 Tienes un pedido a {avisoCerca.metros} m
+              </p>
+              <p className="font-body text-sm text-coal/75 mt-1">
+                {avisoCerca.order.orderNumber && <strong>#{avisoCerca.order.orderNumber} · </strong>}
+                {avisoCerca.order.clientName || avisoCerca.order.name || ''}
+              </p>
+              <p className="font-body text-xs text-coal/60 truncate">{avisoCerca.order.fullAddress}</p>
+              {avisoCerca.otros > 0 && (
+                <p className="font-body text-xs text-tangelo font-semibold mt-1">
+                  y {avisoCerca.otros} pedido{avisoCerca.otros > 1 ? 's' : ''} más por aquí
+                </p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => { setSelected(avisoCerca.order); setAvisoCerca(null) }}
+                  className="btn-primary btn-sm flex-1">Ver pedido</button>
+                <button onClick={() => setAvisoCerca(null)} className="btn-secondary btn-sm">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <header className="page-header">
         <div className="flex items-center gap-3">
           <Logo variant="light" size="sm" />
@@ -1413,11 +1477,12 @@ function DriverManualModal({ onClose }) {
 function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrderClick }) {
   // Punto de inicio: si el domiciliario eligió una sede concreta, partimos de ella.
   // Si eligió "Ambas sedes", agrupamos por sede y empezamos por la sede con más pedidos.
+  // El pin exacto del cliente manda; si no hay, lo que encontró el buscador.
   const ordersWithGeo = orders
-    .map(o => ({ ...o, geo: geoCache[o.fullAddress] }))
+    .map(o => ({ ...o, geo: geoDelPedido(o, geoCache) }))
     .filter(o => o.geo)
 
-  const ordersSinGeo = orders.filter(o => !geoCache[o.fullAddress])
+  const ordersSinGeo = orders.filter(o => !geoDelPedido(o, geoCache))
 
   // Determinar coords de inicio
   let startCoords = null
@@ -1468,11 +1533,14 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
       : encodeURIComponent(route[0].fullAddress + ', Medellín, Colombia')
     const destOrders = startCoords ? route : route.slice(1)
     if (destOrders.length === 0) return
+    // Con pin exacto se navega a las coordenadas; el texto solo como respaldo
+    // (Google Maps también se confunde con el "#43-7").
+    const destino = o => encodeURIComponent(o.geo?.exacto
+      ? `${o.geo.lat},${o.geo.lng}`
+      : o.fullAddress + ', Medellín, Colombia')
     const last = destOrders[destOrders.length - 1]
-    const destination = encodeURIComponent(last.fullAddress + ', Medellín, Colombia')
-    const waypoints = destOrders.slice(0, -1)
-      .map(o => encodeURIComponent(o.fullAddress + ', Medellín, Colombia'))
-      .join('|')
+    const destination = destino(last)
+    const waypoints = destOrders.slice(0, -1).map(destino).join('|')
     const wpParam = waypoints ? `&waypoints=${waypoints}` : ''
     window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${wpParam}&travelmode=driving`, '_blank')
   }
