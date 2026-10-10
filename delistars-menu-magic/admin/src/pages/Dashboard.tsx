@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo } from '@/lib/orders'
 import { toast } from 'sonner'
 import { Power } from 'lucide-react'
+import AvisoMercadeo from '@/components/mercadeo/AvisoMercadeo'
 
 const StatCard = ({ icon, color, label, value }: { icon: string; color: string; label: string; value: string | number }) => (
   <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center gap-4">
@@ -120,6 +121,9 @@ export default function Dashboard() {
           <span className={`w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-gray-400'}`} />
         </button>}
       </div>
+
+      {/* Lo que tiene Mercadeo programado hoy y mañana (calendario). */}
+      <AvisoMercadeo />
 
       {/* Aviso compacto: el detalle y las acciones viven en Domicilios → "Por
           revisar" (aquí sólo se avisa, para no convertir el resumen del día en

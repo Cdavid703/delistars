@@ -9,6 +9,7 @@ const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firesto
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
 const { calcularAudiencia } = require('./audiencia')
+const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
 const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
@@ -123,6 +124,23 @@ async function updateAudiencia() {
     console.log(`[scheduler] audiencia mercadeo: ${aud.conCorreo} con correo, ${aud.aceptan} aceptan`)
   } catch (err) {
     console.error('[scheduler] Error al actualizar la audiencia:', err?.code || err?.message || err)
+  }
+}
+
+// ─── Aviso diario de Mercadeo a administración ───────────────────────────────
+// Qué tiene Mercadeo programado hoy en su calendario (ver mercadeoAviso.js).
+// Llega al celular de cada admin que tenga activadas las notificaciones en la
+// app de domicilios (staff_push). En el panel, Resumen muestra lo mismo.
+async function avisarMercadeoDelDia() {
+  try {
+    const snap = await adminDb.collection('mercadeo').doc('calendario').collection('actividades').get()
+    const msg = mensajeDelDia(snap.docs.map((d) => d.data()), hoyColombia())
+    if (!msg) { console.log('[scheduler] mercadeo: nada programado hoy'); return }
+    for (const email of ADMIN_EMAILS) {
+      await sendPushForStaff('mercadeo', {}, { ...msg, soloA: email })
+    }
+  } catch (err) {
+    console.error('[scheduler] Error en el aviso de mercadeo:', err?.message || err)
   }
 }
 
@@ -373,8 +391,8 @@ async function sendPushForStaff(orderId, o, msgFijo = null) {
     const res = await getMessaging().sendEachForMulticast({
       tokens,
       notification: { title: msg.title, body: msg.body },
-      data:    { orderId: String(orderId), url: 'https://delistars.com/domicilios/' },
-      webpush: { fcmOptions: { link: 'https://delistars.com/domicilios/' } },
+      data:    { orderId: String(orderId), url: msg.url || 'https://delistars.com/domicilios/' },
+      webpush: { fcmOptions: { link: msg.url || 'https://delistars.com/domicilios/' } },
     })
     // Limpia tokens muertos (desinstalaron la app, revocaron el permiso…).
     const bad = []
@@ -524,6 +542,8 @@ async function main() {
       cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
       // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
       cron.schedule('*/3 17-23 * * *', checkStuckOrders, { timezone: TIMEZONE })
+      // Lo que tiene Mercadeo hoy → celular de administración, 10:00 a. m.
+      cron.schedule('0 10 * * *', avisarMercadeoDelDia, { timezone: TIMEZONE })
       // Audiencia de Mercadeo: cada hora y una vez al arrancar.
       cron.schedule('5 * * * *', updateAudiencia, { timezone: TIMEZONE })
       updateAudiencia()
