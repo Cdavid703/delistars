@@ -12,7 +12,7 @@ import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
-  const { user, login, loginGuest, logout, isGuest } = useStaffAuth();
+  const { user, login, loginMs, loginGuest, logout, isGuest } = useStaffAuth();
   const staff = isStaff(user?.email);
   const allRoles = useAllRoles(user);
   const [scrolled, setScrolled] = useState(false);
@@ -23,6 +23,15 @@ export const Navbar = () => {
   const doLogin = async () => {
     try { await login(); setLoginOpen(false); setMobile(false); }
     catch { /* popup cerrado: sin acción */ }
+  };
+  const doLoginMs = async () => {
+    try { await loginMs(); setLoginOpen(false); setMobile(false); }
+    catch (err) {
+      const code = (err as { code?: string })?.code || "";
+      if (code === "auth/operation-not-allowed") alert("El ingreso con Microsoft todavía no está activado.");
+      else if (code === "auth/account-exists-with-different-credential") alert("Ese correo ya entra con Google: usa ese botón.");
+      /* popup cerrado: sin acción */
+    }
   };
   const doGuest = async () => {
     try { await loginGuest(); setLoginOpen(false); setMobile(false); }
@@ -170,11 +179,14 @@ export const Navbar = () => {
                     <div className="px-2 pt-1.5 pb-2 mb-1 border-b border-border">
                       <p className="text-xs font-semibold text-foreground flex items-center gap-1">🎁 Programa de fidelización</p>
                       <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                        Inicia con <strong>Google</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
+                        Inicia con <strong>Google</strong> o <strong>Microsoft</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
                       </p>
                     </div>
                     <button onClick={doLogin} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
                       <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                    </button>
+                    <button onClick={doLoginMs} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
+                      <LogIn className="w-4 h-4 text-primary" /> Entrar con Microsoft
                     </button>
                     <button onClick={doGuest} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
                       <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta
@@ -239,11 +251,14 @@ export const Navbar = () => {
                 <div className="bg-secondary/40 rounded-lg px-2.5 py-2 mb-1">
                   <p className="text-xs font-semibold text-foreground">🎁 Programa de fidelización</p>
                   <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                    Inicia con <strong>Google</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
+                    Inicia con <strong>Google</strong> o <strong>Microsoft</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
                   </p>
                 </div>
                 <button onClick={doLogin} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
                   <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                </button>
+                <button onClick={doLoginMs} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
+                  <LogIn className="w-4 h-4 text-primary" /> Entrar con Microsoft
                 </button>
                 <button onClick={doGuest} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
                   <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta

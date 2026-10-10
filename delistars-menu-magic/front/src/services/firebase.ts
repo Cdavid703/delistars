@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup, type AuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 // Mismo proyecto Firebase que el resto de DeliStars. La sesión iniciada aquí
@@ -18,6 +18,10 @@ export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
+// Microsoft (cuentas personales y de trabajo). Requiere activar el proveedor
+// "Microsoft" en Firebase Authentication con la app registrada en Entra ID.
+export const microsoftProvider = new OAuthProvider('microsoft.com')
+microsoftProvider.setCustomParameters({ prompt: 'select_account' })
 
 // Login de cliente sin cuenta (invitado)
 export const loginAnon = () => signInAnonymously(auth)
@@ -34,11 +38,14 @@ export const loginAnon = () => signInAnonymously(auth)
 // mantiene y los pedidos (y la fidelización) siguen ahí. Si ese correo ya
 // tenía cuenta propia, no se puede enlazar: se entra normal, que es lo que
 // pasaba antes, y el cliente recupera su historial de esa cuenta de Google.
-export async function loginGoogle() {
+export const loginGoogle = () => entrarCon(provider)
+export const loginMicrosoft = () => entrarCon(microsoftProvider)
+
+async function entrarCon(p: AuthProvider) {
   const actual = auth.currentUser
   if (actual?.isAnonymous) {
     try {
-      return await linkWithPopup(actual, provider)
+      return await linkWithPopup(actual, p)
     } catch (err) {
       const code = (err as { code?: string })?.code || ''
       // Ese correo ya tiene cuenta propia (o el anónimo ya no vale): se entra
@@ -48,6 +55,6 @@ export async function loginGoogle() {
             'auth/user-mismatch', 'auth/invalid-user-token'].includes(code)) throw err
     }
   }
-  return signInWithPopup(auth, provider)
+  return signInWithPopup(auth, p)
 }
 

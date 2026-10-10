@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ShieldCheck, Calculator, Bike, ShoppingBag } from "lucide-react";
+import { ChevronDown, ShieldCheck, Calculator, Bike, ShoppingBag, Megaphone } from "lucide-react";
 import type { User } from "firebase/auth";
 import { useAllRoles } from "@/hooks/useAllRoles";
 import { ROLES, type RoleName } from "@/lib/staff";
@@ -8,6 +8,7 @@ const ROLE_META: Record<RoleName, { label: string; Icon: typeof ShieldCheck; pil
   [ROLES.ADMIN]:   { label: "Admin",        Icon: ShieldCheck, pill: "bg-cherry/15 text-cherry" },
   [ROLES.CASHIER]: { label: "Cajero",       Icon: Calculator,  pill: "bg-primary/15 text-primary" },
   [ROLES.DRIVER]:  { label: "Domiciliario", Icon: Bike,        pill: "bg-emerald-500/15 text-emerald-600" },
+  [ROLES.MARKETING]: { label: "Mercadeo",   Icon: Megaphone,   pill: "bg-fuchsia-500/15 text-fuchsia-600" },
   [ROLES.CLIENT]:  { label: "Cliente",      Icon: ShoppingBag, pill: "bg-muted text-muted-foreground" },
 };
 
@@ -41,6 +42,8 @@ export function RoleSwitcher({ user }: { user: User | null }) {
       persistViewingAs(user.uid, ROLES.CLIENT);
       return; // ya estamos en el menú (vista cliente)
     }
+    // Mercadeo vive en el panel /admin/, que le muestra solo sus pestañas.
+    if (target === ROLES.MARKETING) { window.location.href = "/admin/mercadeo"; return; }
     persistViewingAs(user.uid, target);
     window.location.href = target === ROLES.ADMIN ? "/admin/" : "/domicilios/";
   };

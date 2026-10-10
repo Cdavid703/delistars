@@ -19,7 +19,7 @@ export const isStaff = (email?: string | null): boolean =>
 // Estos son los roles que dan acceso a un panel (admin/cajero/domiciliario)
 // en /admin/ o /domicilios/. No todo STAFF_EMAILS tiene uno de estos roles
 // (puede haber empleados que solo usan "Mis turnos").
-export const ROLES = { ADMIN: 'admin', CASHIER: 'cashier', DRIVER: 'driver', CLIENT: 'client' } as const
+export const ROLES = { ADMIN: 'admin', CASHIER: 'cashier', DRIVER: 'driver', MARKETING: 'marketing', CLIENT: 'client' } as const
 export type RoleName = typeof ROLES[keyof typeof ROLES]
 
 export const ADMIN_EMAILS = [
@@ -38,6 +38,13 @@ export const DRIVER_EMAILS = [
   'cdavid.jaramillo@gmail.com',
 ]
 
+// Mercadeo: entra al panel /admin/ y ve sus pestañas (indicadores, Mercadeo,
+// Correo). Espejo de MARKETING_EMAILS en admin/src/lib/team.ts; los demás se
+// agregan desde Empleados (Firestore roles_marketing).
+export const MARKETING_EMAILS = [
+  'valenthina5431@gmail.com', // Valentina Álvarez
+]
+
 export const isCashier = (email?: string | null): boolean =>
   !!email && CASHIER_EMAILS.includes(email.toLowerCase())
 
@@ -48,6 +55,7 @@ export function getAllRoles(
   dynamicCashiers: string[] = [],
   dynamicDrivers: string[] = [],
   disabledEmails: string[] = [],
+  dynamicMarketing: string[] = [],
 ): RoleName[] {
   if (!email) return [ROLES.CLIENT]
   const e = email.toLowerCase()
@@ -61,6 +69,9 @@ export function getAllRoles(
 
   const allDrivers = [...DRIVER_EMAILS, ...dynamicDrivers.map(x => x.toLowerCase())]
   if (allDrivers.includes(e) && !disabled.includes(e)) roles.push(ROLES.DRIVER)
+
+  const allMarketing = [...MARKETING_EMAILS, ...dynamicMarketing.map(x => x.toLowerCase())]
+  if (allMarketing.includes(e) && !disabled.includes(e)) roles.push(ROLES.MARKETING)
 
   roles.push(ROLES.CLIENT)
   return roles

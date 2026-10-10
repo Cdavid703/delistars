@@ -23,10 +23,11 @@ export function useAllRoles(user: User | null) {
       safeIds('roles_cashiers'),
       safeIds('roles_drivers'),
       safeIds('roles_disabled'),
+      safeIds('roles_marketing'),
     ])
-      .then(([dynamicCashiers, dynamicDrivers, disabled]) => {
+      .then(([dynamicCashiers, dynamicDrivers, disabled, dynamicMarketing]) => {
         if (cancelled) return
-        setAllRoles(getAllRoles(user.email, dynamicCashiers, dynamicDrivers, disabled))
+        setAllRoles(getAllRoles(user.email, dynamicCashiers, dynamicDrivers, disabled, dynamicMarketing))
       })
       .catch(() => { if (!cancelled) setAllRoles(getAllRoles(user.email)) })
     return () => { cancelled = true }
