@@ -3,7 +3,8 @@ import {
   collection, doc, onSnapshot, orderBy, query, addDoc, updateDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore'
 import { toast } from 'sonner'
-import { Users, Megaphone, Plus, Save, Trash2, Send, Eye, Pencil, Info } from 'lucide-react'
+import { Users, Megaphone, Plus, Save, Trash2, Send, Eye, Pencil, Info, CalendarDays } from 'lucide-react'
+import Calendario from '@/components/mercadeo/Calendario'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import logo from '@/assets/logo.svg'
@@ -14,7 +15,7 @@ import {
 const n = (v?: number) => (v ?? 0).toLocaleString('es-CO')
 
 export default function Mercadeo() {
-  const [tab, setTab] = useState<'audiencia' | 'campanas'>('audiencia')
+  const [tab, setTab] = useState<'calendario' | 'campanas' | 'audiencia'>('calendario')
   const [aud, setAud] = useState<Audiencia | null>(null)
   const [audError, setAudError] = useState(false)
 
@@ -22,6 +23,14 @@ export default function Mercadeo() {
     doc(db, 'config', 'mercadeo_audiencia'),
     (s) => setAud(s.exists() ? (s.data() as Audiencia) : null),
     () => setAudError(true),
+  ), [])
+
+  // Campañas: las usan la pestaña Campañas y el calendario (fecha prevista).
+  const [campanas, setCampanas] = useState<Campana[]>([])
+  useEffect(() => onSnapshot(
+    query(collection(db, 'campanas'), orderBy('creadoAt', 'desc')),
+    (s) => setCampanas(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Campana, 'id'>) }))),
+    () => toast.error('No se pudieron leer las campañas'),
   ), [])
 
   return (
@@ -32,7 +41,7 @@ export default function Mercadeo() {
       </div>
 
       <div className="flex gap-2 mb-6 border-b border-gray-200">
-        {([['audiencia', 'Audiencia', Users], ['campanas', 'Campañas', Megaphone]] as const).map(([id, label, Icon]) => (
+        {([['calendario', 'Calendario', CalendarDays], ['campanas', 'Campañas', Megaphone], ['audiencia', 'Audiencia', Users]] as const).map(([id, label, Icon]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 -mb-px transition-colors ${
               tab === id ? 'border-primary text-primary' : 'border-transparent text-muted-fg hover:text-coal'}`}>
@@ -41,9 +50,9 @@ export default function Mercadeo() {
         ))}
       </div>
 
-      {tab === 'audiencia'
-        ? <AudienciaTab aud={aud} error={audError} />
-        : <CampanasTab aud={aud} />}
+      {tab === 'calendario' && <Calendario campanas={campanas} />}
+      {tab === 'campanas' && <CampanasTab aud={aud} lista={campanas} />}
+      {tab === 'audiencia' && <AudienciaTab aud={aud} error={audError} />}
     </div>
   )
 }
@@ -116,17 +125,10 @@ function Tarjeta({ titulo, valor, nota, destacado }: { titulo: string; valor: st
 }
 
 // ─── Campañas ───────────────────────────────────────────────────────────────
-function CampanasTab({ aud }: { aud: Audiencia | null }) {
+function CampanasTab({ aud, lista }: { aud: Audiencia | null; lista: Campana[] }) {
   const { user } = useAuthStore()
-  const [lista, setLista] = useState<Campana[]>([])
   const [editando, setEditando] = useState<Campana | Omit<Campana, 'id'> | null>(null)
   const [guardando, setGuardando] = useState(false)
-
-  useEffect(() => onSnapshot(
-    query(collection(db, 'campanas'), orderBy('creadoAt', 'desc')),
-    (s) => setLista(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Campana, 'id'>) }))),
-    () => toast.error('No se pudieron leer las campañas'),
-  ), [])
 
   const guardar = async () => {
     if (!editando) return
@@ -139,6 +141,7 @@ function CampanasTab({ aud }: { aud: Audiencia | null }) {
         nombre: datos.nombre.trim(), asunto: datos.asunto.trim(), segmento: datos.segmento,
         mensaje: datos.mensaje.trim(), imagenUrl: datos.imagenUrl?.trim() || '',
         botonTexto: datos.botonTexto?.trim() || '', botonUrl: datos.botonUrl?.trim() || '',
+        fechaPrevista: datos.fechaPrevista || '',
         estado: datos.estado || 'borrador', actualizadoAt: serverTimestamp(),
       }
       if (id) await updateDoc(doc(db, 'campanas', id), limpio)
@@ -231,6 +234,10 @@ function EditorCampana({ c, setC, aud, onGuardar, onCancelar, guardando }: {
             {SEGMENTOS.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
           </select>
           <span className="text-[11px] text-muted-fg">{n(destinatarios)} clientes de este grupo aceptan promociones</span>
+        </label>
+        <label className="text-xs font-medium text-coal">Fecha prevista de envío (opcional)
+          <input type="date" className={campo} value={c.fechaPrevista || ''} onChange={(e) => set('fechaPrevista', e.target.value)} />
+          <span className="text-[11px] text-muted-fg">Con fecha, la campaña aparece en el calendario.</span>
         </label>
         <label className="text-xs font-medium text-coal">Asunto del correo
           <input className={campo} value={c.asunto} onChange={(e) => set('asunto', e.target.value)} placeholder="Ej: 🌭 Hoy tu perro favorito con 20% off" maxLength={120} />

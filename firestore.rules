@@ -331,6 +331,13 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isMarketing();
     }
 
+    // ── Todo lo de la pestaña Mercadeo (calendario y lo que venga) ─────────
+    // Una sola regla para la carpeta: las funciones nuevas de Mercadeo no
+    // necesitan volver a publicar reglas. Ej: mercadeo/calendario/actividades.
+    match /mercadeo/{documento=**} {
+      allow read, write: if isAdmin() || isMarketing();
+    }
+
     // ── Todo lo demás: denegado ────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -35,6 +35,8 @@ export interface Campana {
   imagenUrl?: string
   botonTexto?: string
   botonUrl?: string
+  /** Fecha prevista de envío ('yyyy-mm-dd'): la campaña aparece en el calendario. */
+  fechaPrevista?: string
   estado: 'borrador' | 'enviada'
   creadoPor?: string
   creadoAt?: Timestamp
@@ -49,6 +51,7 @@ export const CAMPANA_VACIA: Omit<Campana, 'id'> = {
   imagenUrl: '',
   botonTexto: 'Pedir ahora',
   botonUrl: 'https://delistars.com/',
+  fechaPrevista: '',
   estado: 'borrador',
 }
 
