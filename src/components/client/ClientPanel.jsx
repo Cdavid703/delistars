@@ -20,6 +20,7 @@ import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
 import { medirRuta } from '../../services/recorrido'
 import { sugerirOtraSede, minutosHastaLlegar } from '../../utils/checkoutRuta'
+import { debeOfrecerPromos } from '../../utils/promociones'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -217,10 +218,14 @@ export default function ClientPanel() {
     }, () => {})
   }, [user?.uid, user?.email])
 
+  // Permiso de promociones (undefined = cargando). Se ofrece a los clientes
+  // con correo que no han respondido, también a los antiguos: ver PromosOptIn.
+  const [promociones, setPromociones] = useState(undefined)
   useEffect(() => {
     if (!user?.uid || !user?.email) return
     return onSnapshot(doc(db, 'customers', user.uid), snap => {
       setLoyaltyProgress(snap.exists() ? (snap.data().loyalty || {}) : {})
+      setPromociones(snap.exists() ? (snap.data().promociones ?? null) : null)
     }, () => {})
   }, [user?.uid, user?.email])
 
@@ -665,6 +670,11 @@ export default function ClientPanel() {
           </button>
         </div>
       ))}
+
+      {/* ¿Quiere recibir promociones? (Ley 1581: permiso expreso) */}
+      {user?.email && promociones !== undefined && debeOfrecerPromos(promociones) && (
+        <PromosOptIn uid={user.uid} email={user.email} className="mx-4 mt-3" />
+      )}
 
       {/* Saldo a favor disponible en esta sede */}
       {user?.email && saldoSede > 0 && (
@@ -1322,17 +1332,17 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   // Permiso para promociones por correo (Ley 1581): casilla desmarcada por
   // defecto, solo para quien entró con una cuenta que tiene correo. Solo se
   // guarda cuando la marca; si no, se le vuelve a ofrecer en otro pedido.
-  // undefined = cargando, null = nunca aceptó, true = ya aceptó.
+  // promoGuardada: undefined = cargando; si no, lo guardado (o null).
   const [promoGuardada, setPromoGuardada] = useState(undefined)
   const [quierePromos,  setQuierePromos]  = useState(false)
-  const ofrecerPromos = !!user?.email && promoGuardada === null
+  const ofrecerPromos = !!user?.email && promoGuardada !== undefined && debeOfrecerPromos(promoGuardada)
 
   useEffect(() => {
     if (!user?.uid) return
     getDoc(doc(db, 'customers', user.uid)).then(snap => {
       if (!snap.exists()) { setPromoGuardada(null); return }
       const data = snap.data()
-      setPromoGuardada(data.promociones?.acepta ?? null)
+      setPromoGuardada(data.promociones ?? null)
       setForm(f => ({
         ...f,
         name:  data.name  || f.name,
@@ -1789,6 +1799,38 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
 }
 
 // ─── Order card ───────────────────────────────────────────────────────────────
+// Tarjeta para que el cliente (también los antiguos) autorice las promociones.
+// Responde una vez: si acepta, queda con la fecha; si no, no se le vuelve a
+// preguntar en 90 días (ver utils/promociones.js).
+function PromosOptIn({ uid, email, className = '' }) {
+  const [guardando, setGuardando] = useState(false)
+  const responder = async acepta => {
+    setGuardando(true)
+    try {
+      await setDoc(doc(db, 'customers', uid), {
+        promociones: { acepta, fecha: serverTimestamp(), fuente: 'aviso_app', email },
+      }, { merge: true })
+    } catch { setGuardando(false) }
+  }
+  return (
+    <div className={`rounded-2xl p-4 bg-white border-2 border-tangelo/40 shadow-soft ${className}`}>
+      <p className="font-display text-base tracking-wide text-coal">📬 ¿Te avisamos de las promociones?</p>
+      <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
+        Te mandamos a <strong>{email}</strong> los descuentos y novedades de DeliStars. Nada de spam, y te
+        das de baja con un clic cuando quieras.
+      </p>
+      <div className="flex gap-2 mt-3">
+        <button type="button" disabled={guardando} onClick={() => responder(true)} className="btn-primary btn-sm flex-1">
+          Sí, quiero
+        </button>
+        <button type="button" disabled={guardando} onClick={() => responder(false)} className="btn-secondary btn-sm">
+          No, gracias
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
