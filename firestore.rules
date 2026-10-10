@@ -104,6 +104,8 @@ service cloud.firestore {
                     || (isCashier() && request.resource.data.cashierId == request.auth.uid)
                     || (isSignedIn() && request.resource.data.clientUid == request.auth.uid);
       allow read:   if isAdmin() || isCashier()
+                    // Mercadeo: solo lectura, para los indicadores (Resumen y Reportes).
+                    || isMarketing()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid)
                     || (isDriver() && resource.data.driverEmail == userEmail());
       allow update: if isAdmin() || isCashier()
@@ -309,7 +311,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && request.resource.data.uid == request.auth.uid
                     && request.resource.data.type == 'checkout_started';
-      allow read:   if isAdmin();
+      allow read:   if isAdmin() || isMarketing();
       allow update, delete: if false;
     }
 

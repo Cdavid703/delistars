@@ -41,10 +41,12 @@ function App() {
             <Route path="*" element={<Login />} />
           </Routes>
         ) : role === 'mercadeo' ? (
-          // Mercadeo: solo su pestaña y el correo. Cualquier otra ruta vuelve a Mercadeo.
+          // Mercadeo: los indicadores (Resumen y Reportes, solo lectura), su
+          // pestaña y el correo. Cualquier otra ruta vuelve a Mercadeo.
           <Routes>
             <Route path="/" element={<Layout />}>
-              <Route index element={<Navigate to="/mercadeo" replace />} />
+              <Route index element={<Dashboard />} />
+              <Route path="reportes" element={<Reportes />} />
               <Route path="mercadeo" element={<Mercadeo />} />
               <Route path="correo" element={<Correo />} />
               <Route path="*" element={<Navigate to="/mercadeo" replace />} />

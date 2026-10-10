@@ -36,7 +36,7 @@ const minutesSince = (o: Order): number | null => {
 }
 
 export default function Dashboard() {
-  const { user } = useAuthStore()
+  const { user, role } = useAuthStore()
   const [orders, setOrders] = useState<Order[]>([])
   const [platformActive, setPlatformActive] = useState<boolean | null>(null)
   const [toggling, setToggling] = useState(false)
@@ -103,8 +103,9 @@ export default function Dashboard() {
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Resumen de hoy</h1>
           <p className="text-muted-fg mt-1">Pedidos de domicilios en tiempo real (todas las sedes)</p>
         </div>
-        {/* Control de plataforma: mismo interruptor que tiene el cajero */}
-        <button
+        {/* Control de plataforma: mismo interruptor que tiene el cajero.
+            Mercadeo solo consulta indicadores: no lo ve. */}
+        {role === 'admin' && <button
           onClick={togglePlatform}
           disabled={toggling || platformActive === null}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50 ${
@@ -117,13 +118,13 @@ export default function Dashboard() {
           <Power className="w-4 h-4" />
           {platformActive === null ? 'Plataforma…' : platformActive ? 'Plataforma ACTIVA' : 'Plataforma APAGADA'}
           <span className={`w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-gray-400'}`} />
-        </button>
+        </button>}
       </div>
 
       {/* Aviso compacto: el detalle y las acciones viven en Domicilios → "Por
           revisar" (aquí sólo se avisa, para no convertir el resumen del día en
           una lista de pendientes de otros días). */}
-      {(stuckHoy > 0 || abiertosViejos.length > 0) && (
+      {role === 'admin' && (stuckHoy > 0 || abiertosViejos.length > 0) && (
         <Link
           to="/domicilios"
           className="block bg-red-50 border border-red-200 rounded-lg p-4 mb-8 hover:bg-red-100 transition-colors"
