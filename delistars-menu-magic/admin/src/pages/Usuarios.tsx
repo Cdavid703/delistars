@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, getDocs, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { toast } from 'sonner'
-import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS, EMPLOYEES } from '@/lib/team'
+import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS, EMPLOYEES, MARKETING_EMAILS } from '@/lib/team'
 import { Lock, Pencil, RotateCcw, Save, Trash2, X } from 'lucide-react'
 
 type Role = 'cashier' | 'driver'
@@ -266,6 +266,8 @@ export default function Usuarios() {
         </p>
       </div>
 
+      <MercadeoCard />
+
       {/* Admins — solo lectura, fijos en el código por seguridad */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 max-w-xl">
         <div className="flex items-center gap-2 mb-2">
@@ -425,6 +427,74 @@ export default function Usuarios() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Mercadeo ───────────────────────────────────────────────────────────────
+// Quien tenga este rol entra al panel y solo ve Mercadeo y Correo. Los fijos
+// están en el código (MARKETING_EMAILS); los demás viven en roles_marketing.
+function MercadeoCard() {
+  const [lista, setLista] = useState<{ email: string; name?: string }[]>([])
+  const [email, setEmail] = useState('')
+  const [nombre, setNombre] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const cargar = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'roles_marketing'))
+      setLista(snap.docs.map((d) => ({ email: d.id, ...(d.data() as { name?: string }) })))
+    } catch { /* reglas aún sin roles_marketing: solo se ven los fijos */ }
+  }
+  useEffect(() => { cargar() }, [])
+
+  const agregar = async () => {
+    const e = email.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { toast.error('Escribe un correo válido'); return }
+    setGuardando(true)
+    try {
+      await setDoc(doc(db, 'roles_marketing', e), { email: e, name: nombre.trim() || null, addedAt: serverTimestamp() })
+      setEmail(''); setNombre('')
+      toast.success('Agregado a Mercadeo')
+      cargar()
+    } catch { toast.error('No se pudo agregar (¿ya se publicaron las reglas de Firestore?)') }
+    finally { setGuardando(false) }
+  }
+
+  const quitar = async (e: string) => {
+    if (!confirm(`¿Quitar a ${e} de Mercadeo?`)) return
+    try { await deleteDoc(doc(db, 'roles_marketing', e)); toast.success('Quitado de Mercadeo'); cargar() }
+    catch { toast.error('No se pudo quitar') }
+  }
+
+  const fijos = MARKETING_EMAILS.filter((f) => !lista.some((l) => l.email === f))
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 max-w-xl">
+      <h2 className="text-sm font-display font-semibold text-coal mb-1">📣 Mercadeo</h2>
+      <p className="text-xs text-muted-fg mb-3">Entran al panel y solo ven las pestañas Mercadeo y Correo.</p>
+      <ul className="text-sm space-y-1 mb-3">
+        {fijos.map((f) => (
+          <li key={f} className="flex items-center gap-2 text-coal">
+            <Lock className="w-3.5 h-3.5 text-muted-fg" /> {f} <span className="text-[11px] text-muted-fg">(fijo)</span>
+          </li>
+        ))}
+        {lista.map((l) => (
+          <li key={l.email} className="flex items-center gap-2 text-coal">
+            {l.name ? <><strong>{l.name}</strong> · </> : null}{l.email}
+            <button onClick={() => quitar(l.email)} className="ml-auto p-1 text-muted-fg hover:text-red-600" title="Quitar">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2 flex-wrap">
+        <input className="flex-1 min-w-[10rem] border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="correo@gmail.com"
+          value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="w-36 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Nombre"
+          value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <button onClick={agregar} disabled={guardando}
+          className="bg-primary text-white rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">Agregar</button>
+      </div>
     </div>
   )
 }

@@ -2,14 +2,33 @@ import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 import logo from '@/assets/logo.svg'
 
-export default function Login() {
-  const { login, loading } = useAuthStore()
+// Logo oficial de Microsoft (cuatro cuadros), como pide su guía de marca.
+const MicrosoftLogo = () => (
+  <svg viewBox="0 0 21 21" className="w-5 h-5" aria-hidden="true">
+    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+  </svg>
+)
 
-  const handleLogin = async () => {
+const GoogleLogo = () => (
+  <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true">
+    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+    <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+  </svg>
+)
+
+export default function Login() {
+  const { login, loginMicrosoft, loading } = useAuthStore()
+
+  const entrar = (fn: () => Promise<void>) => async () => {
     try {
-      await login()
-    } catch (err: any) {
-      toast.error(err.message || 'Error al iniciar sesión')
+      await fn()
+    } catch (err) {
+      toast.error((err as Error).message || 'Error al iniciar sesión')
     }
   }
 
@@ -21,19 +40,26 @@ export default function Login() {
             <img src={logo} alt="DeliStars" className="w-14 h-14 object-contain" />
           </div>
           <h1 className="text-4xl font-display font-bold text-cherry">DeliStars</h1>
-          <p className="text-gray-400 text-sm mt-2">Administración</p>
+          <p className="text-gray-400 text-sm mt-2">Administración y Mercadeo</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-card p-8 space-y-5 text-center">
-          <p className="text-sm text-coal/70">
-            Inicia sesión con tu cuenta de Google autorizada como administrador.
+        <div className="bg-white rounded-2xl shadow-card p-8 space-y-3 text-center">
+          <p className="text-sm text-coal/70 mb-2">
+            Inicia sesión con la cuenta autorizada para el panel.
           </p>
           <button
-            onClick={handleLogin}
+            onClick={entrar(login)}
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-gradient-hero text-white font-display font-semibold tracking-wide text-lg shadow-soft hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="w-full py-3 rounded-xl border border-gray-300 bg-white text-coal font-semibold flex items-center justify-center gap-3 hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Ingresando...' : 'Ingresar con Google'}
+            <GoogleLogo /> {loading ? 'Ingresando...' : 'Ingresar con Google'}
+          </button>
+          <button
+            onClick={entrar(loginMicrosoft)}
+            disabled={loading}
+            className="w-full py-3 rounded-xl border border-gray-300 bg-white text-coal font-semibold flex items-center justify-center gap-3 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <MicrosoftLogo /> {loading ? 'Ingresando...' : 'Ingresar con Microsoft'}
           </button>
         </div>
       </div>

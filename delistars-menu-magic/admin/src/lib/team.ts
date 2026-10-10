@@ -10,6 +10,16 @@ export const ADMIN_EMAILS = [
 export const isAdminEmail = (email?: string | null): boolean =>
   !!email && ADMIN_EMAILS.includes(email.toLowerCase())
 
+// Mercadeo: entra al panel y solo ve las pestañas Mercadeo y Correo. Los
+// fijos van aquí; se pueden agregar más desde Empleados (roles_marketing).
+// Espejo de isMarketing() en firestore.rules — mantener sincronizado.
+export const MARKETING_EMAILS = [
+  'valenthina5431@gmail.com', // Valentina Álvarez
+]
+
+export const isMarketingEmail = (email?: string | null): boolean =>
+  !!email && MARKETING_EMAILS.includes(email.toLowerCase())
+
 // Admins de confianza total — pueden modificar fidelización (corregir progreso,
 // otorgar/anular premios). Subconjunto de ADMIN_EMAILS: puede haber admins que
 // vean fidelización pero no la modifiquen (hoy coincide con ADMIN_EMAILS).

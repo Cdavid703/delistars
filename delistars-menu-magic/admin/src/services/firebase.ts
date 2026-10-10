@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
@@ -19,5 +19,9 @@ export const db = getFirestore(app)
 export const storage = getStorage(app)
 export const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
+// Microsoft (cuentas personales y de trabajo). Requiere activar el proveedor
+// "Microsoft" en Firebase Authentication con la app registrada en Entra ID.
+export const microsoftProvider = new OAuthProvider('microsoft.com')
+microsoftProvider.setCustomParameters({ prompt: 'select_account' })
 
-export { ADMIN_EMAILS, isAdminEmail } from '@/lib/team'
+export { ADMIN_EMAILS, isAdminEmail, isMarketingEmail } from '@/lib/team'

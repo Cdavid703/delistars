@@ -8,9 +8,9 @@ import logo from '@/assets/logo.svg'
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
-  const { user, logout } = useAuthStore()
+  const { user, role, logout } = useAuthStore()
 
-  const navItems = [
+  const todos = [
     { label: 'Resumen', path: '/', icon: '📊' },
     { label: 'Productos', path: '/productos', icon: '🍔' },
     { label: 'Sedes', path: '/sedes', icon: '📍' },
@@ -18,10 +18,15 @@ const Layout = () => {
     { label: 'Reportes', path: '/reportes', icon: '📈' },
     { label: 'Clientes', path: '/clientes', icon: '👤' },
     { label: 'Empleados', path: '/usuarios', icon: '🧑‍🍳' },
+    { label: 'Mercadeo', path: '/mercadeo', icon: '📣' },
     { label: 'Correo', path: '/correo', icon: '✉️' },
     { label: 'Turnos', path: '/turnos', icon: '🗓️' },
     { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]
+  // Mercadeo ve solo sus pestañas; el admin ve todo.
+  const navItems = role === 'mercadeo'
+    ? todos.filter((i) => ['/mercadeo', '/correo'].includes(i.path))
+    : todos
 
   const isActive = (path: string) => location.pathname === path
 
@@ -40,7 +45,9 @@ const Layout = () => {
           </div>
           <div>
             <h1 className="text-2xl font-display font-bold text-primary leading-none">DeliStars</h1>
-            <p className="text-[11px] text-gray-400 mt-1 uppercase tracking-wider">Panel de Administración</p>
+            <p className="text-[11px] text-gray-400 mt-1 uppercase tracking-wider">
+              {role === 'mercadeo' ? 'Panel de Mercadeo' : 'Panel de Administración'}
+            </p>
           </div>
         </div>
 
@@ -100,7 +107,7 @@ const Layout = () => {
             </div>
             
             <div className="flex items-center gap-4">
-              <RoleSwitcher user={user} />
+              {role === 'admin' && <RoleSwitcher user={user} />}
               <div className="hidden sm:flex flex-col items-end">
                 <p className="text-sm font-semibold text-coal">
                   {user?.displayName || 'Administrador'}

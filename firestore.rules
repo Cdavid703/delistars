@@ -55,6 +55,19 @@ service cloud.firestore {
     }
     function isStaff() { return isAdmin() || isCashier() || isDriver(); }
 
+    // Mercadeo: entra al panel admin y solo ve Mercadeo y Correo. A propósito
+    // NO es staff: no lee pedidos, clientes ni caja. Solo maneja campañas y lee
+    // la audiencia (conteos sin datos personales, en config/mercadeo_audiencia).
+    // Espejo de MARKETING_EMAILS en delistars-menu-magic/admin/src/lib/team.ts.
+    function isMarketing() {
+      return isSignedIn() && !exists(/databases/$(database)/documents/roles_disabled/$(userEmail())) && (
+        userEmail() in [
+          'valenthina5431@gmail.com'
+        ]
+        || exists(/databases/$(database)/documents/roles_marketing/$(userEmail()))
+      );
+    }
+
     // Bot de Firebase Auth (correo/contraseña) dedicado SOLO a abrir/cerrar
     // la plataforma automáticamente (ver delistars-menu-magic/scheduler).
     // A propósito no es admin ni cajero: solo puede tocar config/client_platform
@@ -136,6 +149,8 @@ service cloud.firestore {
                        // Estadísticas de tiempo de entrega que publica el
                        // scheduler (medianas por sede — nada sensible).
                        docId == 'eta_stats'
+                       // Conteos de la audiencia de Mercadeo (sin datos personales).
+                       || docId == 'mercadeo_audiencia'
                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedBy','updatedAt'])
                      )
                    );
@@ -165,6 +180,10 @@ service cloud.firestore {
     match /roles_drivers/{email} {
       allow read:  if isSignedIn();
       allow write: if isAdmin() || isCashier();
+    }
+    match /roles_marketing/{email} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
     }
     // Bajas de empleados: anulan roles (fijos o dinámicos). Solo admin.
     match /roles_disabled/{email} {
@@ -301,6 +320,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
       allow read:   if isAdmin();
       allow update, delete: if false;
+    }
+
+    // ── Campañas de correo (pestaña Mercadeo del panel) ─────────────────────
+    // Las crean y editan Mercadeo y el admin. El envío lo hará el servidor,
+    // que lee los correos de los clientes con credenciales propias.
+    match /campanas/{campanaId} {
+      allow read, write: if isAdmin() || isMarketing();
     }
 
     // ── Todo lo demás: denegado ────────────────────────────────────────────

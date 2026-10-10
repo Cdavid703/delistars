@@ -13,6 +13,7 @@ import Usuarios from '@/pages/Usuarios'
 import Correo from '@/pages/Correo'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
+import Mercadeo from '@/pages/Mercadeo'
 import Layout from '@/components/Layout'
 import NotFound from '@/pages/NotFound'
 
@@ -27,7 +28,7 @@ function LoadingScreen() {
 }
 
 function App() {
-  const { user, ready } = useAuthStore()
+  const { user, role, ready } = useAuthStore()
 
   if (!ready) return <LoadingScreen />
 
@@ -39,10 +40,21 @@ function App() {
           <Routes>
             <Route path="*" element={<Login />} />
           </Routes>
+        ) : role === 'mercadeo' ? (
+          // Mercadeo: solo su pestaña y el correo. Cualquier otra ruta vuelve a Mercadeo.
+          <Routes>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Navigate to="/mercadeo" replace />} />
+              <Route path="mercadeo" element={<Mercadeo />} />
+              <Route path="correo" element={<Correo />} />
+              <Route path="*" element={<Navigate to="/mercadeo" replace />} />
+            </Route>
+          </Routes>
         ) : (
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
+              <Route path="mercadeo" element={<Mercadeo />} />
               <Route path="productos" element={<Productos />} />
               <Route path="sedes" element={<Sedes />} />
               <Route path="domicilios" element={<Domicilios />} />

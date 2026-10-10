@@ -1318,11 +1318,21 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     }
   }, [errors])
 
+
+  // Permiso para promociones por correo (Ley 1581): casilla desmarcada por
+  // defecto, solo para quien entró con una cuenta que tiene correo. Solo se
+  // guarda cuando la marca; si no, se le vuelve a ofrecer en otro pedido.
+  // undefined = cargando, null = nunca aceptó, true = ya aceptó.
+  const [promoGuardada, setPromoGuardada] = useState(undefined)
+  const [quierePromos,  setQuierePromos]  = useState(false)
+  const ofrecerPromos = !!user?.email && promoGuardada === null
+
   useEffect(() => {
     if (!user?.uid) return
     getDoc(doc(db, 'customers', user.uid)).then(snap => {
-      if (!snap.exists()) return
+      if (!snap.exists()) { setPromoGuardada(null); return }
       const data = snap.data()
+      setPromoGuardada(data.promociones?.acepta ?? null)
       setForm(f => ({
         ...f,
         name:  data.name  || f.name,
@@ -1332,6 +1342,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   }, [user?.uid])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
 
   const handleSubmit = async () => {
     const errs = []
@@ -1410,6 +1421,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           },
         } : {}),
       })
+      if (ofrecerPromos && quierePromos) {
+        setDoc(doc(db, 'customers', user.uid), {
+          promociones: { acepta: true, fecha: serverTimestamp(), fuente: 'checkout', email: user.email },
+        }, { merge: true }).catch(() => {})
+      }
     } catch (err) {
       // Falló el envío: se reactiva el autoguardado para no perder el borrador.
       submittingRef.current = false
@@ -1493,6 +1509,16 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           <input className="input-field" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="3001234567" type="tel" />
         </div>
       </div>
+
+      {ofrecerPromos && (
+        <label className="flex items-start gap-2.5 cursor-pointer select-none -mt-1">
+          <input type="checkbox" checked={quierePromos} onChange={e => setQuierePromos(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-cherry flex-shrink-0" />
+          <span className="font-body text-xs text-coal/70 leading-relaxed">
+            Quiero recibir promociones de DeliStars en mi correo ({user.email}). Puedes darte de baja cuando quieras.
+          </span>
+        </label>
+      )}
 
       {form.deliveryMode === 'pickup' && (
         <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-start gap-2">

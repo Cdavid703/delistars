@@ -8,6 +8,7 @@ const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
 const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
+const { calcularAudiencia } = require('./audiencia')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
 const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
@@ -99,6 +100,29 @@ async function updateEtaStats() {
     console.log('[scheduler] eta_stats actualizado:', JSON.stringify(stats))
   } catch (err) {
     console.error('[scheduler] Error al actualizar eta_stats:', err?.code || err?.message || err)
+  }
+}
+
+// ─── Audiencia de Mercadeo ────────────────────────────────────────────────────
+// Conteos por segmento para la pestaña Mercadeo del panel (ver audiencia.js).
+// Lee con la SA de solo lectura y publica con el bot en config/mercadeo_audiencia.
+async function updateAudiencia() {
+  try {
+    const desde = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+    const [cs, ps] = await Promise.all([
+      adminDb.collection('customers').select('email', 'promociones', 'loyalty').get(),
+      adminDb.collection('orders').where('createdAt', '>=', desde).select('clientUid', 'status', 'sedeId', 'createdAt').get(),
+    ])
+    const clientes = cs.docs.map((d) => ({ uid: d.id, ...d.data() }))
+    const pedidos = ps.docs.map((d) => {
+      const o = d.data()
+      return { clientUid: o.clientUid, status: o.status, sedeId: o.sedeId, createdAtMs: o.createdAt?.toMillis?.() || 0 }
+    })
+    const aud = calcularAudiencia(clientes, pedidos)
+    await setDoc(doc(db, 'config', 'mercadeo_audiencia'), { ...aud, actualizado: serverTimestamp() })
+    console.log(`[scheduler] audiencia mercadeo: ${aud.conCorreo} con correo, ${aud.aceptan} aceptan`)
+  } catch (err) {
+    console.error('[scheduler] Error al actualizar la audiencia:', err?.code || err?.message || err)
   }
 }
 
@@ -500,6 +524,9 @@ async function main() {
       cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
       // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
       cron.schedule('*/3 17-23 * * *', checkStuckOrders, { timezone: TIMEZONE })
+      // Audiencia de Mercadeo: cada hora y una vez al arrancar.
+      cron.schedule('5 * * * *', updateAudiencia, { timezone: TIMEZONE })
+      updateAudiencia()
       // Prospectos de la página /empresas → aviso inmediato por WhatsApp.
       try { watchCorporateLeads() } catch (err) { console.error('[scheduler] leads corp deshabilitado:', err?.message || err) }
       console.log(`[scheduler] WhatsApp ${WA_APIKEY ? 'ACTIVO' : 'pendiente de CALLMEBOT_APIKEY'} → ${WA_PHONE} (resumen 11:45pm + alertas de pedidos atascados)`)
