@@ -8,6 +8,7 @@ import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { fmtCOP } from '@/lib/orders'
 import type { Campana } from '@/lib/mercadeo'
+import SubirImagen from '@/components/mercadeo/SubirImagen'
 import {
   TIPOS, ESTADOS, SEDES_ACT, tipoDe, fechaTexto, semanasDelMes, actividadesDelDia, pendienteDeCerrar,
   fechasComerciales, periodoComparacion, resumenPeriodo, variacion, deTexto, sumarDias,
@@ -297,9 +298,17 @@ function EditorActividad({ a: inicial, hoy, onCerrar }: { a: Borrador; hoy: stri
           <label className="text-xs font-medium text-coal">Enlaces (uno por línea: el post, la pieza gráfica…)
             <textarea className={`${campo} h-16`} value={a.enlaces || ''} onChange={(e) => set('enlaces', e.target.value)} placeholder="https://instagram.com/p/…" />
           </label>
+          <div className="text-xs font-medium text-coal flex flex-col gap-1">Pieza gráfica (opcional)
+            <SubirImagen carpeta="calendario" texto="Subir la pieza gráfica"
+              onCambio={(url) => { if (url) set('enlaces', [a.enlaces?.trim(), url].filter(Boolean).join('\n')) }} />
+          </div>
           {enlaces.length > 0 && (
             <div className="flex flex-col gap-1">
-              {enlaces.map((l) => (
+              {enlaces.map((l) => /firebasestorage\.googleapis\.com/.test(l) ? (
+                <a key={l} href={l} target="_blank" rel="noopener noreferrer" title="Ver imagen">
+                  <img src={l} alt="" className="h-20 rounded-md border border-gray-200 object-cover" />
+                </a>
+              ) : (
                 <a key={l} href={l} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline inline-flex items-center gap-1 truncate">
                   <ExternalLink className="w-3 h-3 shrink-0" /> {l}
                 </a>

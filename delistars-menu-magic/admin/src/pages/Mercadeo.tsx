@@ -5,6 +5,7 @@ import {
 import { toast } from 'sonner'
 import { Users, Megaphone, Plus, Save, Trash2, Send, Eye, Pencil, Info, CalendarDays } from 'lucide-react'
 import Calendario from '@/components/mercadeo/Calendario'
+import SubirImagen from '@/components/mercadeo/SubirImagen'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import logo from '@/assets/logo.svg'
@@ -247,9 +248,13 @@ function EditorCampana({ c, setC, aud, onGuardar, onCancelar, guardando }: {
             placeholder={'Hola, {nombre} 👋\n\nEste martes...'} />
           <span className="text-[11px] text-muted-fg">Escribe {'{nombre}'} y se reemplaza por el primer nombre de cada cliente.</span>
         </label>
-        <label className="text-xs font-medium text-coal">Imagen (opcional, enlace https://)
-          <input className={campo} value={c.imagenUrl || ''} onChange={(e) => set('imagenUrl', e.target.value)} placeholder="https://…/promo.jpg" />
-        </label>
+        <div className="text-xs font-medium text-coal flex flex-col gap-1">Imagen (opcional)
+          <SubirImagen valor={c.imagenUrl} onCambio={(url) => set('imagenUrl', url)} />
+          <details className="text-[11px] text-muted-fg">
+            <summary className="cursor-pointer">¿La imagen ya está en internet? Pega el enlace</summary>
+            <input className={`${campo} mt-1`} value={c.imagenUrl || ''} onChange={(e) => set('imagenUrl', e.target.value)} placeholder="https://…/promo.jpg" />
+          </details>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-medium text-coal">Texto del botón
             <input className={campo} value={c.botonTexto || ''} onChange={(e) => set('botonTexto', e.target.value)} />
