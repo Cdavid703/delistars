@@ -329,6 +329,11 @@ service cloud.firestore {
     // que lee los correos de los clientes con credenciales propias.
     match /campanas/{campanaId} {
       allow read, write: if isAdmin() || isMarketing();
+      // El scheduler (bot) registra el avance del envío y puede corregir el
+      // texto o el enlace del botón. No crea ni borra campañas.
+      allow update: if isAutoOpenBot()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['envio', 'estado', 'mensaje', 'botonUrl', 'actualizadoAt']);
     }
 
     // ── Todo lo de la pestaña Mercadeo (calendario y lo que venga) ─────────

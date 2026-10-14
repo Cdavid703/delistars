@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { promoDe } from "@/lib/promos";
 import type { Product as ApiProduct } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/context/CartContext";
@@ -24,7 +25,9 @@ export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick
           loading="lazy"
           width={768}
           height={768}
-          className="w-full h-full object-cover transition-bounce group-hover:scale-110"
+          // Las piezas de campaña (combos de promo) se ven completas sobre su naranja.
+          className={`w-full h-full transition-bounce group-hover:scale-110 ${promoDe(product.nombre_producto) ? "object-contain" : "object-cover"}`}
+          style={promoDe(product.nombre_producto) ? { backgroundColor: "#FC7F09" } : undefined}
         />
       </div>
       <div className="p-5 flex flex-col gap-3 flex-1">

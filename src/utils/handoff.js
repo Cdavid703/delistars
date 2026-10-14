@@ -20,6 +20,10 @@ export function handoffItemLine(it) {
   if (it.notes) line += ` — "${it.notes}"`
   const lineTotal = (Number(it.unitPrice) || 0) * (it.quantity || 1)
   if (lineTotal > 0) line += ` (= $${lineTotal.toLocaleString('es-CO')})`
+  // Combos de promoción: cada hamburguesa/perro en su propia línea, debajo.
+  if (Array.isArray(it.unidades)) {
+    for (const u of it.unidades) if (u) line += `\n   ↳ ${u}`
+  }
   return line
 }
 
@@ -72,6 +76,7 @@ function cartItemToHandoffItem(it) {
     salsas:    (it.salsas   || []).map(s => s.name),
     cebollas:  (it.cebollas || []).map(c => c.name),
     notes:     it.notes || '',
+    unidades:  Array.isArray(it.unidadesTexto) ? it.unidadesTexto : undefined,
   }
 }
 

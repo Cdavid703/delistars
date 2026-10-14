@@ -26,6 +26,7 @@ import productsRoutes from './modules/modulo_products/routes/products.routes';
 import categoriesRoutes from './modules/modulo_categories/routes/categories.routes';
 import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
 import rutasRoutes from './modules/modulo_rutas/routes/rutas.routes';
+import mercadeoRoutes from './modules/modulo_mercadeo/routes/mercadeo.routes';
 
 const app: Express = express();
 
@@ -109,6 +110,7 @@ app.use(`${apiPrefix}/products`, productsRoutes);
 app.use(`${apiPrefix}/categories`, categoriesRoutes);
 app.use(`${apiPrefix}/sedes`, sedesRoutes);
 app.use(`${apiPrefix}/rutas`, rutasRoutes);
+app.use(`${apiPrefix}/mercadeo`, mercadeoRoutes);
 
 // 404 Handler
 app.use((_req: Request, res: Response) => {

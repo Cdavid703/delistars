@@ -163,7 +163,8 @@ function CampanasTab({ aud, lista }: { aud: Audiencia | null; lista: Campana[] }
   }
 
   if (editando) {
-    return <EditorCampana c={editando} setC={setEditando} aud={aud} onGuardar={guardar}
+    const vivo = 'id' in editando ? lista.find((x) => x.id === editando.id) : undefined
+    return <EditorCampana c={editando} vivo={vivo} setC={setEditando} aud={aud} onGuardar={guardar}
       onCancelar={() => setEditando(null)} guardando={guardando} />
   }
 
@@ -211,8 +212,9 @@ function CampanasTab({ aud, lista }: { aud: Audiencia | null; lista: Campana[] }
   )
 }
 
-function EditorCampana({ c, setC, aud, onGuardar, onCancelar, guardando }: {
+function EditorCampana({ c, vivo, setC, aud, onGuardar, onCancelar, guardando }: {
   c: Campana | Omit<Campana, 'id'>
+  vivo?: Campana
   setC: (c: Campana | Omit<Campana, 'id'>) => void
   aud: Audiencia | null
   onGuardar: () => void
@@ -266,20 +268,80 @@ function EditorCampana({ c, setC, aud, onGuardar, onCancelar, guardando }: {
         <div className="flex gap-2 flex-wrap pt-2">
           <button onClick={onGuardar} disabled={guardando}
             className="bg-primary text-white font-semibold rounded-lg px-4 py-2.5 text-sm inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-50">
-            <Save className="w-4 h-4" /> {guardando ? 'Guardando…' : 'Guardar borrador'}
+            <Save className="w-4 h-4" /> {guardando ? 'Guardando…' : 'Guardar'}
           </button>
           <button onClick={onCancelar} className="border border-gray-300 rounded-lg px-4 py-2.5 text-sm hover:bg-gray-50">Cancelar</button>
-          <button disabled title="Se activa cuando se configure el envío de correos"
-            className="ml-auto border border-gray-200 text-muted-fg rounded-lg px-4 py-2.5 text-sm inline-flex items-center gap-2 cursor-not-allowed">
-            <Send className="w-4 h-4" /> Enviar (pendiente de configurar el correo)
-          </button>
         </div>
+        {vivo
+          ? <EnvioCampana c={vivo} destinatarios={destinatarios} />
+          : <p className="text-[11px] text-muted-fg">Guarda la campaña para poder enviar la prueba y la campaña.</p>}
       </div>
 
       <div>
         <p className="text-xs font-medium text-muted-fg mb-2 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Vista previa</p>
         <VistaPrevia c={c} />
       </div>
+    </div>
+  )
+}
+
+/**
+ * Envío de la campaña: primero una prueba al correo de quien la está armando,
+ * después a los clientes del segmento que aceptaron promociones. El panel solo
+ * pide el envío (envio.estado); lo hace el servidor desde marketing@delistars.com.
+ */
+function EnvioCampana({ c, destinatarios }: { c: Campana; destinatarios: number }) {
+  const { user } = useAuthStore()
+  const [pidiendo, setPidiendo] = useState(false)
+  const e = c.envio
+  const pedir = async (datos: Record<string, unknown>) => {
+    setPidiendo(true)
+    try { await updateDoc(doc(db, 'campanas', c.id), datos) }
+    catch { toast.error('No se pudo pedir el envío') }
+    finally { setPidiendo(false) }
+  }
+  const prueba = () => pedir({
+    envio: { estado: 'prueba_solicitada', pruebaA: user?.email || '', pruebaNombre: user?.displayName || '',
+      solicitadoPor: user?.email || '', solicitadoAt: serverTimestamp(), error: null },
+  })
+  const enviar = () => {
+    if (!confirm(`¿Enviar "${c.asunto}" a ${destinatarios} cliente${destinatarios !== 1 ? 's' : ''}? Esto no se puede deshacer.`)) return
+    pedir({
+      'envio.estado': 'solicitado', 'envio.solicitadoPor': user?.email || '',
+      'envio.solicitadoAt': serverTimestamp(), 'envio.error': null,
+    })
+  }
+  const ocupado = pidiendo || ['prueba_solicitada', 'solicitado', 'enviando'].includes(e?.estado || '')
+  const yaEnviada = e?.estado === 'enviada'
+  const pausada = e?.estado === 'pausada'
+
+  return (
+    <div className="border-t border-gray-200 pt-4 flex flex-col gap-2">
+      <p className="text-xs font-semibold text-coal">Enviar por correo (desde marketing@delistars.com)</p>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={prueba} disabled={ocupado}
+          className="border border-primary text-primary rounded-lg px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 hover:bg-primary/5 disabled:opacity-50">
+          <Send className="w-4 h-4" /> Enviarme una prueba
+        </button>
+        <button onClick={enviar} disabled={ocupado || yaEnviada || destinatarios === 0}
+          title={destinatarios === 0 ? 'Nadie de este grupo ha aceptado promociones todavía' : undefined}
+          className="bg-coal text-white rounded-lg px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-40">
+          <Send className="w-4 h-4" /> {pausada ? 'Continuar envío' : `Enviar a ${n(destinatarios)} cliente${destinatarios !== 1 ? 's' : ''}`}
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-fg">
+        Primero envíate la prueba y revísala en tu correo. Guarda los cambios antes de enviar: se envía lo último guardado.
+      </p>
+      {e && (
+        <p className={`text-xs rounded-lg px-3 py-2 ${e.estado === 'error' || pausada ? 'bg-red-50 text-red-700' : e.estado === 'enviada' ? 'bg-emerald-50 text-emerald-800' : 'bg-sky-50 text-sky-800'}`}>
+          {e.estado === 'prueba_solicitada' && 'Enviando la prueba…'}
+          {e.estado === 'prueba_enviada' && `✓ Prueba enviada a ${e.pruebaA}. Revisa tu bandeja (y la carpeta de spam).`}
+          {e.estado === 'solicitado' && 'Preparando el envío…'}
+          {e.estado === 'enviando' && `Enviando… ${n(e.enviados)} de ${n(e.total)}`}
+          {e.estado === 'enviada' && `✓ Enviada a ${n(e.enviados)} cliente${e.enviados !== 1 ? 's' : ''}${e.fallidos ? ` (${e.fallidos} no se pudieron entregar)` : ''}.`}
+          {(e.estado === 'error' || pausada) && (e.error || 'Algo falló al enviar.')}
+        </p>
+      )}
     </div>
   )
 }

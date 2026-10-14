@@ -37,3 +37,24 @@ test('sin datos, todos los segmentos existen en cero', () => {
   assert.equal(Object.keys(r.segmentos).length, 7)
   assert.deepEqual(r.segmentos.frecuentes, { clientes: 0, aceptan: 0 })
 })
+
+const { destinatarios } = require('./audiencia')
+
+test('destinatarios: solo los que aceptan, del segmento, sin bajas y sin correos repetidos', () => {
+  const clientes = [
+    { uid: 'a', email: 'a@x.com', promociones: { acepta: true } },
+    { uid: 'a2', email: 'A@x.com', promociones: { acepta: true } },   // mismo correo, otra cuenta
+    { uid: 'b', email: 'b@x.com', promociones: { acepta: true } },    // se dio de baja
+    { uid: 'c', email: 'c@x.com', promociones: { acepta: false } },
+    { uid: 'd', email: 'd@x.com', promociones: { acepta: true } },
+  ]
+  const pedidos = [{ clientUid: 'd', status: 'completed', sedeId: 'santa_teresita', createdAtMs: AHORA - 864e5 }]
+  const bajas = new Set(['b'])
+  assert.deepEqual(destinatarios('todos', clientes, pedidos, AHORA, bajas).map((c) => c.uid), ['a', 'd'])
+  assert.deepEqual(destinatarios('santa_teresita', clientes, pedidos, AHORA, bajas).map((c) => c.uid), ['d'])
+})
+
+test('la audiencia tampoco cuenta como "aceptan" a quien se dio de baja', () => {
+  const clientes = [{ uid: 'a', email: 'a@x.com', promociones: { acepta: true } }]
+  assert.equal(calcularAudiencia(clientes, [], AHORA, new Set(['a'])).aceptan, 0)
+})

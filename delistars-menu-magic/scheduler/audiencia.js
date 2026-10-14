@@ -9,55 +9,78 @@
 
 const ENTREGADOS = ['delivered_paid', 'delivered_cash', 'pending_cuadre', 'completed']
 const DIA_MS = 24 * 60 * 60 * 1000
-
-/** ¿Aceptó promociones? (casilla del checkout: customers/{uid}.promociones.acepta) */
-const acepta = (c) => c?.promociones?.acepta === true
+const SEGMENTOS = ['todos', 'santa_lucia', 'santa_teresita', 'inactivos30', 'frecuentes', 'nuevos', 'cercaPremio']
 
 /**
- * clientes: [{ uid, email, promociones, loyalty }]
- * pedidos:  [{ clientUid, status, sedeId, createdAtMs }]
+ * ¿Aceptó promociones? (casilla del checkout o tarjeta de la app:
+ * customers/{uid}.promociones.acepta) y no se dio de baja desde un correo.
  */
-function calcularAudiencia(clientes, pedidos, ahoraMs = Date.now()) {
-  const porCliente = new Map()
+const acepta = (c, bajas) => c?.promociones?.acepta === true && !bajas?.has(c.uid)
+
+/** Resumen de pedidos entregados por cliente: { pedidos, ultimo, sedes }. */
+function resumenPorCliente(pedidos) {
+  const m = new Map()
   for (const p of pedidos) {
     if (!p.clientUid || !ENTREGADOS.includes(p.status)) continue
-    const r = porCliente.get(p.clientUid) || { pedidos: 0, ultimo: 0, sedes: {} }
+    const r = m.get(p.clientUid) || { pedidos: 0, ultimo: 0, sedes: {} }
     r.pedidos++
     r.ultimo = Math.max(r.ultimo, p.createdAtMs || 0)
     if (p.sedeId) r.sedes[p.sedeId] = (r.sedes[p.sedeId] || 0) + 1
-    porCliente.set(p.clientUid, r)
+    m.set(p.clientUid, r)
   }
+  return m
+}
 
-  const segmentos = {}
-  const sumar = (id, c) => {
-    const s = segmentos[id] || (segmentos[id] = { clientes: 0, aceptan: 0 })
-    s.clientes++
-    if (acepta(c)) s.aceptan++
+/** Segmentos a los que pertenece un cliente con correo. */
+function segmentosDe(c, r, ahoraMs = Date.now()) {
+  const s = ['todos']
+  if (r) {
+    const habitual = Object.entries(r.sedes).sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (habitual) s.push(habitual)
+    if (r.ultimo && ahoraMs - r.ultimo > 30 * DIA_MS) s.push('inactivos30')
+    if (r.pedidos >= 5) s.push('frecuentes')
+    if (r.pedidos === 1) s.push('nuevos')
   }
+  // Ciclos de 10: con 9 sellos, el próximo pedido trae el premio.
+  if (Object.values(c.loyalty || {}).some((l) => (Number(l?.count) || 0) % 10 === 9)) s.push('cercaPremio')
+  return s
+}
 
+/**
+ * clientes: [{ uid, email, name, promociones, loyalty }]
+ * pedidos:  [{ clientUid, status, sedeId, createdAtMs }]
+ * bajas:    Set de uids que se dieron de baja desde un correo
+ */
+function calcularAudiencia(clientes, pedidos, ahoraMs = Date.now(), bajas = new Set()) {
+  const resumen = resumenPorCliente(pedidos)
+  const segmentos = Object.fromEntries(SEGMENTOS.map((id) => [id, { clientes: 0, aceptan: 0 }]))
   let conCorreo = 0
   let aceptan = 0
   for (const c of clientes) {
     if (!c.email) continue
     conCorreo++
-    if (acepta(c)) aceptan++
-    sumar('todos', c)
-    const r = porCliente.get(c.uid)
-    if (r) {
-      const habitual = Object.entries(r.sedes).sort((a, b) => b[1] - a[1])[0]?.[0]
-      if (habitual) sumar(habitual, c)
-      if (r.ultimo && ahoraMs - r.ultimo > 30 * DIA_MS) sumar('inactivos30', c)
-      if (r.pedidos >= 5) sumar('frecuentes', c)
-      if (r.pedidos === 1) sumar('nuevos', c)
+    const si = acepta(c, bajas)
+    if (si) aceptan++
+    for (const id of segmentosDe(c, resumen.get(c.uid), ahoraMs)) {
+      const s = segmentos[id] || (segmentos[id] = { clientes: 0, aceptan: 0 })
+      s.clientes++
+      if (si) s.aceptan++
     }
-    // Ciclos de 10: con 9 sellos, el próximo pedido trae el premio.
-    if (Object.values(c.loyalty || {}).some((l) => (Number(l?.count) || 0) % 10 === 9)) sumar('cercaPremio', c)
-  }
-
-  for (const id of ['todos', 'santa_lucia', 'santa_teresita', 'inactivos30', 'frecuentes', 'nuevos', 'cercaPremio']) {
-    segmentos[id] = segmentos[id] || { clientes: 0, aceptan: 0 }
   }
   return { clientes: clientes.length, conCorreo, aceptan, segmentos }
 }
 
-module.exports = { calcularAudiencia }
+/** Clientes a los que se les puede enviar una campaña de ese segmento. */
+function destinatarios(segmento, clientes, pedidos, ahoraMs = Date.now(), bajas = new Set()) {
+  const resumen = resumenPorCliente(pedidos)
+  const vistos = new Set()
+  return clientes.filter((c) => {
+    const email = String(c.email || '').trim().toLowerCase()
+    if (!email || vistos.has(email) || !acepta(c, bajas)) return false
+    if (!segmentosDe(c, resumen.get(c.uid), ahoraMs).includes(segmento)) return false
+    vistos.add(email) // un correo por persona aunque tenga dos cuentas
+    return true
+  })
+}
+
+module.exports = { calcularAudiencia, destinatarios, segmentosDe, SEGMENTOS }

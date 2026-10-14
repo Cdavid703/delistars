@@ -5,10 +5,12 @@
 // llave de admin que tendría acceso a toda la base de datos.
 const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
-const { getFirestore, doc, setDoc, serverTimestamp } = require('firebase/firestore')
+const { getFirestore, doc, setDoc, updateDoc, serverTimestamp } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
-const { calcularAudiencia } = require('./audiencia')
+const { calcularAudiencia, destinatarios } = require('./audiencia')
+const { armarCorreo } = require('./correoCampana')
+const nodemailer = require('nodemailer')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -119,12 +121,130 @@ async function updateAudiencia() {
       const o = d.data()
       return { clientUid: o.clientUid, status: o.status, sedeId: o.sedeId, createdAtMs: o.createdAt?.toMillis?.() || 0 }
     })
-    const aud = calcularAudiencia(clientes, pedidos)
+    const aud = calcularAudiencia(clientes, pedidos, Date.now(), await bajasMercadeo())
     await setDoc(doc(db, 'config', 'mercadeo_audiencia'), { ...aud, actualizado: serverTimestamp() })
     console.log(`[scheduler] audiencia mercadeo: ${aud.conCorreo} con correo, ${aud.aceptan} aceptan`)
   } catch (err) {
     console.error('[scheduler] Error al actualizar la audiencia:', err?.code || err?.message || err)
   }
+}
+
+// ─── Envío de campañas de correo (pestaña Mercadeo) ─────────────────────────
+// Mercadeo oprime "Enviarme una prueba" o "Enviar" y el panel escribe en la
+// campaña envio.estado = 'prueba_solicitada' | 'solicitado'. Aquí se ve ese
+// cambio y se envía desde marketing@delistars.com (SMTP de Hostinger), uno
+// por uno, solo a quienes aceptaron promociones y no se dieron de baja.
+// El avance queda en la campaña (envio.*) para que el panel lo muestre.
+const SMTP_LISTO = !!(process.env.SMTP_USER && process.env.SMTP_PASS)
+const PAUSA_MS = Number(process.env.MERCADEO_PAUSA_MS || 2500)
+const MAX_ENVIO = Number(process.env.MERCADEO_MAX_ENVIO || 400)
+let transporte = null
+const smtp = () => transporte || (transporte = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  port: Number(process.env.SMTP_PORT || 465),
+  secure: Number(process.env.SMTP_PORT || 465) === 465,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+}))
+
+/** uids que se dieron de baja (los guarda el backend al hacer clic en el correo). */
+async function bajasMercadeo() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/v1/mercadeo/bajas`, {
+      headers: { 'x-mercadeo-secret': process.env.MERCADEO_SECRET || '' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) throw new Error(`bajas ${res.status}`)
+    return new Set((await res.json()).uids || [])
+  } catch (err) {
+    console.error('[scheduler] no se pudieron leer las bajas:', err?.message || err)
+    return null // sin la lista de bajas NO se envía (ver enviarCampana)
+  }
+}
+
+const enProceso = new Set()
+const actualizarCampana = (id, datos) => updateDoc(doc(db, 'campanas', id), datos)
+
+async function enviarCampana(id, c) {
+  const clave = process.env.MERCADEO_SECRET || ''
+  const estado = c.envio?.estado
+  if (!SMTP_LISTO || !clave) {
+    await actualizarCampana(id, { 'envio.estado': 'error', 'envio.error': 'El correo de envío todavía no está configurado en el servidor.' })
+    return
+  }
+  if (estado === 'prueba_solicitada') {
+    const para = String(c.envio?.pruebaA || '').trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(para)) {
+      await actualizarCampana(id, { 'envio.estado': 'error', 'envio.error': 'Falta el correo para la prueba.' })
+      return
+    }
+    await smtp().sendMail(armarCorreo(c, { uid: 'prueba', email: para, name: c.envio?.pruebaNombre || '' }, clave))
+    await actualizarCampana(id, { 'envio.estado': 'prueba_enviada', 'envio.pruebaEnviadaAt': serverTimestamp(), 'envio.error': null })
+    console.log(`[scheduler] campaña ${id}: prueba enviada`)
+    return
+  }
+
+  // Envío real. Sin la lista de bajas no se envía: es preferible esperar a
+  // escribirle a alguien que pidió no recibir más.
+  const bajas = await bajasMercadeo()
+  if (!bajas) {
+    await actualizarCampana(id, { 'envio.estado': 'error', 'envio.error': 'No se pudo revisar la lista de bajas. Intenta de nuevo en un momento.' })
+    return
+  }
+  const desde = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+  const [cs, ps] = await Promise.all([
+    adminDb.collection('customers').select('email', 'name', 'promociones', 'loyalty').get(),
+    adminDb.collection('orders').where('createdAt', '>=', desde).select('clientUid', 'status', 'sedeId', 'createdAt').get(),
+  ])
+  const pedidos = ps.docs.map((d) => { const o = d.data(); return { clientUid: o.clientUid, status: o.status, sedeId: o.sedeId, createdAtMs: o.createdAt?.toMillis?.() || 0 } })
+  const ya = new Set(c.envio?.enviadosUids || [])  // si se reinicia a mitad, no repite
+  const lista = destinatarios(c.segmento || 'todos', cs.docs.map((d) => ({ uid: d.id, ...d.data() })), pedidos, Date.now(), bajas)
+    .filter((x) => !ya.has(x.uid)).slice(0, MAX_ENVIO)
+
+  await actualizarCampana(id, { 'envio.estado': 'enviando', 'envio.total': ya.size + lista.length, 'envio.error': null })
+  let enviados = ya.size
+  let fallidos = c.envio?.fallidos || 0
+  const enviadosUids = [...ya]
+  for (const cliente of lista) {
+    try {
+      await smtp().sendMail(armarCorreo(c, cliente, clave))
+      enviados++
+      enviadosUids.push(cliente.uid)
+    } catch (err) {
+      fallidos++
+      console.error(`[scheduler] campaña ${id}: falló un envío:`, err?.code || err?.message || err)
+      // Hostinger corta si se pasa del límite: se para y se avisa.
+      if (/limit|quota|rate|421|450|451|452|550 5\.7/i.test(String(err?.message || err?.code || ''))) {
+        await actualizarCampana(id, { 'envio.estado': 'pausada', 'envio.enviados': enviados, 'envio.fallidos': fallidos, 'envio.enviadosUids': enviadosUids,
+          'envio.error': 'El servidor de correo pidió pausar (límite de envíos). Vuelve a oprimir Enviar más tarde: no se repite a quien ya le llegó.' })
+        return
+      }
+    }
+    if (enviados % 10 === 0) await actualizarCampana(id, { 'envio.enviados': enviados, 'envio.fallidos': fallidos, 'envio.enviadosUids': enviadosUids })
+    await new Promise((r) => setTimeout(r, PAUSA_MS))
+  }
+  await actualizarCampana(id, {
+    estado: 'enviada', 'envio.estado': 'enviada', 'envio.enviados': enviados, 'envio.fallidos': fallidos,
+    'envio.enviadosUids': enviadosUids, 'envio.enviadaAt': serverTimestamp(),
+  })
+  console.log(`[scheduler] campaña ${id}: enviada a ${enviados} (${fallidos} fallidos)`)
+}
+
+function watchCampanas() {
+  adminDb.collection('campanas').where('envio.estado', 'in', ['prueba_solicitada', 'solicitado'])
+    .onSnapshot((snap) => {
+      for (const d of snap.docs) {
+        const clave = `${d.id}:${d.data().envio?.estado}:${d.data().envio?.solicitadoAt?.toMillis?.() || ''}`
+        if (enProceso.has(clave)) continue
+        enProceso.add(clave)
+        enviarCampana(d.id, d.data())
+          .catch(async (err) => {
+            console.error(`[scheduler] campaña ${d.id}: error al enviar:`, err?.message || err)
+            await actualizarCampana(d.id, { 'envio.estado': 'error', 'envio.error': `No se pudo enviar: ${err?.message || err}` }).catch(() => {})
+          })
+          .finally(() => enProceso.delete(clave))
+      }
+    }, (err) => console.error('[scheduler] watch campañas error:', err?.message || err))
+  console.log(`[scheduler] envío de campañas activo (${SMTP_LISTO ? 'SMTP listo' : 'SMTP pendiente de SMTP_USER/SMTP_PASS'})`)
 }
 
 // ─── Aviso diario de Mercadeo a administración ───────────────────────────────
@@ -544,6 +664,8 @@ async function main() {
       cron.schedule('*/3 17-23 * * *', checkStuckOrders, { timezone: TIMEZONE })
       // Lo que tiene Mercadeo hoy → celular de administración, 10:00 a. m.
       cron.schedule('0 10 * * *', avisarMercadeoDelDia, { timezone: TIMEZONE })
+      // Campañas de correo: envía cuando Mercadeo lo pide desde el panel.
+      try { watchCampanas() } catch (err) { console.error('[scheduler] envío de campañas deshabilitado:', err?.message || err) }
       // Audiencia de Mercadeo: cada hora y una vez al arrancar.
       cron.schedule('5 * * * *', updateAudiencia, { timezone: TIMEZONE })
       updateAudiencia()

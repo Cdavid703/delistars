@@ -113,3 +113,27 @@ test('carrito del menú vacío o corrupto devuelve null', () => {
   assert.equal(parseMenuCart('{roto', NOW), null)
   assert.equal(parseMenuCart(JSON.stringify({ savedAt: NOW, items: [] }), NOW), null)
 })
+
+test('combo de promoción: cada unidad va en su propia línea debajo del combo', () => {
+  const line = handoffItemLine({
+    name: 'Combo Quincena', quantity: 1, unitPrice: 52900, addons: [], salsas: [], cebollas: [], notes: '',
+    unidades: [
+      'Hamburguesa 1 · Salsas: Rosada · Bebida: Coca Cola Zero Pet 400 ml',
+      'Hamburguesa 2 · Sin salsas · Bebida: Coca Cola Sabor Original Pet 400 ml',
+    ],
+  })
+  assert.equal(line,
+    '1x Combo Quincena (= $52.900)\n' +
+    '   ↳ Hamburguesa 1 · Salsas: Rosada · Bebida: Coca Cola Zero Pet 400 ml\n' +
+    '   ↳ Hamburguesa 2 · Sin salsas · Bebida: Coca Cola Sabor Original Pet 400 ml')
+})
+
+test('rescate del carrito: también trae las unidades del combo', () => {
+  const raw = JSON.stringify({ items: [{
+    product: { nombre_producto: 'Combo Parche' }, quantity: 1, unitPrice: 94900,
+    addons: [], salsas: [], cebollas: [], notes: '',
+    unidadesTexto: ['Perro 1 · Sin salsas · Bebida: Uva Postobón Pet 400 ml'],
+  }], savedAt: Date.now() })
+  const r = parseMenuCart(raw)
+  assert.match(r.itemsText, /1x Combo Parche \(= \$94\.900\)\n   ↳ Perro 1 · Sin salsas · Bebida: Uva Postobón Pet 400 ml/)
+})

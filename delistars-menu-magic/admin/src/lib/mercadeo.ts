@@ -38,6 +38,18 @@ export interface Campana {
   /** Fecha prevista de envío ('yyyy-mm-dd'): la campaña aparece en el calendario. */
   fechaPrevista?: string
   estado: 'borrador' | 'enviada'
+  /** Envío por correo: lo pide el panel y lo hace el scheduler (marketing@delistars.com). */
+  envio?: {
+    estado: 'prueba_solicitada' | 'prueba_enviada' | 'solicitado' | 'enviando' | 'enviada' | 'pausada' | 'error'
+    pruebaA?: string
+    total?: number
+    enviados?: number
+    fallidos?: number
+    error?: string | null
+    solicitadoPor?: string
+    solicitadoAt?: Timestamp
+    enviadaAt?: Timestamp
+  }
   creadoPor?: string
   creadoAt?: Timestamp
   actualizadoAt?: Timestamp

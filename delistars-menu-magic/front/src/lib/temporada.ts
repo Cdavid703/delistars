@@ -12,6 +12,7 @@
 // las 7:00 PM: la promoción se moriría en plena jornada de servicio.
 
 import { normalizarNombre } from "./destacados";
+import { promoDe, estadoPromo } from "./promos";
 
 /** Amor y Amistad: se celebra en septiembre, así que muere al entrar octubre. */
 export const FIN_AMOR_Y_AMISTAD = new Date("2026-10-01T00:00:00-05:00");
@@ -28,6 +29,9 @@ export const TEMPORADA: Record<string, Date> = {
  * su fecha de fin. `ahora` se puede pasar para probarlo.
  */
 export function vigente(nombreProducto: string, ahora: number = Date.now()): boolean {
+  // Combos con fecha de inicio y fin (lib/promos.ts): solo dentro de su rango.
+  const promo = promoDe(nombreProducto);
+  if (promo) return estadoPromo(promo, ahora) === "activa";
   const fin = TEMPORADA[normalizarNombre(nombreProducto)];
   return !fin || ahora < fin.getTime();
 }

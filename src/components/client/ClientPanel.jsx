@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import {
-  collection, query, where, onSnapshot, serverTimestamp,
+  collection, query, where, onSnapshot, serverTimestamp, getDocs, limit,
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import {
@@ -21,6 +21,7 @@ import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LIN
 import { medirRuta } from '../../services/recorrido'
 import { sugerirOtraSede, minutosHastaLlegar } from '../../utils/checkoutRuta'
 import { debeOfrecerPromos } from '../../utils/promociones'
+import { validarCodigo, CODIGOS } from '../../utils/codigos'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -1353,6 +1354,31 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Código promocional (ver utils/codigos.js). "Una vez por cuenta" se revisa
+  // contra los pedidos de esta cuenta que ya lo usaron.
+  const [codigoTexto,    setCodigoTexto]    = useState('')
+  const [codigoAplicado, setCodigoAplicado] = useState(null)
+  const [codigoError,    setCodigoError]    = useState('')
+  const [revisandoCodigo, setRevisandoCodigo] = useState(false)
+  const yaUsoCodigo = async codigo => {
+    if (!user?.uid) return false
+    try {
+      const prev = await getDocs(query(collection(db, 'orders'),
+        where('clientUid', '==', user.uid), where('codigoPromo', '==', codigo), limit(1)))
+      return !prev.empty
+    } catch { return false }
+  }
+  const aplicarCodigo = async () => {
+    setCodigoError('')
+    setRevisandoCodigo(true)
+    const base = { items: form.items, tieneCuenta: !!user?.email && !user?.isAnonymous }
+    let r = validarCodigo(codigoTexto, base)
+    if (r.ok) r = validarCodigo(codigoTexto, { ...base, yaLoUso: await yaUsoCodigo(r.codigo) })
+    setRevisandoCodigo(false)
+    if (r.ok) { setCodigoAplicado(r.codigo); setCodigoTexto('') }
+    else setCodigoError(r.motivo)
+  }
+
 
   const handleSubmit = async () => {
     const errs = []
@@ -1361,6 +1387,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
+    // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
+    if (codigoAplicado) {
+      const r = validarCodigo(codigoAplicado, { items: form.items, tieneCuenta: !!user?.email && !user?.isAnonymous })
+      if (!r.ok) { setCodigoAplicado(null); errs.push(`Quitamos el código: ${r.motivo}`) }
+    }
     // Con el valor completo conocido, el pago se elige aquí mismo. Si no, el
     // cliente lo escoge después de que la caja cotice (ClientOrderDetail).
     if (pagoAhora) {
@@ -1375,9 +1406,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     submittingRef.current = true
     try {
       const redeemRewardIds = redeemCount > 0 ? sortedRewards.slice(0, redeemCount).map(r => r.id) : []
-      const items = redeemRewardIds.length > 0
+      const conPremio = redeemRewardIds.length > 0
         ? `${form.items}\n${redeemRewardIds.length}x ${LOYALTY_REWARD.name} — GRATIS (premio fidelización, NO cobrar)`
         : form.items
+      // El código suma su línea gratis al pedido (la caja la ve y no la cobra).
+      const items = codigoAplicado ? `${conPremio}\n${CODIGOS[codigoAplicado].linea}` : conPremio
 
       // Pago adelantado: el id del pedido se genera antes para subir el
       // comprobante a su carpeta, y el pedido se crea ya con el comprobante.
@@ -1406,6 +1439,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         items,
         redeemRewardIds,
         orderId,
+        ...(codigoAplicado ? { codigoPromo: codigoAplicado } : {}),
         ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
         // Domicilio cobrado automáticamente por distancia. Si el cliente pidió
         // revisión, o no había pin, no va precio y la caja cotiza como siempre.
@@ -1722,6 +1756,30 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
           )}
         </div>
       )}
+
+      {/* Código promocional */}
+      <div>
+        <label className="label-field">¿Tienes un código?</label>
+        {codigoAplicado ? (
+          <div className="flex items-center justify-between gap-2 bg-mint/10 border border-mint/40 rounded-xl px-3 py-2.5">
+            <p className="font-body text-sm text-coal">
+              ✅ <strong>{codigoAplicado}</strong>: {CODIGOS[codigoAplicado].descripcion}
+            </p>
+            <button type="button" onClick={() => setCodigoAplicado(null)}
+              className="font-body text-xs font-semibold text-tangelo underline underline-offset-2 flex-shrink-0">Quitar</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input className="input-field flex-1 uppercase" value={codigoTexto} placeholder="Ej: STAR"
+                onChange={e => { setCodigoTexto(e.target.value); setCodigoError('') }} autoCapitalize="characters" />
+              <button type="button" onClick={aplicarCodigo} disabled={!codigoTexto.trim() || revisandoCodigo}
+                className="btn-secondary btn-sm flex-shrink-0">{revisandoCodigo ? 'Revisando…' : 'Aplicar'}</button>
+            </div>
+            {codigoError && <p className="font-body text-xs text-red-600 mt-1">{codigoError}</p>}
+          </>
+        )}
+      </div>
 
       <div>
         <label className="label-field">Indicaciones adicionales</label>

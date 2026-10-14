@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDialog } from "@/components/ProductDialog";
@@ -7,6 +7,8 @@ import { SearchBar } from "@/components/SearchBar";
 import { useCart } from "@/context/CartContext";
 import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
 import { vigente } from "@/lib/temporada";
+import { promoPorSlug, estadoPromo } from "@/lib/promos";
+import { toast } from "sonner";
 import { ChevronDown } from "lucide-react";
 
 // Emojis para cada categoría
@@ -105,6 +107,33 @@ export const MenuSection = () => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }),
     );
   };
+
+  // Enlace de una campaña (?combo=combo-quincena): abre el combo apenas el
+  // visitante tenga sede. Si aún no empieza o ya pasó, se le dice por qué no
+  // aparece, en vez de dejarlo buscando.
+  const comboEnlazado = useRef(true);
+  useEffect(() => {
+    if (!comboEnlazado.current || products.length === 0) return;
+    let slug: string | null = null;
+    try { slug = new URLSearchParams(window.location.search).get("combo"); } catch { /* sin URL */ }
+    const promo = promoPorSlug(slug);
+    if (!promo) { comboEnlazado.current = false; return; }
+    const estado = estadoPromo(promo);
+    if (estado === "activa") {
+      if (!sede) return; // espera a que elija sede
+      setPedido(promo.producto);
+    } else if (estado === "antes") {
+      toast.info(`El ${promo.producto} estará disponible ${promo.fechasTexto}. ¡Te esperamos!`, { duration: 8000 });
+    } else {
+      toast.info(`El ${promo.producto} ya terminó. Mira lo que tenemos hoy 😋`, { duration: 8000 });
+    }
+    comboEnlazado.current = false;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("combo");
+      window.history.replaceState(null, "", url.toString());
+    } catch { /* sin historial */ }
+  }, [products, sede]);
 
   // Atiende la petición del pop-up: abre la categoría del producto y su ficha.
   useEffect(() => {

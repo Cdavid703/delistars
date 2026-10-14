@@ -43,6 +43,8 @@ export const CartSheet = () => {
           salsas: it.salsas.map((s) => s.name),
           cebollas: it.cebollas.map((c) => c.name),
           notes: it.notes,
+          // Combos de promo: una línea por hamburguesa/perro para la cocina.
+          unidades: it.unidadesTexto?.length ? it.unidadesTexto : undefined,
         };
       }),
       total,
@@ -154,6 +156,9 @@ export const CartSheet = () => {
                           Cebolla: {it.cebollas.map((c) => c.name).join(", ")}
                         </p>
                       )}
+                      {it.unidadesTexto?.map((t) => (
+                        <p key={t} className="text-xs text-muted-foreground mt-0.5">{t}</p>
+                      ))}
                       {it.notes && <p className="text-xs italic text-muted-foreground mt-1">"{it.notes}"</p>}
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-1 bg-muted rounded-full">
