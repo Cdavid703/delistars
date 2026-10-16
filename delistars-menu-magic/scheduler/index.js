@@ -5,12 +5,14 @@
 // llave de admin que tendría acceso a toda la base de datos.
 const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
-const { getFirestore, doc, setDoc, updateDoc, serverTimestamp } = require('firebase/firestore')
+const { getFirestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
 const { calcularAudiencia, destinatarios } = require('./audiencia')
 const { armarCorreo } = require('./correoCampana')
 const nodemailer = require('nodemailer')
+const MailComposer = require('nodemailer/lib/mail-composer')
+const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -161,6 +163,33 @@ async function bajasMercadeo() {
   }
 }
 
+/**
+ * Guarda UNA copia del correo enviado en la carpeta Enviados del buzón (el
+ * SMTP no lo hace solo): así queda registro en el correo de Andrés. Una por
+ * envío, no una por cliente, para no llenar el buzón. Si falla, solo se avisa.
+ */
+async function guardarEnEnviados(c, enviados, clave) {
+  const imap = new ImapFlow({
+    host: process.env.IMAP_HOST || 'imap.hostinger.com', port: 993, secure: true,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }, logger: false,
+  })
+  try {
+    const copia = armarCorreo(c, { uid: 'copia', email: 'marketing@delistars.com', name: '' }, clave)
+    copia.to = `"${enviados} cliente${enviados !== 1 ? 's' : ''} · campaña ${String(c.nombre || '').replace(/"/g, '')}" <marketing@delistars.com>`
+    copia.headers = { ...copia.headers, 'X-DeliStars-Campana': String(c.nombre || '') }
+    const crudo = await new MailComposer(copia).compile().build()
+    await imap.connect()
+    const carpetas = await imap.list()
+    const enviadosDir = carpetas.find((m) => m.specialUse === '\\Sent')?.path || 'INBOX.Sent'
+    await imap.append(enviadosDir, crudo, ['\\Seen'])
+    console.log(`[scheduler] copia guardada en ${enviadosDir}`)
+  } catch (err) {
+    console.error('[scheduler] no se pudo guardar la copia en Enviados:', err?.message || err)
+  } finally {
+    await imap.logout().catch(() => {})
+  }
+}
+
 const enProceso = new Set()
 const actualizarCampana = (id, datos) => updateDoc(doc(db, 'campanas', id), datos)
 
@@ -225,8 +254,14 @@ async function enviarCampana(id, c) {
   await actualizarCampana(id, {
     estado: 'enviada', 'envio.estado': 'enviada', 'envio.enviados': enviados, 'envio.fallidos': fallidos,
     'envio.enviadosUids': enviadosUids, 'envio.enviadaAt': serverTimestamp(),
+    // Historial: una campaña se puede enviar varias veces.
+    'envio.historial': arrayUnion({
+      fecha: new Date().toISOString(), enviados, fallidos,
+      por: c.envio?.solicitadoPor || '', ronda: c.envio?.ronda || 1,
+    }),
   })
   console.log(`[scheduler] campaña ${id}: enviada a ${enviados} (${fallidos} fallidos)`)
+  await guardarEnEnviados(c, enviados, clave)
 }
 
 function watchCampanas() {

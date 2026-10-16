@@ -304,16 +304,29 @@ function EnvioCampana({ c, destinatarios }: { c: Campana; destinatarios: number 
     envio: { estado: 'prueba_solicitada', pruebaA: user?.email || '', pruebaNombre: user?.displayName || '',
       solicitadoPor: user?.email || '', solicitadoAt: serverTimestamp(), error: null },
   })
+  const historial = e?.historial ?? []
+  const yaEnviada = e?.estado === 'enviada' || historial.length > 0
+  const pausada = e?.estado === 'pausada'
+  const fecha = (iso: string) => new Date(iso).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
   const enviar = () => {
-    if (!confirm(`¿Enviar "${c.asunto}" a ${destinatarios} cliente${destinatarios !== 1 ? 's' : ''}? Esto no se puede deshacer.`)) return
-    pedir({
-      'envio.estado': 'solicitado', 'envio.solicitadoPor': user?.email || '',
-      'envio.solicitadoAt': serverTimestamp(), 'envio.error': null,
-    })
+    const nadaPendiente = !pausada
+    const aviso = yaEnviada && nadaPendiente
+      ? `Esta campaña ya se envió ${historial.length} ${historial.length === 1 ? 'vez' : 'veces'}` +
+        (historial.length ? ` (la última, ${fecha(historial[historial.length - 1].fecha)})` : '') +
+        `.\n\n¿Enviarla OTRA VEZ a ${destinatarios} cliente${destinatarios !== 1 ? 's' : ''}? Les llegará de nuevo a todos.`
+      : `¿Enviar "${c.asunto}" a ${destinatarios} cliente${destinatarios !== 1 ? 's' : ''}? Esto no se puede deshacer.`
+    if (!confirm(aviso)) return
+    pedir(pausada
+      // Continuar: no se le repite a quien ya le llegó.
+      ? { 'envio.estado': 'solicitado', 'envio.solicitadoPor': user?.email || '', 'envio.solicitadoAt': serverTimestamp(), 'envio.error': null }
+      // Envío nuevo (también el reenvío): empieza de cero con todos.
+      : {
+          'envio.estado': 'solicitado', 'envio.solicitadoPor': user?.email || '', 'envio.solicitadoAt': serverTimestamp(),
+          'envio.error': null, 'envio.enviadosUids': [], 'envio.enviados': 0, 'envio.fallidos': 0, 'envio.total': null,
+          'envio.ronda': (e?.ronda ?? (historial.length || 0)) + 1,
+        })
   }
   const ocupado = pidiendo || ['prueba_solicitada', 'solicitado', 'enviando'].includes(e?.estado || '')
-  const yaEnviada = e?.estado === 'enviada'
-  const pausada = e?.estado === 'pausada'
 
   return (
     <div className="border-t border-gray-200 pt-4 flex flex-col gap-2">
@@ -323,10 +336,11 @@ function EnvioCampana({ c, destinatarios }: { c: Campana; destinatarios: number 
           className="border border-primary text-primary rounded-lg px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 hover:bg-primary/5 disabled:opacity-50">
           <Send className="w-4 h-4" /> Enviarme una prueba
         </button>
-        <button onClick={enviar} disabled={ocupado || yaEnviada || destinatarios === 0}
+        <button onClick={enviar} disabled={ocupado || destinatarios === 0}
           title={destinatarios === 0 ? 'Nadie de este grupo ha aceptado promociones todavía' : undefined}
           className="bg-coal text-white rounded-lg px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-40">
-          <Send className="w-4 h-4" /> {pausada ? 'Continuar envío' : `Enviar a ${n(destinatarios)} cliente${destinatarios !== 1 ? 's' : ''}`}
+          <Send className="w-4 h-4" /> {pausada ? 'Continuar envío'
+            : `${yaEnviada ? 'Enviar de nuevo' : 'Enviar'} a ${n(destinatarios)} cliente${destinatarios !== 1 ? 's' : ''}`}
         </button>
       </div>
       <p className="text-[11px] text-muted-fg">
@@ -341,6 +355,19 @@ function EnvioCampana({ c, destinatarios }: { c: Campana; destinatarios: number 
           {e.estado === 'enviada' && `✓ Enviada a ${n(e.enviados)} cliente${e.enviados !== 1 ? 's' : ''}${e.fallidos ? ` (${e.fallidos} no se pudieron entregar)` : ''}.`}
           {(e.estado === 'error' || pausada) && (e.error || 'Algo falló al enviar.')}
         </p>
+      )}
+      {historial.length > 0 && (
+        <div className="text-[11px] text-muted-fg">
+          <p className="font-semibold text-coal">Envíos de esta campaña</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {historial.map((h, i) => (
+              <li key={i}>
+                {fecha(h.fecha)} · {n(h.enviados)} cliente{h.enviados !== 1 ? 's' : ''}{h.fallidos ? ` (${h.fallidos} fallidos)` : ''}{h.por ? ` · ${h.por}` : ''}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">Cada envío deja una copia en la carpeta Enviados del correo.</p>
+        </div>
       )}
     </div>
   )

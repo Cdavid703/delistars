@@ -49,6 +49,9 @@ export interface Campana {
     solicitadoPor?: string
     solicitadoAt?: Timestamp
     enviadaAt?: Timestamp
+    /** Cuántas veces se ha pedido el envío (la campaña se puede reenviar). */
+    ronda?: number
+    historial?: { fecha: string; enviados: number; fallidos: number; por?: string; ronda?: number }[]
   }
   creadoPor?: string
   creadoAt?: Timestamp
