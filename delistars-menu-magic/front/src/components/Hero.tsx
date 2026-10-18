@@ -6,6 +6,7 @@ import Autoplay from "embla-carousel-autoplay";
 import { useRef, useState, useEffect } from "react";
 import { apiService, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
+import { descripcionEnLinea } from "@/lib/descripcion";
 
 interface HeroSlide {
   image: string;
@@ -46,7 +47,7 @@ export const Hero = () => {
           const heroSlides: HeroSlide[] = filteredProducts.slice(0, 6).map((p: ApiProduct) => ({
             image: p.image_url1 || p.image_url2 || heroFood,
             name: p.nombre_producto,
-            tag: p.descripcion_producto,
+            tag: descripcionEnLinea(p.descripcion_producto, 3),
             price: `$${parseFloat(p.precio_venta).toLocaleString('es-CO', { minimumFractionDigits: 0 })}`,
           }));
           setSlides(heroSlides);

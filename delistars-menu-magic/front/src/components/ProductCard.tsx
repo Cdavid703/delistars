@@ -4,6 +4,7 @@ import type { Product as ApiProduct } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/context/CartContext";
 import { optimizeImage } from "@/lib/utils";
+import { DescripcionProducto } from "@/components/DescripcionProducto";
 
 export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick: () => void }) => {
   const hasPresentations = !!(product.presentations && product.presentations.length > 0);
@@ -37,7 +38,7 @@ export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick
             {hasPresentations ? `Desde ${formatCOP(minPrice)}` : formatCOP(minPrice)}
           </span>
         </div>
-        <p className="text-base md:text-[1.05rem] leading-relaxed text-foreground/75 font-medium flex-1">{product.descripcion_producto}</p>
+        <DescripcionProducto texto={product.descripcion_producto} max={5} className="text-sm md:text-base leading-snug text-foreground/75 font-medium flex-1" />
         <Button
           onClick={onClick}
           className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth"

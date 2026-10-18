@@ -7,6 +7,7 @@ import { Minus, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCart, formatCOP } from "@/context/CartContext";
 import { apiService, type Addon, type Salsa, type Cebolla, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
+import { DescripcionProducto } from "@/components/DescripcionProducto";
 import { toast } from "sonner";
 
 import { COMBO_DRINKS, promoDe, textoUnidad } from "@/lib/promos";
@@ -368,7 +369,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-5 space-y-6">
 
-            <p className="text-base text-foreground/80 leading-relaxed">{product.descripcion_producto}</p>
+            <DescripcionProducto texto={product.descripcion_producto} className="text-base text-foreground/80 leading-relaxed" />
 
             {/* SECCIÓN OPCIONES DE JUGOS (Solo si tiene presentaciones) */}
             {hasPresentations && (

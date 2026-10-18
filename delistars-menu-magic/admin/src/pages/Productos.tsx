@@ -372,7 +372,7 @@ const Productos = () => {
               <div className="p-4 flex-grow flex flex-col">
                 <h3 className="font-semibold text-coal text-lg mb-2 line-clamp-2">{producto.nombre_producto}</h3>
                 
-                <p className="text-muted-fg text-sm mb-4 line-clamp-2 flex-grow">{producto.descripcion_producto}</p>
+                <p className="text-muted-fg text-sm mb-4 line-clamp-3 flex-grow whitespace-pre-line">{producto.descripcion_producto}</p>
                 
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-2xl font-bold text-primary">${formatPrecio(producto.precio_venta)}</span>
@@ -447,9 +447,10 @@ const Productos = () => {
                   value={formData.descripcion_producto}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="ej: Pizza con tomate, mozzarella y albahaca"
-                  rows={3}
+                  placeholder={"Una línea por ingrediente, ej:\nCarne de res\nQueso fundido\nTomate fresco"}
+                  rows={7}
                 />
+                <p className="text-xs text-muted-fg mt-1">Una línea por cada cosa que trae: en el menú se ve como lista.</p>
               </div>
 
               <div>
@@ -576,9 +577,10 @@ const Productos = () => {
                   value={formData.descripcion_producto}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="ej: Pizza con tomate, mozzarella y albahaca"
-                  rows={3}
+                  placeholder={"Una línea por ingrediente, ej:\nCarne de res\nQueso fundido\nTomate fresco"}
+                  rows={7}
                 />
+                <p className="text-xs text-muted-fg mt-1">Una línea por cada cosa que trae: en el menú se ve como lista.</p>
               </div>
 
               <div>
