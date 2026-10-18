@@ -37,7 +37,11 @@ const getProductCustomOptions = (product: ApiProduct | null) => {
     product.id_producto === 3 || 
     name === "hamburguesa de pollo" || 
     name === "hamburguesa de pollo con queso o tocineta" ||
-    name === "hamburguesa de pollo con queso y tocineta";
+    name === "hamburguesa de pollo con queso y tocineta" ||
+    // Combos donde el cliente también elige queso o tocineta.
+    product.id_producto === 26 ||
+    name === "combo hamburguesa sencilla con queso o tocineta" ||
+    name === "combo hamburguesa de pollo con queso o tocineta";
     
   if (isHamburguesaPollo) {
     return PRODUCT_OPTIONS.hamburguesa_pollo;
