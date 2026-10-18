@@ -19,7 +19,7 @@ import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
 import { medirRuta } from '../../services/recorrido'
-import { sugerirOtraSede, minutosHastaLlegar } from '../../utils/checkoutRuta'
+import { sugerirOtraSede } from '../../utils/checkoutRuta'
 import { debeOfrecerPromos } from '../../utils/promociones'
 import { validarCodigo, CODIGOS } from '../../utils/codigos'
 import {
@@ -78,22 +78,15 @@ const labelPaso = (step, order) => {
   return step.label
 }
 
-// Hora estimada de llegada: cuándo se creó el pedido + la mediana de la sede.
-// Esa mediana la publica el scheduler en config/eta_stats y está medida de
-// createdAt a deliveredAt, así que se suma sobre la creación del pedido.
-//
-// Existe porque el tramo "asignado → en camino" se toma ~31 minutos (la mitad
-// larga del pedido) y el cliente lo pasaba sin ninguna información.
-//
-// Con el pedido en camino manda la ruta real (Google) sobre la mediana:
-//   1. `vivo` = { min, en }: desde la ubicación reciente del domiciliario.
-//   2. order.etaLlegadaAt: la hora calculada cuando el domiciliario salió.
-//      Es lo normal: al navegar con Google Maps su celular pausa la página
-//      y deja de mandar ubicación.
 /** ¿La ubicación del domiciliario tiene menos de 3 minutos? */
 const ubicFresca = ts => !!ts?.toMillis && Date.now() - ts.toMillis() < 3 * 60000
 
-function calcularEta(order, sedeEta, vivo = null) {
+// Hora estimada de llegada, SOLO con el pedido en camino (especificación §8.1):
+//   1. `vivo` = { min, en }: ruta desde la ubicación reciente del domiciliario.
+//   2. order.etaLlegadaAt: la hora calculada cuando el domiciliario salió.
+//      Es lo normal: al navegar con Google Maps su celular pausa la página
+//      y deja de mandar ubicación.
+function calcularEta(order, vivo = null) {
   if (vivo && order?.status === 'in_transit') {
     const llegada = new Date(vivo.en + vivo.min * 60000)
     const faltan  = Math.max(0, Math.round((llegada.getTime() - Date.now()) / 60000))
@@ -104,13 +97,9 @@ function calcularEta(order, sedeEta, vivo = null) {
     const faltan  = Math.round((llegada.getTime() - Date.now()) / 60000)
     return { llegada, faltan, tarde: faltan < -8, porRuta: true }
   }
-  const creado = order?.createdAt?.toDate?.()
-  if (!creado || !(sedeEta?.medianMin > 0)) return null
-  const llegada = new Date(creado.getTime() + sedeEta.medianMin * 60000)
-  const faltan  = Math.round((llegada.getTime() - Date.now()) / 60000)
-  // Se da un margen antes de admitir demora: la mediana es una referencia, no
-  // una promesa, y avisar "va tarde" a los 30 segundos genera ansiedad de más.
-  return { llegada, faltan, tarde: faltan < -8 }
+  // Antes de salir no se muestra ningún estimado (especificación §8.1: no
+  // mostrar tiempo de preparación; decisión C4 del 18 oct 2026).
+  return null
 }
 
 const horaCorta = d => format(d, 'h:mm a', { locale: es }).replace('a. m.', 'AM').replace('p. m.', 'PM')
@@ -1244,17 +1233,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     ? sugerirOtraSede({ kmPropia: kmSede, precioPropio: tarifa.precio }, ruta.otra)
     : null
 
-  // ¿En cuánto le llega? Lo que la sede suele tardar en despacharlo + el
-  // recorrido por calle hasta su casa (medianas en config/eta_stats).
-  const [etaStats, setEtaStats] = useState(null)
-  useEffect(() => {
-    getDoc(doc(db, 'config', 'eta_stats'))
-      .then(snap => { if (snap.exists()) setEtaStats(snap.data()) })
-      .catch(() => {})
-  }, [])
-  const minLlegada = distancia?.medida === 'recorrido' && cobroAutomático
-    ? minutosHastaLlegar(etaStats?.[sede?.id], ruta.min)
-    : null
+  // Sin tiempo estimado en el checkout (especificación §8.1, decisión C4 del
+  // 18 oct 2026): la hora de llegada aparece cuando el pedido sale.
 
   // Con el valor completo conocido, el cliente paga al enviar y la caja solo
   // acepta. Reglas en src/utils/pagoAdelantado.js.
@@ -1620,11 +1600,6 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
                 <p className="font-body text-[11px] text-coal/50 mt-0.5">
                   A {explicarTarifa(tarifa, kmSede)}
                 </p>
-                {minLlegada && (
-                  <p className="font-body text-[11px] text-coal/60 font-semibold mt-0.5">
-                    🕒 Te llega en ~{minLlegada} min
-                  </p>
-                )}
               </div>
               <p className="font-display text-2xl text-mint tracking-wide flex-shrink-0">
                 ${tarifa.precio.toLocaleString('es-CO')}
@@ -2431,16 +2406,6 @@ function ClientOrderDetail({ order, onClose }) {
     return () => clearInterval(id)
   }, [order.status, order.inTransitAt, order.acceptedAt])
 
-  // Tiempo típico de entrega de la sede (mediana publicada por el scheduler
-  // en config/eta_stats — lectura pública, best-effort).
-  const [etaStats, setEtaStats] = useState(null)
-  useEffect(() => {
-    getDoc(doc(db, 'config', 'eta_stats'))
-      .then(s => { if (s.exists()) setEtaStats(s.data()) })
-      .catch(() => {})
-  }, [])
-  const sedeEta = (order.sedeId && etaStats?.[order.sedeId]) || null
-
   // Tiempo real de llegada: con el pedido en camino, cada 2 min se pide la
   // ruta desde donde va el domiciliario hasta el pin del cliente.
   // Solo con ubicación reciente (≤ 3 min): si el domiciliario va navegando
@@ -2470,7 +2435,7 @@ function ClientOrderDetail({ order, onClose }) {
 
   // Se recalcula en cada render; el intervalo de `elapsed` (30 s) mantiene
   // fresca la cuenta regresiva mientras el pedido está en curso.
-  const eta = calcularEta(order, sedeEta, conRutaVivo ? vivo : null)
+  const eta = calcularEta(order, conRutaVivo ? vivo : null)
 
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = stepIdx >= 0 ? STATUS_STEPS[stepIdx] : STATUS_STEPS[0]

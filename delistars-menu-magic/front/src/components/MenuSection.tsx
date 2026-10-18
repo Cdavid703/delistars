@@ -9,6 +9,7 @@ import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
 import { vigente } from "@/lib/temporada";
 import { promoPorSlug, estadoPromo } from "@/lib/promos";
 import { toast } from "sonner";
+import { PromoFranja } from "@/components/PromoFranja";
 import { ChevronDown } from "lucide-react";
 
 // Emojis para cada categoría
@@ -201,6 +202,9 @@ export const MenuSection = () => {
           )}
         </div>
       </div>
+
+      {/* Combos de promoción vigentes (en vez del popup de temporada). */}
+      {!loading && !searchQuery.trim() && <PromoFranja products={products} onVer={(p) => setSelected(p)} />}
 
       {loading ? (
         <div className="container py-20 text-center text-muted-foreground animate-pulse">

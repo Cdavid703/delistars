@@ -1,6 +1,5 @@
 import { CartProvider } from "@/context/CartContext";
 import { SedeModal } from "@/components/SedeModal";
-import { PromoModal } from "@/components/PromoModal";
 import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
 import { LoyaltySection } from "@/components/LoyaltySection";
@@ -14,7 +13,6 @@ const Index = () => {
     <CartProvider>
       <div className="min-h-screen">
         <SedeModal />
-        <PromoModal />
         <Navbar />
         <main>
           <Hero />

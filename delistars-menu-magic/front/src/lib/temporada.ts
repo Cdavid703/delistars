@@ -36,6 +36,3 @@ export function vigente(nombreProducto: string, ahora: number = Date.now()): boo
   return !fin || ahora < fin.getTime();
 }
 
-/** Los de temporada que están vivos ahora (para el popup). */
-export const hayTemporadaActiva = (ahora: number = Date.now()) =>
-  Object.values(TEMPORADA).some((fin) => ahora < fin.getTime());
