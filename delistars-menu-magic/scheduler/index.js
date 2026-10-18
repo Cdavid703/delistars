@@ -1,11 +1,11 @@
-// Abre la plataforma de clientes todos los días a las 5:30pm y la cierra a
-// las 11:30pm (hora Colombia), sin que el cajero tenga que tocar el
-// interruptor. Usa una cuenta de Firebase dedicada con permisos MUY
-// limitados (solo puede escribir config/client_platform.active) — nunca una
-// llave de admin que tendría acceso a toda la base de datos.
+// Tareas de fondo de DeliStars: estadísticas, avisos push, revisión de precios,
+// audiencia y campañas de Mercadeo, y la bandera vieja de apertura (los
+// horarios reales por sede viven en config/horarios). Escribe con una cuenta de
+// Firebase dedicada con permisos MUY limitados (ver isAutoOpenBot en
+// firestore.rules) y lee con una cuenta de servicio de solo lectura.
 const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
-const { getFirestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
+const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
 const { calcularAudiencia, destinatarios } = require('./audiencia')
@@ -14,6 +14,7 @@ const nodemailer = require('nodemailer')
 const MailComposer = require('nodemailer/lib/mail-composer')
 const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
+const { calcularDias } = require('./indicadores')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
 const { initializeApp: initAdminApp, applicationDefault } = require('firebase-admin/app')
@@ -44,6 +45,25 @@ const app  = initializeApp(firebaseConfig)
 const auth = getAuth(app)
 const db   = getFirestore(app)
 
+// Horarios por sede (config/horarios, los define administración; ver
+// horarios.mjs). La web y la app calculan solas si cada sede está abierta. Esta
+// bandera vieja config/client_platform.active (= alguna sede abierta) solo se
+// mantiene para celulares que aún tengan la versión anterior en caché.
+let banderaVieja = null
+async function sincronizarBanderaVieja() {
+  try {
+    const { algunaAbierta } = await import('./horarios.mjs')
+    const snap = await getDoc(doc(db, 'config', 'horarios'))
+    const abierta = algunaAbierta(snap.exists() ? snap.data() : null)
+    if (abierta !== banderaVieja) {
+      await setPlatformActive(abierta)
+      banderaVieja = abierta
+    }
+  } catch (err) {
+    console.error('[scheduler] Error al revisar los horarios:', err?.code || err?.message || err)
+  }
+}
+
 async function setPlatformActive(active) {
   try {
     await setDoc(doc(db, 'config', 'client_platform'), {
@@ -51,7 +71,7 @@ async function setPlatformActive(active) {
       updatedBy: BOT_EMAIL,
       updatedAt: serverTimestamp(),
     }, { merge: true })
-    console.log(`[scheduler] ${new Date().toISOString()} — plataforma ${active ? 'ABIERTA' : 'CERRADA'} automáticamente`)
+    console.log(`[scheduler] ${new Date().toISOString()} — bandera vieja: ${active ? 'alguna sede abierta' : 'ambas sedes cerradas'}`)
   } catch (err) {
     console.error('[scheduler] Error al actualizar config/client_platform:', err?.code || err)
   }
@@ -280,6 +300,29 @@ function watchCampanas() {
       }
     }, (err) => console.error('[scheduler] watch campañas error:', err?.message || err))
   console.log(`[scheduler] envío de campañas activo (${SMTP_LISTO ? 'SMTP listo' : 'SMTP pendiente de SMTP_USER/SMTP_PASS'})`)
+}
+
+// ─── Indicadores agregados para Mercadeo ─────────────────────────────────────
+// Mercadeo ve solo números (decisión C3): se calculan aquí con la cuenta de
+// servicio y se publican por día en mercadeo/indicadores/dias/{fecha}.
+async function updateIndicadores(diasAtras = 2) {
+  try {
+    const desde = new Date(Date.now() - diasAtras * 24 * 60 * 60 * 1000)
+    const [ps, fs] = await Promise.all([
+      adminDb.collection('orders').where('createdAt', '>=', desde)
+        .select('createdAt', 'status', 'sedeId', 'totalPrice', 'deliveryMode', 'items', 'cashierId').get(),
+      adminDb.collection('metrics_funnel').where('at', '>=', desde).select('at').get(),
+    ])
+    const pedidos = ps.docs.map((d) => { const o = d.data(); return { ...o, createdAtMs: o.createdAt?.toMillis?.() || 0 } })
+    const checkouts = fs.docs.map((d) => ({ atMs: d.data().at?.toMillis?.() || 0 }))
+    const dias = calcularDias(pedidos, checkouts)
+    for (const [fecha, datos] of Object.entries(dias)) {
+      await setDoc(doc(db, 'mercadeo', 'indicadores', 'dias', fecha), { ...datos, fecha, actualizado: serverTimestamp() })
+    }
+    console.log(`[scheduler] indicadores de mercadeo: ${Object.keys(dias).length} días actualizados`)
+  } catch (err) {
+    console.error('[scheduler] Error al actualizar indicadores:', err?.code || err?.message || err)
+  }
 }
 
 // ─── Aviso diario de Mercadeo a administración ───────────────────────────────
@@ -675,8 +718,10 @@ async function main() {
     }
   }
 
-  cron.schedule('30 17 * * *', () => setPlatformActive(true),  { timezone: TIMEZONE })
-  cron.schedule('30 23 * * *', () => setPlatformActive(false), { timezone: TIMEZONE })
+  // Ya no hay horario fijo (antes abría 5:30 p. m. y cerraba 11:30 p. m.): manda
+  // config/horarios. Cada 5 minutos se refleja en la bandera vieja.
+  cron.schedule('*/5 * * * *', sincronizarBanderaVieja, { timezone: TIMEZONE })
+  sincronizarBanderaVieja()
 
   // Estadísticas de tiempo de entrega: requieren la llave de la SA de solo
   // lectura montada en el contenedor. Si no está, esta parte simplemente se
@@ -701,6 +746,9 @@ async function main() {
       cron.schedule('0 10 * * *', avisarMercadeoDelDia, { timezone: TIMEZONE })
       // Campañas de correo: envía cuando Mercadeo lo pide desde el panel.
       try { watchCampanas() } catch (err) { console.error('[scheduler] envío de campañas deshabilitado:', err?.message || err) }
+      // Indicadores de Mercadeo: 120 días al arrancar, luego hoy y ayer cada 30 min.
+      cron.schedule('*/30 * * * *', () => updateIndicadores(2), { timezone: TIMEZONE })
+      updateIndicadores(120)
       // Audiencia de Mercadeo: cada hora y una vez al arrancar.
       cron.schedule('5 * * * *', updateAudiencia, { timezone: TIMEZONE })
       updateAudiencia()
@@ -714,7 +762,7 @@ async function main() {
     console.log('[scheduler] eta_stats omitido: sin GOOGLE_APPLICATION_CREDENTIALS')
   }
 
-  console.log(`[scheduler] Listo. Abre 5:30pm / cierra 11:30pm (${TIMEZONE}). El cajero igual puede prender/apagar manualmente en cualquier momento.`)
+  console.log(`[scheduler] Listo. Horarios por sede en config/horarios (${TIMEZONE}); solo administración los cambia.`)
 }
 
 main()

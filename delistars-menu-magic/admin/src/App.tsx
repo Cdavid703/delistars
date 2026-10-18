@@ -14,6 +14,7 @@ import Correo from '@/pages/Correo'
 import Turnos from '@/pages/Turnos'
 import Vacantes from '@/pages/Vacantes'
 import Mercadeo from '@/pages/Mercadeo'
+import IndicadoresMercadeo from '@/pages/IndicadoresMercadeo'
 import Layout from '@/components/Layout'
 import NotFound from '@/pages/NotFound'
 
@@ -41,12 +42,11 @@ function App() {
             <Route path="*" element={<Login />} />
           </Routes>
         ) : role === 'mercadeo' ? (
-          // Mercadeo: los indicadores (Resumen y Reportes, solo lectura), su
-          // pestaña y el correo. Cualquier otra ruta vuelve a Mercadeo.
+          // Mercadeo: indicadores agregados (sin datos de clientes, decisión C3),
+          // su pestaña y el correo. Cualquier otra ruta vuelve a Mercadeo.
           <Routes>
             <Route path="/" element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="reportes" element={<Reportes />} />
+              <Route index element={<IndicadoresMercadeo />} />
               <Route path="mercadeo" element={<Mercadeo />} />
               <Route path="correo" element={<Correo />} />
               <Route path="*" element={<Navigate to="/mercadeo" replace />} />

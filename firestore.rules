@@ -103,9 +103,9 @@ service cloud.firestore {
       allow create: if isAdmin()
                     || (isCashier() && request.resource.data.cashierId == request.auth.uid)
                     || (isSignedIn() && request.resource.data.clientUid == request.auth.uid);
+      // Mercadeo NO lee pedidos (decisión C3, especificación §17.1): sus
+      // indicadores son agregados que publica el servidor en mercadeo/indicadores.
       allow read:   if isAdmin() || isCashier()
-                    // Mercadeo: solo lectura, para los indicadores (Resumen y Reportes).
-                    || isMarketing()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid)
                     || (isDriver() && resource.data.driverEmail == userEmail());
       allow update: if isAdmin() || isCashier()
@@ -143,9 +143,11 @@ service cloud.firestore {
     }
 
     // ── Config de la app (config/client_platform, config/eta_stats) ────────
+    // Abrir/cerrar y horarios (config/horarios) son solo de administración
+    // (especificación §16.2, decisión C7): la caja ya no escribe aquí.
     match /config/{docId} {
       allow read:  if true;
-      allow write: if isCashier() || isAdmin()
+      allow write: if isAdmin()
                    || (
                      isAutoOpenBot() && (
                        // Estadísticas de tiempo de entrega que publica el
@@ -311,7 +313,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && request.resource.data.uid == request.auth.uid
                     && request.resource.data.type == 'checkout_started';
-      allow read:   if isAdmin() || isMarketing();
+      allow read:   if isAdmin();
       allow update, delete: if false;
     }
 
@@ -339,8 +341,13 @@ service cloud.firestore {
     // ── Todo lo de la pestaña Mercadeo (calendario y lo que venga) ─────────
     // Una sola regla para la carpeta: las funciones nuevas de Mercadeo no
     // necesitan volver a publicar reglas. Ej: mercadeo/calendario/actividades.
-    match /mercadeo/{documento=**} {
-      allow read, write: if isAdmin() || isMarketing();
+    match /mercadeo/{seccion}/{resto=**} {
+      allow read:  if isAdmin() || isMarketing();
+      // Los indicadores los calcula el servidor: nadie del panel los edita.
+      allow write: if (isAdmin() || isMarketing()) && seccion != 'indicadores';
+    }
+    match /mercadeo/indicadores/dias/{dia} {
+      allow write: if isAutoOpenBot();
     }
 
     // ── Todo lo demás: denegado ────────────────────────────────────────────

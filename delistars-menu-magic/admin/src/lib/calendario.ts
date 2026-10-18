@@ -137,6 +137,20 @@ export function resumenPeriodo(pedidos: PedidoResumen[], inicio: string, fin: st
   return { pedidos: n, ventas }
 }
 
+/** Lo mismo que resumenPeriodo, desde los indicadores agregados por día (mercadeo/indicadores/dias). */
+export function resumenDesdeDias(
+  dias: { fecha: string; sedes?: Record<string, { pedidos?: number; ventas?: number }> }[],
+  inicio: string, fin: string, sede: string,
+) {
+  let pedidos = 0, ventas = 0
+  for (const d of dias) {
+    if (d.fecha < inicio || d.fecha > fin) continue
+    const sedes = sede === 'ambas' ? Object.values(d.sedes || {}) : [d.sedes?.[sede]]
+    for (const s of sedes) { pedidos += s?.pedidos || 0; ventas += s?.ventas || 0 }
+  }
+  return { pedidos, ventas }
+}
+
 /** Cambio porcentual (null si no hay base para comparar). */
 export const variacion = (ahora: number, antes: number): number | null =>
   antes > 0 ? Math.round(((ahora - antes) / antes) * 100) : null

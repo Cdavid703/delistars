@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, query, where, getDocs, Timestamp,
+  collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, query, where, getDocs,
 } from 'firebase/firestore'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Save, CalendarDays, List, AlertTriangle, ExternalLink } from 'lucide-react'
@@ -11,8 +11,8 @@ import type { Campana } from '@/lib/mercadeo'
 import SubirImagen from '@/components/mercadeo/SubirImagen'
 import {
   TIPOS, ESTADOS, SEDES_ACT, tipoDe, fechaTexto, semanasDelMes, actividadesDelDia, pendienteDeCerrar,
-  fechasComerciales, periodoComparacion, resumenPeriodo, variacion, deTexto, sumarDias,
-  type Actividad, type PedidoResumen,
+  fechasComerciales, periodoComparacion, resumenDesdeDias, variacion, deTexto,
+  type Actividad,
 } from '@/lib/calendario'
 
 const COL = collection(db, 'mercadeo', 'calendario', 'actividades')
@@ -336,19 +336,15 @@ function EditorActividad({ a: inicial, hoy, onCerrar }: { a: Borrador; hoy: stri
 
 /** Pedidos y ventas durante la actividad vs el mismo periodo antes. */
 function Resultado({ a }: { a: Actividad }) {
-  const [r, setR] = useState<{ ahora: ReturnType<typeof resumenPeriodo>; antes: ReturnType<typeof resumenPeriodo>; comp: { inicio: string; fin: string } } | null | 'error'>(null)
+  const [r, setR] = useState<{ ahora: ReturnType<typeof resumenDesdeDias>; antes: ReturnType<typeof resumenDesdeDias>; comp: { inicio: string; fin: string } } | null | 'error'>(null)
   useEffect(() => {
     const fin = a.fin || a.inicio
     const comp = periodoComparacion(a.inicio, fin)
-    const desde = Timestamp.fromDate(deTexto(comp.inicio))
-    const hasta = Timestamp.fromDate(deTexto(sumarDias(fin, 1)))
-    getDocs(query(collection(db, 'orders'), where('createdAt', '>=', desde), where('createdAt', '<', hasta)))
+    // Mercadeo no lee pedidos: se usan los indicadores agregados por día.
+    getDocs(query(collection(db, 'mercadeo', 'indicadores', 'dias'), where('fecha', '>=', comp.inicio), where('fecha', '<=', fin)))
       .then((s) => {
-        const peds: PedidoResumen[] = s.docs.map((d) => {
-          const o = d.data()
-          return { createdAtMs: o.createdAt?.toMillis?.() ?? 0, status: o.status, sedeId: o.sedeId, totalPrice: o.totalPrice }
-        })
-        setR({ ahora: resumenPeriodo(peds, a.inicio, fin, a.sede), antes: resumenPeriodo(peds, comp.inicio, comp.fin, a.sede), comp })
+        const dias = s.docs.map((d) => d.data() as Parameters<typeof resumenDesdeDias>[0][number])
+        setR({ ahora: resumenDesdeDias(dias, a.inicio, fin, a.sede), antes: resumenDesdeDias(dias, comp.inicio, comp.fin, a.sede), comp })
       })
       .catch(() => setR('error'))
   }, [a.inicio, a.fin, a.sede])

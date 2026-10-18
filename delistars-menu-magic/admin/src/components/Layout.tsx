@@ -23,9 +23,9 @@ const Layout = () => {
     { label: 'Turnos', path: '/turnos', icon: '🗓️' },
     { label: 'Vacantes', path: '/vacantes', icon: '📋' },
   ]
-  // Mercadeo ve los indicadores, su pestaña y el correo; el admin ve todo.
+  // Mercadeo ve sus indicadores (agregados), su pestaña y el correo; el admin ve todo.
   const navItems = role === 'mercadeo'
-    ? todos.filter((i) => ['/', '/reportes', '/mercadeo', '/correo'].includes(i.path))
+    ? [{ label: 'Indicadores', path: '/', icon: '📊' }, ...todos.filter((i) => ['/mercadeo', '/correo'].includes(i.path))]
     : todos
 
   const isActive = (path: string) => location.pathname === path
