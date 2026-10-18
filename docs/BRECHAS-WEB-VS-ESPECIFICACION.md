@@ -38,7 +38,7 @@ especificación cambia a propósito. C1 a C5 sí se decidieron después de la es
 | C4 | **Hora de llegada solo en camino.** Se quita el estimado del checkout y el de antes de salir. |
 | C5 | **Franja en el menú.** Se reemplaza el popup de temporada. |
 | C6 | **Cuenta obligatoria** antes de enviar. Los pedidos de caja sin cuenta usan enlace y código privado. |
-| C7 | **Solo admin** abre y cierra, con horarios por sede, excepciones y modo manual con duración. |
+| C7 | Admin define horarios por sede, excepciones y modo manual con duración. **Ajuste del 18 oct:** la caja también puede abrir o cerrar su sede por el resto del día (solo el modo manual; el horario sigue siendo de admin). La app debe ofrecer lo mismo a la caja. |
 | C8 | **Asignación automática** al iniciar preparación, sin aceptación, máximo 5 en reparto, con turnos del domiciliario. |
 | Servidor | Las reglas de negocio van en el **backend Express** del VPS. |
 | Plataformas | La app será para **iOS y Android**. |
