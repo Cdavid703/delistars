@@ -10,7 +10,8 @@ import {
 } from '@/lib/horarios'
 
 // Horarios de atención por sede (especificación §16.2, decisión C7 del 18 oct
-// 2026). Solo administración: la caja ya no abre ni cierra. Se guarda en
+// 2026). Administración define el horario; la caja puede abrir o cerrar a mano
+// hasta el final del día (solo el campo manual). Se guarda en
 // config/horarios y la web (y la app) calculan solas si la sede recibe pedidos.
 const NOMBRE_SEDE: Record<string, string> = { santa_lucia: 'Santa Lucía', santa_teresita: 'Santa Teresita' }
 const ORDEN = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom']
@@ -121,7 +122,7 @@ export default function HorariosSedes() {
         <h2 className="text-lg font-display font-semibold text-coal">Horarios de domicilios</h2>
       </div>
       <p className="text-xs text-muted-fg mb-4">
-        Cada sede abre y cierra sola según su horario (hora de Colombia). La caja ve el estado pero no puede cambiarlo.
+        Cada sede abre y cierra sola según su horario (hora de Colombia). La caja también puede abrir o cerrar por el resto del día.
         Cerrar no cancela los pedidos que ya entraron.
       </p>
 

@@ -69,7 +69,11 @@ const fechaMas = (fecha, n) => new Date(Date.parse(`${fecha}T12:00:00-05:00`) + 
  * `proxima` = próxima apertura si está cerrada (null si no hay en 8 días).
  */
 export function estadoSede(horario, ahora = Date.now()) {
-  const h = horario && typeof horario === 'object' ? horario : HORARIO_POR_DEFECTO
+  // Una sede sin semana guardada (p. ej. la caja abrió a mano antes de que
+  // administración editara el horario) usa el horario por defecto.
+  const h = horario && typeof horario === 'object'
+    ? { ...horario, semana: horario.semana ?? HORARIO_POR_DEFECTO.semana }
+    : HORARIO_POR_DEFECTO
   const m = h.manual
   if (m && (m.modo === 'abierta' || m.modo === 'cerrada')) {
     const hasta = m.hasta ? Date.parse(m.hasta) : null

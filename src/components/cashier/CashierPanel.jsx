@@ -27,6 +27,12 @@ import {
   Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
 } from 'lucide-react'
 
+/** Medianoche siguiente en Colombia (UTC-5), en ISO: fin del "por hoy". */
+function finDelDiaColombia() {
+  const d = new Date(Date.now() - 5 * 3600 * 1000)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 5, 0, 0)).toISOString()
+}
+
 const TABS = [
   { id: 'active',    label: 'Activos' },
   { id: 'assign',    label: 'Asignar domicilio' },
@@ -66,9 +72,10 @@ export default function CashierPanel() {
   const [driverMsg,       setDriverMsg]      = useState('')
   const [editingDriver,   setEditingDriver]  = useState(null)
   const [editPhone,       setEditPhone]      = useState('')
-  // Horario de la(s) sede(s): solo lectura. Abrir y cerrar es de administración
-  // (especificación §16.2, decisión C7 del 18 oct 2026).
+  // Horario de la(s) sede(s). Administración define el horario semanal; la caja
+  // puede abrir o cerrar a mano hasta el final del día (config/horarios.<sede>.manual).
   const [horarios, setHorarios] = useState(undefined)
+  const [cambiandoSede, setCambiandoSede] = useState(null)
   const [ahoraMin, setAhoraMin] = useState(() => Date.now())
   const [newOrderAlert,   setNewOrderAlert]  = useState(null)
   // Aviso cuando un CLIENTE cancela un pedido que la caja tenía activo — sin
@@ -99,6 +106,25 @@ export default function CashierPanel() {
     return () => { unsub(); clearInterval(id) }
   }, [])
   const sedesHorario = sede?.id && SEDES[sede.id] ? [SEDES[sede.id]] : Object.values(SEDES)
+
+  // Abrir/cerrar a mano hasta el final del día (medianoche de Colombia): al día
+  // siguiente vuelve sola a su horario. modo null = volver al horario ya.
+  const cambiarApertura = async (sedeId, modo) => {
+    const hasta = finDelDiaColombia()
+    setCambiandoSede(sedeId)
+    try {
+      await setDoc(doc(db, 'config', 'horarios'), {
+        [sedeId]: { manual: modo ? { modo, hasta, por: user?.email || '' } : null },
+        actualizadoPor: user?.email || '',
+        actualizadoAt: serverTimestamp(),
+      }, { merge: true })
+    } catch (e) {
+      console.error('No se pudo cambiar la apertura:', e)
+      alert('No se pudo cambiar el estado de la sede. Intenta de nuevo.')
+    } finally {
+      setCambiandoSede(null)
+    }
+  }
 
   // Inicializar seenCounts en la primera carga de pedidos:
   // los pedidos que ya existían en Firestore se marcan como "vistos"
@@ -438,17 +464,31 @@ export default function CashierPanel() {
         <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
       </div>
 
-      {/* Estado de la sede para clientes (solo lectura; lo maneja administración) */}
+      {/* Estado de la sede para clientes y apertura/cierre a mano (hasta el final del día) */}
       {horarios !== undefined && (
         <div className="mx-4 mt-2 flex flex-wrap gap-2">
           {sedesHorario.map(s => {
             const e = estadoSede(horarios?.[s.id], ahoraMin)
+            const ocupado = cambiandoSede === s.id
             return (
-              <div key={s.id} title="El horario lo maneja administración"
-                className={`flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
+              <div key={s.id} className="flex items-center gap-2 flex-wrap">
+                <div className={`flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
                   e.abierta ? 'bg-mint/15 text-mint' : 'bg-coal/10 text-coal/50'}`}>
-                <Power size={12} />
-                {sedesHorario.length > 1 ? `${s.name}: ` : 'Pedidos de clientes: '}{textoEstado(e, ahoraMin)}
+                  <Power size={12} />
+                  {sedesHorario.length > 1 ? `${s.name}: ` : 'Pedidos de clientes: '}{textoEstado(e, ahoraMin)}
+                  {e.motivo === 'manual' && ' · a mano'}
+                </div>
+                <button disabled={ocupado} onClick={() => cambiarApertura(s.id, e.abierta ? 'cerrada' : 'abierta')}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold font-body text-white disabled:opacity-50 ${
+                    e.abierta ? 'bg-coal' : 'bg-mint'}`}>
+                  {e.abierta ? 'Cerrar' : 'Abrir'} por hoy
+                </button>
+                {e.motivo === 'manual' && (
+                  <button disabled={ocupado} onClick={() => cambiarApertura(s.id, null)}
+                    className="rounded-full px-4 py-2 text-xs font-semibold font-body border border-coal/20 text-coal/70 disabled:opacity-50">
+                    Volver al horario
+                  </button>
+                )}
               </div>
             )
           })}

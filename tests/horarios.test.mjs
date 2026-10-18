@@ -76,3 +76,9 @@ test('las copias en menú, panel y scheduler son idénticas a la original', () =
     assert.equal(readFileSync(new URL(copia, import.meta.url), 'utf8'), original, `${copia} quedó distinta`)
   }
 })
+
+test('sede con solo modo manual (sin semana guardada) vuelve al horario por defecto', () => {
+  const h = { manual: { modo: 'cerrada', hasta: '2026-10-18T19:00:00-05:00', por: 'caja@x.com' } }
+  assert.equal(estadoSede(h, t('2026-10-18T18:00:00-05:00')).abierta, false)
+  assert.equal(estadoSede(h, t('2026-10-18T19:30:00-05:00')).abierta, true)
+})

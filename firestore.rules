@@ -143,11 +143,36 @@ service cloud.firestore {
     }
 
     // ── Config de la app (config/client_platform, config/eta_stats) ────────
-    // Abrir/cerrar y horarios (config/horarios) son solo de administración
-    // (especificación §16.2, decisión C7): la caja ya no escribe aquí.
+    // Horarios (config/horarios): administración define el horario semanal y las
+    // excepciones; la caja solo puede tocar el modo manual de cada sede (abrir o
+    // cerrar a mano), firmado con su correo.
+    function manualValido(m) {
+      return m == null
+        || (m.keys().hasOnly(['modo', 'hasta', 'por'])
+            && m.modo in ['abierta', 'cerrada']
+            && m.por == userEmail());
+    }
+    // Solo cambia `manual` de la sede (y bien firmado); no puede borrar la sede.
+    function sedeSoloManual(s, antes, despues) {
+      let previo = s in antes ? antes[s] : {};
+      let cambios = s in despues ? despues[s].diff(previo).affectedKeys() : [].toSet();
+      return (!(s in antes) || s in despues)
+        && cambios.hasOnly(['manual'])
+        && (!cambios.hasAny(['manual']) || manualValido(despues[s].get('manual', null)));
+    }
+    function cajaSoloAperturaManual() {
+      let antes = resource == null ? {} : resource.data;
+      let despues = request.resource.data;
+      return despues.diff(antes).affectedKeys()
+               .hasOnly(['santa_lucia', 'santa_teresita', 'actualizadoPor', 'actualizadoAt'])
+        && despues.actualizadoPor == userEmail()
+        && sedeSoloManual('santa_lucia', antes, despues)
+        && sedeSoloManual('santa_teresita', antes, despues);
+    }
     match /config/{docId} {
       allow read:  if true;
       allow write: if isAdmin()
+                   || (docId == 'horarios' && isCashier() && cajaSoloAperturaManual())
                    || (
                      isAutoOpenBot() && (
                        // Estadísticas de tiempo de entrega que publica el
