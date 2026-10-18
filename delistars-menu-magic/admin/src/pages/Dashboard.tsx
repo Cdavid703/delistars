@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, doc, onSnapshot, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import { type Order, ACTIVE_STATUSES, DELIVERED_STATUSES, isToday, fmtCOP, statusInfo } from '@/lib/orders'
-import { toast } from 'sonner'
 import { Power } from 'lucide-react'
+import { estadoSede, textoEstado, SEDES_HORARIO, type Horario } from '@/lib/horarios'
 import AvisoMercadeo from '@/components/mercadeo/AvisoMercadeo'
 
 const StatCard = ({ icon, color, label, value }: { icon: string; color: string; label: string; value: string | number }) => (
@@ -37,10 +37,10 @@ const minutesSince = (o: Order): number | null => {
 }
 
 export default function Dashboard() {
-  const { user, role } = useAuthStore()
+  const { role } = useAuthStore()
   const [orders, setOrders] = useState<Order[]>([])
-  const [platformActive, setPlatformActive] = useState<boolean | null>(null)
-  const [toggling, setToggling] = useState(false)
+  // Estado de las sedes para clientes. Se cambia en Sedes → Horarios.
+  const [horarios, setHorarios] = useState<Record<string, Horario> | null | undefined>(undefined)
   // Re-render periódico para que los minutos de "atascado" avancen solos.
   const [, setTick] = useState(0)
 
@@ -52,9 +52,9 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'config', 'client_platform'), (snap) => {
-      setPlatformActive(snap.exists() ? !!snap.data().active : false)
-    }, () => setPlatformActive(null))
+    return onSnapshot(doc(db, 'config', 'horarios'), (snap) => {
+      setHorarios(snap.exists() ? (snap.data() as Record<string, Horario>) : null)
+    }, () => setHorarios(null))
   }, [])
 
   useEffect(() => {
@@ -62,22 +62,6 @@ export default function Dashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const togglePlatform = async () => {
-    if (platformActive === null) return
-    setToggling(true)
-    try {
-      await setDoc(doc(db, 'config', 'client_platform'), {
-        active:    !platformActive,
-        updatedBy: user?.email || 'admin',
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
-      toast.success(!platformActive ? 'Plataforma ABIERTA a clientes' : 'Plataforma CERRADA a clientes')
-    } catch {
-      toast.error('No se pudo cambiar el estado de la plataforma')
-    } finally {
-      setToggling(false)
-    }
-  }
 
   const today = orders.filter((o) => isToday(o.createdAt))
   const abiertos = orders.filter((o) => ACTIVE_STATUSES.includes(o.status) || ['pending', 'quoted'].includes(o.status))
@@ -104,22 +88,21 @@ export default function Dashboard() {
           <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Resumen de hoy</h1>
           <p className="text-muted-fg mt-1">Pedidos de domicilios en tiempo real (todas las sedes)</p>
         </div>
-        {/* Control de plataforma: mismo interruptor que tiene el cajero.
-            Mercadeo solo consulta indicadores: no lo ve. */}
-        {role === 'admin' && <button
-          onClick={togglePlatform}
-          disabled={toggling || platformActive === null}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50 ${
-            platformActive
-              ? 'bg-mint/10 border-mint/40 text-mint hover:bg-mint/20'
-              : 'bg-gray-100 border-gray-300 text-coal/60 hover:bg-gray-200'
-          }`}
-          title="Abre o cierra la plataforma de pedidos para los clientes"
-        >
-          <Power className="w-4 h-4" />
-          {platformActive === null ? 'Plataforma…' : platformActive ? 'Plataforma ACTIVA' : 'Plataforma APAGADA'}
-          <span className={`w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-gray-400'}`} />
-        </button>}
+        {/* Estado de cada sede para clientes (se maneja en Sedes → Horarios). */}
+        {horarios !== undefined && (
+          <Link to="/sedes" className="flex flex-wrap gap-2" title="Cambiar horarios en Sedes">
+            {SEDES_HORARIO.map((s) => {
+              const e = estadoSede(horarios?.[s], Date.now())
+              return (
+                <span key={s} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border ${
+                  e.abierta ? 'bg-mint/10 border-mint/40 text-mint' : 'bg-gray-100 border-gray-300 text-coal/60'}`}>
+                  <Power className="w-3.5 h-3.5" />
+                  {s === 'santa_lucia' ? 'Santa Lucía' : 'Santa Teresita'}: {textoEstado(e)}
+                </span>
+              )
+            })}
+          </Link>
+        )}
       </div>
 
       {/* Lo que tiene Mercadeo programado hoy y mañana (calendario). */}

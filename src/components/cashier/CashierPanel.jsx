@@ -5,7 +5,8 @@ import {
 } from 'firebase/firestore'
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES } from '../../services/roles'
+import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
+import { estadoSede, textoEstado } from '../../utils/horarios'
 import { cashAmount } from '../../utils/payments'
 import { sonar, sonarMensaje, crearAlarma, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
@@ -65,7 +66,10 @@ export default function CashierPanel() {
   const [driverMsg,       setDriverMsg]      = useState('')
   const [editingDriver,   setEditingDriver]  = useState(null)
   const [editPhone,       setEditPhone]      = useState('')
-  const [platformActive,  setPlatformActive] = useState(null)
+  // Horario de la(s) sede(s): solo lectura. Abrir y cerrar es de administración
+  // (especificación §16.2, decisión C7 del 18 oct 2026).
+  const [horarios, setHorarios] = useState(undefined)
+  const [ahoraMin, setAhoraMin] = useState(() => Date.now())
   const [newOrderAlert,   setNewOrderAlert]  = useState(null)
   // Aviso cuando un CLIENTE cancela un pedido que la caja tenía activo — sin
   // esto el pedido "desaparece" de Activos sin explicación y la caja queda
@@ -88,16 +92,13 @@ export default function CashierPanel() {
   const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'config', 'client_platform'), snap => {
-      setPlatformActive(snap.exists() ? snap.data().active : false)
-    })
+    const unsub = onSnapshot(doc(db, 'config', 'horarios'),
+      snap => setHorarios(snap.exists() ? snap.data() : null),
+      () => setHorarios(null))
+    const id = setInterval(() => setAhoraMin(Date.now()), 60000)
+    return () => { unsub(); clearInterval(id) }
   }, [])
-
-  const togglePlatform = async () => {
-    await setDoc(doc(db, 'config', 'client_platform'), {
-      active: !platformActive, updatedBy: user.email, updatedAt: serverTimestamp(),
-    })
-  }
+  const sedesHorario = sede?.id && SEDES[sede.id] ? [SEDES[sede.id]] : Object.values(SEDES)
 
   // Inicializar seenCounts en la primera carga de pedidos:
   // los pedidos que ya existían en Firestore se marcan como "vistos"
@@ -401,11 +402,6 @@ export default function CashierPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={togglePlatform} title={platformActive ? 'Plataforma ACTIVA' : 'Plataforma APAGADA'}
-            className={`btn-icon relative ${platformActive ? 'text-mint' : 'text-coal/40'}`}>
-            <Power size={20} />
-            <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${platformActive ? 'bg-mint animate-pulse' : 'bg-coal/30'}`} />
-          </button>
           <button onClick={() => setShowCuadreTurno(true)} title="Cuadre de turno"
             className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
             <Calculator size={18} />
@@ -442,13 +438,20 @@ export default function CashierPanel() {
         <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
       </div>
 
-      {/* Platform status banner */}
-      {platformActive !== null && (
-        <div className={`mx-4 mt-2 flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
-          platformActive ? 'bg-mint/15 text-mint' : 'bg-coal/10 text-coal/50'
-        }`}>
-          <Power size={12} />
-          Plataforma clientes: {platformActive ? 'ACTIVA' : 'APAGADA'}
+      {/* Estado de la sede para clientes (solo lectura; lo maneja administración) */}
+      {horarios !== undefined && (
+        <div className="mx-4 mt-2 flex flex-wrap gap-2">
+          {sedesHorario.map(s => {
+            const e = estadoSede(horarios?.[s.id], ahoraMin)
+            return (
+              <div key={s.id} title="El horario lo maneja administración"
+                className={`flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
+                  e.abierta ? 'bg-mint/15 text-mint' : 'bg-coal/10 text-coal/50'}`}>
+                <Power size={12} />
+                {sedesHorario.length > 1 ? `${s.name}: ` : 'Pedidos de clientes: '}{textoEstado(e, ahoraMin)}
+              </div>
+            )
+          })}
         </div>
       )}
 

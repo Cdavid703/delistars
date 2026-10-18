@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Loader, AlertCircle, X } from 'lucide-react'
 import { apiService, type Sede } from '../services/api'
+import HorariosSedes from '@/components/HorariosSedes'
 
 const Sedes = () => {
   const [sedes, setSedes] = useState<Sede[]>([])
@@ -177,6 +178,8 @@ const Sedes = () => {
           Nueva Sede
         </button>
       </div>
+
+      <HorariosSedes />
 
       {error ? (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3 mb-4">

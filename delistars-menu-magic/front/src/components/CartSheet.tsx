@@ -12,7 +12,7 @@ import { optimizeImage } from "@/lib/utils";
 export const CartSheet = () => {
   const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
   const { user, login, loginGuest } = useStaffAuth();
-  const platformActive = usePlatformStatus();
+  const { abierta: platformActive, texto: textoHorario } = usePlatformStatus();
   const [needsLogin, setNeedsLogin] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -198,9 +198,9 @@ export const CartSheet = () => {
                 {closed ? (
                   <div className="rounded-2xl bg-cherry/10 border border-cherry/30 p-4 text-center space-y-1">
                     <Clock className="w-6 h-6 text-cherry mx-auto" />
-                    <p className="font-display text-base text-cherry">Aún no hay atención de domicilios</p>
+                    <p className="font-display text-base text-cherry">Esta sede no está recibiendo pedidos</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Nuestro servicio de domicilios abre a las <strong>5:30 PM</strong>. Puedes ir armando tu
+                      {textoHorario ? <strong>{textoHorario}.</strong> : null} Puedes ir armando tu
                       carrito y hacer el pedido cuando estemos abiertos.
                     </p>
                   </div>

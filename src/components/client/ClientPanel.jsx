@@ -22,6 +22,7 @@ import { medirRuta } from '../../services/recorrido'
 import { sugerirOtraSede } from '../../utils/checkoutRuta'
 import { debeOfrecerPromos } from '../../utils/promociones'
 import { validarCodigo, CODIGOS } from '../../utils/codigos'
+import { estadoSede, textoEstado } from '../../utils/horarios'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -179,7 +180,20 @@ export default function ClientPanel() {
   // sin terminar)? Si no, no debe quedarse en el panel de domicilios: se le
   // envía al menú a escoger productos.
   const enteredWithCart = useRef(hayPedidoPendiente())
-  const [platformActive, setPlatformActive] = useState(null)
+  // Horarios por sede (config/horarios, los define administración). La sede
+  // abre y cierra sola según la hora de Colombia; se recalcula cada minuto.
+  const [horarios, setHorarios] = useState(undefined)
+  const [ahoraMin, setAhoraMin] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setAhoraMin(Date.now()), 60000)
+    return () => clearInterval(id)
+  }, [])
+  const estadoDe = id => estadoSede(horarios?.[id], ahoraMin)
+  const estadoMiSede = sede?.id && SEDES[sede.id] ? estadoDe(sede.id) : null
+  const platformActive = horarios === undefined ? null : (estadoMiSede ? estadoMiSede.abierta : true)
+  const otraSedeAbierta = estadoMiSede && !estadoMiSede.abierta
+    ? Object.values(SEDES).find(s => s.id !== sede.id && estadoDe(s.id).abierta)
+    : null
   const [showHelp,       setShowHelp]       = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
   const [ratingOrder,    setRatingOrder]    = useState(null)
@@ -252,9 +266,9 @@ export default function ClientPanel() {
 
   useEffect(() => {
     return onSnapshot(
-      doc(db, 'config', 'client_platform'),
-      snap => setPlatformActive(snap.exists() ? snap.data().active : false),
-      _err => setPlatformActive(true),
+      doc(db, 'config', 'horarios'),
+      snap => setHorarios(snap.exists() ? snap.data() : null),
+      _err => setHorarios(null), // sin poder leer: no se bloquea (horario por defecto)
     )
   }, [])
 
@@ -401,17 +415,22 @@ export default function ClientPanel() {
       <div className="min-h-screen-safe flex flex-col bg-gradient-to-br from-cherry via-tangelo to-mustard">
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
           <div className="text-6xl mb-4">🔒</div>
-          <h1 className="font-display text-3xl text-cream tracking-widest mb-3">Plataforma cerrada</h1>
+          <h1 className="font-display text-3xl text-cream tracking-widest mb-3">{sede?.name} está cerrada</h1>
           <p className="font-body text-cream/80 text-sm max-w-xs">
-            El servicio de domicilios abre a las 5:30 PM. Mientras tanto puedes ver el menú en la página principal.
+            Mientras tanto puedes ver el menú y armar tu carrito en la página principal.
           </p>
           <div className="mt-4 bg-cream/10 rounded-2xl px-6 py-4 flex items-center gap-3">
             <Clock size={18} className="text-cream/70 flex-shrink-0" />
-            <p className="font-body text-cream/70 text-sm text-left">
-              Horario habitual:<br />
-              <span className="font-semibold text-cream">5:30 PM – 11:30 PM</span>
+            <p className="font-body text-cream text-sm font-semibold text-left">
+              {textoEstado(estadoMiSede, ahoraMin)}
             </p>
           </div>
+          {otraSedeAbierta && (
+            <button onClick={() => selectSede(otraSedeAbierta)}
+              className="mt-4 inline-flex items-center gap-2 bg-cream/20 text-cream font-display tracking-wide px-5 py-3 rounded-2xl hover:bg-cream/30 transition-colors">
+              {otraSedeAbierta.name} está abierta: pedir allá
+            </button>
+          )}
           <a href="/" className="mt-8 inline-flex items-center gap-2 bg-cream text-cherry font-display tracking-wide px-6 py-3 rounded-2xl shadow-card hover:opacity-90 transition-opacity">
             <ShoppingBag size={18} /> Ver el menú
           </a>
@@ -3455,7 +3474,7 @@ const CLIENT_HELP_SECTIONS = [
   {
     id: 'horario', emoji: '🕕', title: 'Horario de atención', color: 'text-mustard',
     content: [
-      { type: 'p', text: 'El servicio de domicilios está disponible normalmente de 5:30 PM a 11:30 PM. Si la plataforma aparece como "cerrada", intenta más tarde o escríbenos por WhatsApp.' },
+      { type: 'p', text: 'Cada sede tiene su propio horario de domicilios. Si tu sede aparece como "cerrada", la app te dice cuándo abre y si la otra sede está abierta. También puedes escribirnos por WhatsApp.' },
       { type: 'tip', text: 'Cada sede tiene su propio número de WhatsApp. Lo encuentras en la tarjeta de sede del panel principal.' },
     ],
   },
