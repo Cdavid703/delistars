@@ -762,7 +762,7 @@ async function main() {
     console.log('[scheduler] eta_stats omitido: sin GOOGLE_APPLICATION_CREDENTIALS')
   }
 
-  console.log(`[scheduler] Listo. Horarios por sede en config/horarios (${TIMEZONE}); solo administración los cambia.`)
+  console.log(`[scheduler] Listo. Horarios por sede en config/horarios (${TIMEZONE}); admin define el horario y la caja puede abrir o cerrar por el día.`)
 }
 
 main()

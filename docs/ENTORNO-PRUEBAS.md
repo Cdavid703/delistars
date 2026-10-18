@@ -35,10 +35,10 @@ premios ni cuadres reales (especificación §22.1). Creado el 18 de octubre de 2
 
 1. ~~DNS y HTTPS~~: hecho el 18 oct 2026 (registro A `pruebas` → `177.7.52.161`,
    certificado de Let's Encrypt que se renueva solo con `certbot.timer`).
-2. **Inicio de sesión en Firebase de pruebas:** Authentication → Comenzar → Google.
-   Después se activan correo/contraseña y anónimo, y se crea el usuario bot
-   (`auto-open@delistars-domicilios.app`, el mismo correo que esperan las reglas)
-   para que el scheduler de pruebas arranque. Hoy está detenido.
+2. ~~Inicio de sesión en Firebase de pruebas~~: hecho el 18 oct 2026. Google,
+   correo/contraseña y anónimo habilitados; `pruebas.delistars.com` en dominios
+   autorizados. Usuario bot `auto-open@delistars-domicilios.app` creado (su
+   contraseña solo está en el `.env` del servidor) y scheduler de pruebas encendido.
 3. **Storage** (comprobantes e imágenes): requiere el plan Blaze en el proyecto de
    pruebas. Sin él, pruebas funciona pero no se pueden subir archivos.
 4. Disco del VPS: quedó en 88 % con las imágenes de pruebas. Vigilar.
