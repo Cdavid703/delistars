@@ -24,14 +24,17 @@ premios ni cuadres reales (especificación §22.1). Creado el 18 de octubre de 2
 - Desplegar a mano: `ssh root@177.7.52.161 /usr/local/bin/delistars-pruebas-deploy.sh --forzar`.
 - El script genera `docker-compose.pruebas.gen.yml` a partir del `docker-compose.yml`
   de producción (cambia nombres, puertos y llaves). No hay que mantener dos archivos.
+- Después de cada despliegue reinicia el gateway (los contenedores recreados cambian
+  de IP y nginx se quedaba con la vieja: daba 502). El scheduler solo se levanta si
+  `.env` tiene `AUTO_OPEN_BOT_PASSWORD`; si no, queda detenido.
 - Reglas de Firestore en pruebas:
   `firebase deploy --only firestore:rules --project delistars-pruebas`
   (**siempre** con `--project`: el proyecto por defecto del repo es producción).
 
 ## Pendiente para que quede completo
 
-1. **DNS:** registro A `pruebas` → `177.7.52.161` en Hostinger. Después: certificado
-   HTTPS con `certbot --nginx -d pruebas.delistars.com`.
+1. ~~DNS y HTTPS~~: hecho el 18 oct 2026 (registro A `pruebas` → `177.7.52.161`,
+   certificado de Let's Encrypt que se renueva solo con `certbot.timer`).
 2. **Inicio de sesión en Firebase de pruebas:** Authentication → Comenzar → Google.
    Después se activan correo/contraseña y anónimo, y se crea el usuario bot
    (`auto-open@delistars-domicilios.app`, el mismo correo que esperan las reglas)
