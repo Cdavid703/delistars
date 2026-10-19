@@ -4,6 +4,8 @@ import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
 import { crearPedido, transicionar, registrarPago } from '../services/pedidos.service';
+import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
+import { SEDES } from '../reglas/sedes';
 
 /**
  * Pedidos (Fase 3). Todas las rutas piden token de Firebase y `Idempotency-Key`.
@@ -19,6 +21,29 @@ function responderError(res: Response, err: unknown) {
   console.error('[pedidos] error:', err);
   return res.status(500).json({ error: 'No se pudo procesar el pedido. Intenta de nuevo', codigo: 'interno' });
 }
+
+/**
+ * @swagger
+ * /api/v1/pedidos/datos-transferencia:
+ *   get:
+ *     tags: [Pedidos]
+ *     summary: A dónde transferir (Transferencia, Nequi o parte digital del Mixto)
+ *     description: Público (la web los muestra a quien paga). `?sedeId=` opcional.
+ *     responses:
+ *       200: { description: "{ sedeId, banco, tipo, numero, numeroVisible, titular, qrUrl, instruccion }" }
+ */
+router.get('/datos-transferencia', (req: Request, res: Response) => {
+  const sedeId = typeof req.query.sedeId === 'string' ? req.query.sedeId : '';
+  if (sedeId && !SEDES[sedeId]) return res.status(400).json({ error: 'Sede no válida', codigo: 'sede' });
+  const c = datosTransferencia(sedeId);
+  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0];
+  res.set('Cache-Control', 'public, max-age=300').json({
+    sedeId: sedeId || null,
+    banco: c.banco, tipo: c.tipo, numero: c.numero, numeroVisible: c.numeroVisible, titular: c.titular,
+    qrUrl: `${proto}://${req.get('host')}/domicilios/${c.qr}`,
+    instruccion: INSTRUCCION_TRANSFERENCIA,
+  });
+});
 
 /**
  * @swagger

@@ -42,6 +42,7 @@ import {
   HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
+import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 
 const STATUS_STEPS = [
@@ -954,25 +955,26 @@ export default function ClientPanel() {
 // ─── Order form ───────────────────────────────────────────────────────────────
 // QR y cuenta para transferir. Se usa al pagar en el checkout y en el
 // seguimiento del pedido (cuando la caja cotizó y el cliente paga después).
-function DatosTransferencia() {
+function DatosTransferencia({ sedeId }) {
+  const cuenta = datosTransferencia(sedeId)
   return (
     <div className="flex flex-col items-center gap-2 bg-white rounded-2xl p-4 border border-coal/10">
       <p className="font-body text-xs text-coal/60 text-center font-semibold">
-        Escanea el QR o transfiere a la cuenta
+        {INSTRUCCION_TRANSFERENCIA}
       </p>
       <img
-        src={import.meta.env.BASE_URL + 'qr-bancolombia.jpeg'}
-        alt="QR Bancolombia DELISTARS"
+        src={import.meta.env.BASE_URL + cuenta.qr}
+        alt={`QR ${cuenta.banco} ${cuenta.titular}`}
         className="w-52 h-52 object-contain"
       />
       {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
       <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
         <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
-        <p className="font-body text-xs text-coal/70 font-semibold">Bancolombia Ahorros</p>
+        <p className="font-body text-xs text-coal/70 font-semibold">{cuenta.banco} {cuenta.tipo}</p>
         <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
-          420 679 938 91
+          {cuenta.numeroVisible}
         </p>
-        <p className="font-body text-[11px] text-coal/50">DELISTARS</p>
+        <p className="font-body text-[11px] text-coal/50">{cuenta.titular}</p>
       </div>
     </div>
   )
@@ -1026,7 +1028,7 @@ function SelectorBillete({ monto, billete, onChange, titulo }) {
 
 // Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
 // la caja le llega el pedido completo para aceptarlo.
-function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante }) {
+function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante, sedeId }) {
   const [archivoError, setArchivoError] = useState('')
   const metodo = form.payment
   const billete = form.billete
@@ -1141,7 +1143,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
       {/* Transferencia / Nequi / Mixto: QR y comprobante OBLIGATORIO */}
       {llevaComprobante(metodo) && (
         <div className="flex flex-col gap-3">
-          <DatosTransferencia />
+          <DatosTransferencia sedeId={sedeId} />
           <p className="font-body text-xs text-coal/70 leading-relaxed">
             Transfiere <strong>
               ${(metodo === 'Mixto' ? (Number(form.mixtoTransferencia) || 0) : total).toLocaleString('es-CO')}
@@ -1807,6 +1809,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
 
       {pagoAhora && (
         <PagoEnCheckout
+          sedeId={sede?.id}
           form={form}
           set={set}
           total={total}
@@ -2796,7 +2799,7 @@ function ClientOrderDetail({ order, onClose }) {
 
               {/* QR + cuenta/llave para transferir */}
               {/* Si ya mandó el comprobante no hace falta volver a mostrar el QR */}
-              {!order.transferValidated && !order.transferReceiptUrl && <DatosTransferencia />}
+              {!order.transferValidated && !order.transferReceiptUrl && <DatosTransferencia sedeId={order.sedeId} />}
 
               {order.transferValidated ? (
                 <div className="flex items-center gap-2 text-mint">

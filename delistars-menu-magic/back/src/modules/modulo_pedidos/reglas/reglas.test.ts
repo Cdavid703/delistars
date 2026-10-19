@@ -227,7 +227,7 @@ describe('beneficios: código, premios y saldo', () => {
 describe('copias compartidas', () => {
   it('src/shared/*.js son idénticos a src/utils de la web', () => {
     const raiz = join(__dirname, '../../../../../../');
-    for (const f of ['etapas', 'handoff', 'tarifaDomicilio', 'horarios', 'codigos', 'devolucion']) {
+    for (const f of ['etapas', 'handoff', 'tarifaDomicilio', 'horarios', 'codigos', 'devolucion', 'datosTransferencia']) {
       expect(readFileSync(join(__dirname, '../../../shared', `${f}.js`), 'utf8'))
         .toBe(readFileSync(join(raiz, 'src/utils', `${f}.js`), 'utf8'));
     }
