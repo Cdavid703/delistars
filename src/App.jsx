@@ -4,6 +4,7 @@ import LoginPage            from './pages/LoginPage'
 import SedeSelectionPage    from './pages/SedeSelectionPage'
 import RoleChoicePage       from './pages/RoleChoicePage'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
+import AvisoVersion         from './components/common/AvisoVersion'
 import { ROLES, SEDES } from './services/roles'
 
 // Cada panel de rol se carga por separado: un cliente no descarga el código del
@@ -75,6 +76,7 @@ export default function App() {
   return (
     <>
       <OfflineBanner />
+      <AvisoVersion />
       <InstallPromptBanner />
       <Suspense fallback={<LoadingScreen />}>
         {view === ROLES.ADMIN   && <AdminRedirect />}
