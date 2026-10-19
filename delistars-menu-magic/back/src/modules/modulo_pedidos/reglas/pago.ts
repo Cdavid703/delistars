@@ -12,6 +12,7 @@
  */
 import { etapaDe, terminado } from '../../../shared/etapas';
 import { ErrorPedido } from './armado';
+import { aplicarSaldo } from '../../../shared/devolucion';
 import type { PedidoDoc } from './transiciones';
 
 export const METODOS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto'];
@@ -49,16 +50,26 @@ export function planPago(p: PedidoDoc, id: string, uid: string, b: any, bucket: 
   if (excepcion) throw new ErrorPedido('bloqueado', 'El pedido tiene un trámite pendiente; escríbele a la sede', 409);
   if (['llego', 'entregado'].includes(etapa)) throw new ErrorPedido('tarde', 'Ya no se puede cambiar el pago', 409);
   const adelantado = etapa === 'enviado';
-  const total = adelantado ? totalConocido(p) : (p.totalPrice != null ? Number(p.totalPrice) : null);
+  let total = adelantado ? totalConocido(p) : (p.totalPrice != null ? Number(p.totalPrice) : null);
   if (total == null) {
     throw new ErrorPedido('sin_cotizar', adelantado
       ? 'La sede todavía no ha cotizado el domicilio; podrás pagar cuando lo confirme'
       : 'La sede todavía no ha cotizado tu pedido', 409);
   }
 
-  // El saldo a favor (Fase 3, siguiente paso) puede dejar el total en 0.
+  // Saldo a favor en el pago adelantado: se descuenta aquí (tras la cotización ya
+  // viene descontado por la caja). Lo que sobre lo deja la caja al confirmar.
+  const saldoCampos: Record<string, unknown> = {};
+  if (adelantado && Number(p.saldoAplicado?.monto) > 0) {
+    const s = aplicarSaldo(total, Number(p.saldoAplicado.monto));
+    Object.assign(saldoCampos, { 'saldoAplicado.usado': s.usado, 'saldoAplicado.sobrante': s.sobrante });
+    total = s.aPagar;
+  }
   if (total === 0) {
-    return { campos: { payment: 'Saldo a favor', cashOnDelivery: false, ...(adelantado ? { pagoAdelantado: true, totalPrice: 0 } : {}) }, total, adelantado, faltaComprobante: false };
+    return {
+      campos: { payment: 'Saldo a favor', cashOnDelivery: false, ...saldoCampos, ...(adelantado ? { pagoAdelantado: true, totalPrice: 0 } : {}) },
+      total, adelantado, faltaComprobante: false,
+    };
   }
 
   const metodo = b?.metodo;
@@ -66,6 +77,7 @@ export function planPago(p: PedidoDoc, id: string, uid: string, b: any, bucket: 
   const campos: Record<string, unknown> = {
     payment: metodo,
     cashOnDelivery: metodo === 'Efectivo' || metodo === 'Mixto',
+    ...saldoCampos,
     ...(adelantado ? {
       pagoAdelantado: true,
       totalPrice: total,

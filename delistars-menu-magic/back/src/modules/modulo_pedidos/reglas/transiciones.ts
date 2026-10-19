@@ -9,6 +9,7 @@ import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../s
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
 import { ErrorPedido } from './armado';
 import { totalConocido } from './pago';
+import { aplicarSaldo } from '../../../shared/devolucion';
 import type { Usuario } from '../../../middlewares/require-user';
 
 export type Rol = 'admin' | 'caja' | 'domiciliario' | 'cliente';
@@ -72,7 +73,14 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
       // Si el total ya se conoce (recoger o domicilio automático), queda como cotización.
       const total = totalConocido(p);
       if (p.totalPrice == null && total != null) {
-        Object.assign(extras, { totalPrice: total, deliveryPrice: p.deliveryMode === 'pickup' ? 0 : Number(p.deliveryPrice) || 0 });
+        // Saldo a favor: se descuenta y lo que sobre vuelve a la cuenta (el servicio crea ese saldo).
+        const s = Number(p.saldoAplicado?.monto) > 0 ? aplicarSaldo(total, Number(p.saldoAplicado.monto)) : null;
+        Object.assign(extras, {
+          totalPrice: s ? s.aPagar : total,
+          deliveryPrice: p.deliveryMode === 'pickup' ? 0 : Number(p.deliveryPrice) || 0,
+          ...(s ? { 'saldoAplicado.usado': s.usado, 'saldoAplicado.sobrante': s.sobrante } : {}),
+          ...(s && s.aPagar === 0 && !p.payment ? { payment: 'Saldo a favor', cashOnDelivery: false } : {}),
+        });
       }
       break;
     }

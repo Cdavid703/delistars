@@ -4,6 +4,7 @@ import { join } from 'path';
 import { armarItems, ProductoCatalogo, ErrorPedido } from './armado';
 import { planTransicion } from './transiciones';
 import { planPago, totalConocido } from './pago';
+import { elegirPremios, revisarCodigo, elegirSaldo, lineaPremio } from './beneficios';
 import type { Usuario } from '../../../middlewares/require-user';
 
 const prod = (id: number, nombre: string, precio: number, cat: number, extra: Partial<ProductoCatalogo> = {}): ProductoCatalogo =>
@@ -138,10 +139,60 @@ describe('planPago', () => {
   });
 });
 
+describe('beneficios: código, premios y saldo', () => {
+  const ahora = Date.parse('2026-10-20T12:00:00-05:00');
+  it('premios: solo vigentes de la sede, primero los que vencen antes', () => {
+    const premios = [
+      { id: 'a', sedeId: 'santa_lucia', status: 'available', expiresAtMs: ahora + 5e8 },
+      { id: 'b', sedeId: 'santa_lucia', status: 'available', expiresAtMs: ahora + 1e8 },
+      { id: 'c', sedeId: 'santa_lucia', status: 'available', expiresAtMs: ahora - 1 },
+      { id: 'd', sedeId: 'santa_teresita', status: 'available', expiresAtMs: null },
+      { id: 'e', sedeId: 'santa_lucia', status: 'redeemed', expiresAtMs: null },
+    ];
+    expect(elegirPremios(premios, 'santa_lucia', 1, ahora)).toEqual(['b']);
+    expect(elegirPremios(premios, 'santa_lucia', 2, ahora)).toEqual(['b', 'a']);
+    falla(() => elegirPremios(premios, 'santa_lucia', 3, ahora), 'premios');
+    expect(elegirPremios(premios, 'santa_lucia', 0, ahora)).toEqual([]);
+    expect(lineaPremio(2)).toBe('2x Hamburguesa Especial + Perro Grande con tocineta — GRATIS (premio fidelización, NO cobrar)');
+  });
+  it('código STAR: solo con Quincena/Parche, una vez por cuenta y antes de vencer', () => {
+    falla(() => revisarCodigo('STAR', '1x Hamburguesa Especial', false, ahora), 'codigo');
+    expect(revisarCodigo('star', '1x Combo Parche', false, ahora)).toBe('STAR');
+    falla(() => revisarCodigo('STAR', '1x Combo Parche', true, ahora), 'codigo');
+    falla(() => revisarCodigo('STAR', '1x Combo Parche', false, Date.parse('2026-10-26T12:00:00-05:00')), 'codigo');
+    falla(() => revisarCodigo('NOEXISTE', 'x', false, ahora), 'codigo');
+    expect(revisarCodigo('', 'x', false, ahora)).toBeNull();
+  });
+  it('saldo: todo el disponible de la sede', () => {
+    const cr = [
+      { id: 'x', sedeId: 'santa_lucia', estado: 'disponible', monto: 5000 },
+      { id: 'y', sedeId: 'santa_lucia', estado: 'disponible', monto: 3000 },
+      { id: 'z', sedeId: 'santa_lucia', estado: 'usado', monto: 9000 },
+      { id: 'w', sedeId: 'santa_teresita', estado: 'disponible', monto: 7000 },
+    ];
+    expect(elegirSaldo(cr, 'santa_lucia', true)).toEqual({ ids: ['x', 'y'], monto: 8000 });
+    expect(elegirSaldo(cr, 'santa_lucia', false)).toBeNull();
+    falla(() => elegirSaldo([], 'santa_lucia', true), 'saldo');
+  });
+  it('pago adelantado descuenta el saldo; si lo cubre todo queda en Saldo a favor', () => {
+    const p = { clientUid: 'u1', deliveryMode: 'pickup', quotedPrice: 24000, etapa: 'enviado', saldoAplicado: { ids: ['x'], monto: 8000 } };
+    const r = planPago(p, 'o1', 'u1', { metodo: 'Efectivo', billete: 20000 }, 'b');
+    expect(r.total).toBe(16000);
+    expect(r.campos).toMatchObject({ totalPrice: 16000, 'saldoAplicado.usado': 8000, 'saldoAplicado.sobrante': 0, cashChange: 4000 });
+    const todo = planPago({ ...p, saldoAplicado: { ids: ['x'], monto: 30000 } }, 'o1', 'u1', {}, 'b');
+    expect(todo.campos).toMatchObject({ payment: 'Saldo a favor', totalPrice: 0, 'saldoAplicado.usado': 24000, 'saldoAplicado.sobrante': 6000 });
+  });
+  it('confirmar por la API aplica el saldo y deja el sobrante', () => {
+    const p = { deliveryMode: 'pickup', quotedPrice: 24000, status: 'pending', saldoAplicado: { ids: ['x'], monto: 30000 } };
+    expect(planTransicion(p, 'confirmado', caja).extras)
+      .toMatchObject({ totalPrice: 0, 'saldoAplicado.usado': 24000, 'saldoAplicado.sobrante': 6000, payment: 'Saldo a favor' });
+  });
+});
+
 describe('copias compartidas', () => {
   it('src/shared/*.js son idénticos a src/utils de la web', () => {
     const raiz = join(__dirname, '../../../../../../');
-    for (const f of ['etapas', 'handoff', 'tarifaDomicilio', 'horarios']) {
+    for (const f of ['etapas', 'handoff', 'tarifaDomicilio', 'horarios', 'codigos', 'devolucion']) {
       expect(readFileSync(join(__dirname, '../../../shared', `${f}.js`), 'utf8'))
         .toBe(readFileSync(join(raiz, 'src/utils', `${f}.js`), 'utf8'));
     }

@@ -8,8 +8,11 @@ import { precioDomicilio, RECORRIDO } from '../../../shared/tarifaDomicilio';
 import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
 import { planTransicion, esAhora, PedidoDoc } from '../reglas/transiciones';
 import { planPago } from '../reglas/pago';
+import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, Premio, Credito } from '../reglas/beneficios';
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
+
+const a_confirmado = (plan: { etapa: string; excepcion: string | null }) => plan.etapa === 'confirmado' && !plan.excepcion;
 
 const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
@@ -57,6 +60,13 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   }
 
   const { itemsTexto, subtotal } = armarItems(b?.items, await catalogo(), sede.id);
+
+  // Código promocional: una vez por cuenta (se busca en sus pedidos, como la web).
+  const codigoPedido = b?.codigo ? String(b.codigo).trim().toUpperCase() : '';
+  const yaLoUso = codigoPedido
+    ? !(await db.collection('orders').where('clientUid', '==', u.uid).where('codigoPromo', '==', codigoPedido).limit(1).get()).empty
+    : false;
+  const codigo = revisarCodigo(b?.codigo, itemsTexto, yaLoUso);
 
   // Domicilio: con ubicación se cobra por recorrido (C1); sin ella, lo cotiza la caja.
   let domicilio: Record<string, unknown> = {};
@@ -109,13 +119,49 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     updatedAt: ahora,
   };
 
+  const beneficios = { premios: 0, saldo: null as null | { ids: string[]; monto: number } };
+  let itemsGuardados = itemsTexto;
   const orderNumber = await db.runTransaction(async (tx) => {
+    // Lecturas primero (regla de las transacciones): contador, premios y saldo.
     const c = (await tx.get(counterRef)).data() || {};
+    const cliente = db.doc(`customers/${u.uid}`);
+    const premios: Premio[] = b?.premios
+      ? (await tx.get(cliente.collection('rewards').where('sedeId', '==', sede.id).where('status', '==', 'available')))
+        .docs.map((d) => ({ id: d.id, sedeId: d.data().sedeId, status: d.data().status, expiresAtMs: d.data().expiresAt?.toMillis?.() ?? null }))
+      : [];
+    const creditos: Credito[] = b?.usarSaldo
+      ? (await tx.get(cliente.collection('credits').where('sedeId', '==', sede.id).where('estado', '==', 'disponible')))
+        .docs.map((d) => ({ id: d.id, sedeId: d.data().sedeId, estado: d.data().estado, monto: Number(d.data().monto) || 0 }))
+      : [];
+    const premioIds = elegirPremios(premios, sede.id, b?.premios);
+    const saldo = elegirSaldo(creditos, sede.id, b?.usarSaldo);
+    beneficios.premios = premioIds.length;
+    beneficios.saldo = saldo;
+
+    // Líneas gratis (la caja las ve y no las cobra), en el mismo orden que la web.
+    let items = itemsTexto;
+    if (premioIds.length) items += `\n${lineaPremio(premioIds.length)}`;
+    if (codigo) items += `\n${lineaCodigo(codigo)}`;
+    itemsGuardados = items;
+
     const hoy = hoyColombia();
     const siguiente = (c.date === hoy ? Number(c.lastNumber) || 0 : 0) + 1;
     const num = String(siguiente).padStart(3, '0');
     tx.set(counterRef, { lastNumber: siguiente, date: hoy }, { merge: true });
-    tx.set(orderRef, { ...pedido, orderNumber: num });
+    tx.set(orderRef, {
+      ...pedido,
+      items,
+      ...(codigo ? { codigoPromo: codigo } : {}),
+      ...(premioIds.length ? { loyaltyRedemption: { sedeId: sede.id, rewardIds: premioIds, count: premioIds.length } } : {}),
+      ...(saldo ? { saldoAplicado: { ids: saldo.ids, monto: saldo.monto } } : {}),
+      orderNumber: num,
+    });
+    for (const id of premioIds) {
+      tx.update(cliente.collection('rewards').doc(id), { status: 'redeemed', redeemedAt: ahora, orderId: orderRef.id });
+    }
+    for (const id of saldo?.ids ?? []) {
+      tx.update(cliente.collection('credits').doc(id), { estado: 'usado', usadoEnOrderId: orderRef.id, usadoAt: ahora });
+    }
     tx.set(orderRef.collection('historial').doc(), {
       at: ahora, por: u.email, rol: 'cliente', accion: 'crear',
       de: null, a: { etapa: 'enviado', excepcion: null }, status: 'pending', version: 1,
@@ -131,6 +177,11 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     lastOrderAt: ahora, orderCount: FieldValue.increment(1),
   }, { merge: true }).catch(() => undefined);
 
+  const bruto = domicilio.deliveryPrice != null || modo === 'pickup' ? subtotal + ((domicilio.deliveryPrice as number) || 0) : null;
+  const saldoCalc = bruto != null && beneficios.saldo ? aplicarSaldo(bruto, beneficios.saldo.monto) : null;
+  const totalCreado = saldoCalc ? saldoCalc.aPagar : bruto;
+  const itemsFinal = itemsGuardados;
+
   return {
     id: orderRef.id,
     orderNumber,
@@ -139,8 +190,12 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     subtotal,
     deliveryPrice: (domicilio.deliveryPrice as number | undefined) ?? null,
     // Sin precio de domicilio, la caja lo cotiza y el cliente elige cómo pagar después.
-    total: domicilio.deliveryPrice != null || modo === 'pickup' ? subtotal + ((domicilio.deliveryPrice as number) || 0) : null,
-    items: itemsTexto,
+    // Con saldo, `total` es lo que falta por pagar después de descontarlo.
+    total: totalCreado,
+    codigo: codigo ?? null,
+    premios: beneficios.premios,
+    saldo: beneficios.saldo ? { monto: beneficios.saldo.monto, usado: saldoCalc?.usado ?? null } : null,
+    items: itemsFinal,
   };
 }
 
@@ -161,13 +216,37 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     const ahora = FieldValue.serverTimestamp();
     const extras = Object.fromEntries(Object.entries(plan.extras).map(([k, v]) => [k, esAhora(v) ? ahora : v]));
     const version = versionActual + 1;
+    const e = etapaDe(p);
+    const antes = { etapa: e.etapa, excepcion: e.excepcion };
+
+    const cliente = p.clientUid ? db.doc(`customers/${p.clientUid}`) : null;
+    // Al confirmar: si sobró saldo, vuelve a la cuenta del cliente (id fijo: no se duplica).
+    const sobrante = Number(plan.extras['saldoAplicado.sobrante'] ?? (a_confirmado(plan) ? p.saldoAplicado?.sobrante : 0)) || 0;
+    if (cliente && a_confirmado(plan) && sobrante > 0) {
+      tx.set(cliente.collection('credits').doc(`sob_${id}`), {
+        sedeId: p.sedeId || '', monto: sobrante, estado: 'disponible', origenOrderId: id, motivo: 'sobrante',
+        creadoPor: u.email || 'caja', createdAt: ahora, usadoEnOrderId: null, usadoAt: null,
+      });
+    }
+    // Cancelado o rechazado: se devuelven los premios y el saldo (y se borra el sobrante).
+    if (cliente && (plan.excepcion === 'cancelado' || plan.excepcion === 'rechazado') && e.excepcion !== plan.excepcion) {
+      for (const rid of p.loyaltyRedemption?.rewardIds ?? []) {
+        tx.set(cliente.collection('rewards').doc(rid), { status: 'available', redeemedAt: null, orderId: null }, { merge: true });
+      }
+      const cids: string[] = p.saldoAplicado?.ids ?? [];
+      for (const cid of cids) {
+        tx.set(cliente.collection('credits').doc(cid), { estado: 'disponible', usadoEnOrderId: null, usadoAt: null }, { merge: true });
+      }
+      if (cids.length) {
+        tx.delete(cliente.collection('credits').doc(`sob_${id}`));
+        extras['saldoAplicado.devuelto'] = true;
+      }
+    }
     tx.update(ref, {
       ...extras,
       etapa: plan.etapa, excepcion: plan.excepcion, excepcionMotivo: plan.motivo,
       version, updatedAt: ahora,
     });
-    const e = etapaDe(p);
-    const antes = { etapa: e.etapa, excepcion: e.excepcion };
     tx.set(ref.collection('historial').doc(), {
       at: ahora, por: u.email || u.uid, rol: plan.rol, accion: 'cambio',
       de: antes, a: { etapa: plan.etapa, excepcion: plan.excepcion },
