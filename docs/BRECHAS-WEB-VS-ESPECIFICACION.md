@@ -131,7 +131,7 @@ privados) y P-10 (tiempos configurables). Se preguntan uno a uno cuando toque.
 | 0 | Entorno de pruebas: proyecto Firebase de pruebas, base y servidor de pruebas en el VPS, despliegue automático desde una rama `pruebas` | Que crees el proyecto Firebase |
 | 1 | Ajustes rápidos de las decisiones: C3 (indicadores agregados para Mercadeo), C4 (quitar estimados), C5 (franja en vez de popup), C7 (horarios por sede solo admin) | — |
 | 2 | Modelo de pedido nuevo: 7 etapas + excepciones + recogida, origen, versión, editor, auditoría; mapa de estados viejos → nuevos | **Hecho 18 oct 2026** (`src/utils/etapas.js`, `actualizarPedido`) |
-| 3 | API de operaciones del pedido en Express (crear, transiciones, pagos, saldo, cuadre) con idempotencia; reglas de Firestore cerradas a esas escrituras | Fase 2 |
+| 3 | API de operaciones del pedido en Express (crear, transiciones, pagos, saldo, cuadre) con idempotencia; reglas de Firestore cerradas a esas escrituras | **En curso (19 oct 2026):** crear y transiciones listas y probadas en pruebas (`modulo_pedidos`). Faltan: cuenta de escritura en producción, pago tras cotización, códigos/premios/saldo/pago adelantado, migrar la web a la API y cerrar las reglas |
 | 4 | Identidad: correo/contraseña verificado, Apple, completar perfil, cuenta obligatoria (C6), código privado para pedidos de caja, solicitud de acceso del equipo, selector de rol/sede | P-15, P-16 |
 | 5 | Domiciliarios: turnos y asignación automática (C8), máximo 5, reasignación | Fase 3 |
 | 6 | Avisos y enlaces: centro de avisos en el servidor, tokens push de iOS y Android, enlaces universales | Fase 3 |

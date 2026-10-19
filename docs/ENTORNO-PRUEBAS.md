@@ -42,3 +42,13 @@ premios ni cuadres reales (especificación §22.1). Creado el 18 de octubre de 2
 3. **Storage** (comprobantes e imágenes): requiere el plan Blaze en el proyecto de
    pruebas. Sin él, pruebas funciona pero no se pueden subir archivos.
 4. Disco del VPS: quedó en 88 % con las imágenes de pruebas. Vigilar.
+
+## API de pedidos (Fase 3)
+
+- Activa solo aquí: `PEDIDOS_API=1` en `/opt/delistars-pruebas/delistars-menu-magic/.env`
+  (en producción no existe la variable y la API responde 503).
+- Usuario de prueba `prueba-api@delistars-pruebas.test` en Firebase de pruebas. Su
+  contraseña solo está en `/opt/delistars-pruebas-secrets/usuario-prueba-api.json` (600).
+- Prueba de punta a punta: `/opt/delistars-pruebas-secrets/prueba-api.js` (crea y mueve
+  pedidos de prueba; le da y le quita el rol de caja y abre la sede una hora mientras corre).
+
