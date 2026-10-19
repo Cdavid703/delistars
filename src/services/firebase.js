@@ -3,7 +3,11 @@ import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, linkWi
 import {
   getFirestore, runTransaction, doc,
   collection, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, Timestamp, arrayUnion,
+  writeBatch, increment,
 } from 'firebase/firestore'
+import {
+  etapaDe, masAvanzada, DESDE_ESTADO_VIEJO, EXCEPCION_DESDE_ESTADO_VIEJO, EXCEPCIONES,
+} from '../utils/etapas'
 import { getStorage } from 'firebase/storage'
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging'
 
@@ -185,10 +189,55 @@ export async function createOrderWithNumber(sedeId, orderData, orderId = null) {
     const next = lastNum + 1
     const num = String(next).padStart(3, '0')
     tx.set(counterRef, { lastNumber: next, date: today }, { merge: true })
-    tx.set(orderRef, { ...orderData, orderNumber: num })
+    // Modelo de pedido nuevo (Fase 2, utils/etapas.js): etapa, origen, versión
+    // y la primera línea del historial.
+    const etapa = DESDE_ESTADO_VIEJO[orderData.status] ?? 'enviado'
+    const origen = orderData.origen ?? (orderData.cashierId ? 'caja' : 'web')
+    tx.set(orderRef, {
+      etapa, excepcion: null, excepcionMotivo: null, version: 1, ...orderData, origen, orderNumber: num,
+    })
+    tx.set(doc(collection(orderRef, 'historial')), {
+      at: serverTimestamp(), por: orderData.cashierEmail || orderData.clientEmail || '',
+      rol: origen === 'caja' ? 'caja' : 'cliente', accion: 'crear',
+      de: null, a: { etapa, excepcion: null }, status: orderData.status ?? null, version: 1,
+    })
     return num
   })
   return { orderRef, orderNumber }
+}
+
+/**
+ * Actualiza un pedido manteniendo el modelo nuevo (Fase 2, utils/etapas.js).
+ * `cambios` es lo mismo que antes iba a updateDoc (incluido el `status` viejo,
+ * que se sigue escribiendo mientras las pantallas viejas lo usen). La etapa se
+ * calcula del status nuevo y nunca retrocede, salvo `retroceder: true` (el
+ * cliente agrega algo y la caja debe volver a cotizar). Avanzar de etapa
+ * resuelve una excepción temporal. Si cambia la etapa o la excepción, sube la
+ * versión y queda una línea en orders/{id}/historial.
+ *   actor: { por: correo, rol: 'cliente' | 'caja' | 'domiciliario' | 'admin' }
+ */
+export async function actualizarPedido(order, cambios, actor = {}, { retroceder = false } = {}) {
+  const antes = etapaDe(order)
+  let { etapa, excepcion, motivo } = antes
+  const datos = { ...cambios }
+  const pedida = datos.etapa ?? DESDE_ESTADO_VIEJO[datos.status]
+  if (pedida) etapa = retroceder ? pedida : masAvanzada(antes.tipo, etapa, pedida)
+  if (etapa !== antes.etapa && excepcion && !EXCEPCIONES[excepcion]?.final) { excepcion = null; motivo = null }
+  const excViejo = EXCEPCION_DESDE_ESTADO_VIEJO[datos.status]
+  if (excViejo) { excepcion = excViejo; motivo = datos.rejectionReason ?? datos.cancelReason ?? null }
+  if ('excepcion' in datos) { excepcion = datos.excepcion; motivo = datos.excepcionMotivo ?? null }
+  Object.assign(datos, { etapa, excepcion, excepcionMotivo: motivo ?? null, updatedAt: serverTimestamp() })
+
+  const ref = doc(db, 'orders', order.id)
+  if (etapa === antes.etapa && excepcion === antes.excepcion) return updateDoc(ref, datos)
+  const batch = writeBatch(db)
+  batch.update(ref, { ...datos, version: increment(1) })
+  batch.set(doc(collection(ref, 'historial')), {
+    at: serverTimestamp(), por: actor.por || auth.currentUser?.email || '', rol: actor.rol || '', accion: 'cambio',
+    de: { etapa: antes.etapa, excepcion: antes.excepcion }, a: { etapa, excepcion },
+    motivo: motivo ?? null, status: datos.status ?? null, version: (order.version ?? 0) + 1,
+  })
+  return batch.commit()
 }
 
 // ─── Fidelización ───────────────────────────────────────────────────────────

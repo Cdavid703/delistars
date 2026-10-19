@@ -132,6 +132,21 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Historial (auditoría) del pedido — Fase 2 ──────────────────────────
+    // Una línea por cada cambio de etapa o excepción. Se escribe junto con el
+    // pedido (services/firebase.js → actualizarPedido / createOrderWithNumber)
+    // y nunca se edita ni se borra. La lee quien puede leer el pedido.
+    match /orders/{orderId}/historial/{entradaId} {
+      allow read: if isAdmin() || isCashier()
+                  || (isSignedIn() && get(/databases/$(database)/documents/orders/$(orderId)).data.clientUid == request.auth.uid)
+                  || (isDriver() && get(/databases/$(database)/documents/orders/$(orderId)).data.driverEmail == userEmail());
+      allow create: if isSignedIn() && (
+                    isAdmin() || isCashier() || isDriver()
+                    || getAfter(/databases/$(database)/documents/orders/$(orderId)).data.clientUid == request.auth.uid
+                  );
+      allow update, delete: if false;
+    }
+
     // ── Índice teléfono → pedidos (para "recuperar mi pedido") ──────────────
     // Solo guarda ids de pedidos, nada más. Se crea y se lee, nunca se borra
     // ni se edita: así nadie puede dejar a otro sin su índice. Ver el permiso

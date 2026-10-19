@@ -480,8 +480,15 @@ function watchCorporateLeads() {
 // ─── Notificaciones push al cliente (FCM) ─────────────────────────────────────
 // Mensaje según el nuevo estado del pedido. Devuelve null si ese estado no
 // amerita notificación.
-function notifyFor(o) {
+function notifyFor(o, soloEtapa = false) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  // Etapa nueva "Listo" (Fase 2): no cambia el status viejo, solo la etapa.
+  if (soloEtapa) {
+    if (o.etapa !== 'listo') return null
+    return o.deliveryMode === 'pickup'
+      ? { title: '🛍️ Tu pedido está listo para recoger', body: `Tu pedido${n} te espera en la sede.` }
+      : { title: '✅ Tu pedido está listo', body: `Tu pedido${n} ya está listo y pronto sale con el domiciliario.` }
+  }
   switch (o.status) {
     case 'quoted':
       // Con pago adelantado no hubo cotización: la caja aceptó el pedido.
@@ -504,9 +511,9 @@ function notifyFor(o) {
   }
 }
 
-async function sendPushForOrder(orderId, o) {
+async function sendPushForOrder(orderId, o, soloEtapa = false) {
   if (!o.clientUid) return
-  const msg = notifyFor(o)
+  const msg = notifyFor(o, soloEtapa)
   if (!msg) return
   const cust = await adminDb.doc(`customers/${o.clientUid}`).get()
   const tokens = cust.exists ? (cust.data().fcmTokens || []) : []
@@ -529,7 +536,7 @@ async function sendPushForOrder(orderId, o) {
     await adminDb.doc(`customers/${o.clientUid}`)
       .update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
   }
-  console.log(`[scheduler] push enviado (${o.status}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
+  console.log(`[scheduler] push enviado (${soloEtapa ? `etapa ${o.etapa}` : o.status}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
 }
 
 // ─── Notificaciones push al EQUIPO (caja y domiciliarios) ────────────────────
@@ -639,7 +646,7 @@ async function revisarDomicilioNuevo(id, o) {
 // Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
 // un estado relevante (cotizado / en camino / llegó / entregado / rechazado).
 function watchOrdersForPush() {
-  const seen = new Map() // orderId -> último estado visto
+  const seen = new Map() // orderId -> { status, etapa } vistos por última vez
   let baseline = true    // en la primera carga NO se notifica (solo se toma foto)
   adminDb.collection('orders').orderBy('createdAt', 'desc').limit(150)
     .onSnapshot((snap) => {
@@ -648,11 +655,15 @@ function watchOrdersForPush() {
         const id = chg.doc.id
         const o  = chg.doc.data()
         const prev = seen.get(id)
-        seen.set(id, o.status)
+        seen.set(id, { status: o.status, etapa: o.etapa })
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
-        if (baseline || prev === o.status) continue
+        if (baseline) continue
+        if (prev && prev.status === o.status) {
+          if (prev.etapa !== o.etapa) sendPushForOrder(id, o, true).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+          continue
+        }
         sendPushForOrder(id, o).catch((e) => console.error('[scheduler] push error:', e?.message || e))
         sendPushForStaff(id, o).catch((e) => console.error('[scheduler] push equipo error:', e?.message || e))
       }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import {
   db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD,
-  acreditarSaldoDevolucion, saldoVerificado, crearSaldoSobrante, restaurarSaldo,
+  acreditarSaldoDevolucion, saldoVerificado, crearSaldoSobrante, restaurarSaldo, actualizarPedido,
 } from '../../services/firebase'
 import { devolucionInicial, aplicarSaldo } from '../../utils/devolucion'
 import ClientChat from './ClientChat'
@@ -13,6 +13,7 @@ import { precioDomicilio, maxKm, RECORRIDO, LINEA_RECTA } from '../../utils/tari
 import { medirRecorrido, ubicarDireccion } from '../../services/recorrido'
 import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
+import { etapaDe } from '../../utils/etapas'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -293,7 +294,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         }
       }
       const totalACobrar = saldo ? saldo.aPagar : localTotal
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:        'quoted',
         orderNumber:   orderNum,
         quotedPrice:   lqp,
@@ -319,7 +320,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           : {}),
         needsRequote:  false, // el aviso de "el cliente agregó productos" ya quedó atendido
         updatedAt:     serverTimestamp(),
-      })
+      }, { rol: 'caja' })
       onClose()
     } finally { setLoading(false) }
   }
@@ -367,7 +368,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       // se le pregunta al cliente cómo la quiere.
       const devolucion = devolucionInicial(order)
       const ahora = Date.now()
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:          'rejected',
         rejectionReason: motivo,
         // El motivo queda también en los comentarios del pedido (historial).
@@ -383,7 +384,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           }),
         } : {}),
         updatedAt:       serverTimestamp(),
-      })
+      }, { rol: 'caja' })
       restoreLoyaltyRedemption(order) // si tenía un premio canjeado, se devuelve
       if (order.saldoAplicado?.ids?.length) restaurarSaldo(order, { comoCaja: true }).catch(() => {})
       onClose()
@@ -393,22 +394,31 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const markPreparing = async () => {
     setLoading(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:      'preparing',
         preparingAt: serverTimestamp(),
         updatedAt:   serverTimestamp(),
-      })
+      }, { rol: 'caja' })
+    } finally { setLoading(false) }
+  }
+
+  // Etapa nueva "Listo" (Fase 2): la caja la marca cuando cocina termina. El
+  // status viejo sigue en 'preparing' para no mover el pedido de pestaña.
+  const markListo = async () => {
+    setLoading(true)
+    try {
+      await actualizarPedido(order, { etapa: 'listo', listoAt: serverTimestamp() }, { rol: 'caja' })
     } finally { setLoading(false) }
   }
 
   const markCashReceived = async () => {
     setLoading(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:          'completed',
         completedAt:     serverTimestamp(),
         updatedAt:       serverTimestamp(),
-      })
+      }, { rol: 'caja' })
       onClose()
     } finally { setLoading(false) }
   }
@@ -1345,7 +1355,13 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 Configura el avance del domicilio. El cliente lo verá al instante.
               </p>
               {order.status === 'preparing'
-                ? <p className="font-body text-sm text-mustard font-semibold">🍳 Actualmente en preparación</p>
+                ? (etapaDe(order).etapa === 'listo'
+                    ? <p className="font-body text-sm text-mint font-semibold">✅ Listo: esperando al domiciliario</p>
+                    : (
+                      <button onClick={markListo} disabled={loading} className="btn-primary w-full">
+                        {loading ? 'Procesando…' : '✅ Marcar listo'}
+                      </button>
+                    ))
                 : (
                   <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
                     {loading ? 'Procesando…' : '🍳 Marcar en preparación'}
@@ -1366,6 +1382,18 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               <p className="font-body text-sm text-coal/70">
                 Cuando el cliente recoja su pedido y pague, márcalo como entregado.
               </p>
+              {order.status === 'quoted' && (
+                <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
+                  {loading ? 'Procesando…' : '🍳 Marcar en preparación'}
+                </button>
+              )}
+              {order.status === 'preparing' && (etapaDe(order).etapa === 'listo'
+                ? <p className="font-body text-sm text-mint font-semibold">✅ Listo para recoger: el cliente ya fue avisado</p>
+                : (
+                  <button onClick={markListo} disabled={loading} className="btn-mustard w-full">
+                    {loading ? 'Procesando…' : '✅ Marcar listo para recoger'}
+                  </button>
+                ))}
               {order.totalPrice > 0 && (
                 <div className="flex justify-between font-body text-sm">
                   <span className="text-coal/60">Total a cobrar:</span>

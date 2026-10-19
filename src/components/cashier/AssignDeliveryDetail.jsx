@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '../../services/firebase'
+import { serverTimestamp } from 'firebase/firestore'
+import { actualizarPedido } from '../../services/firebase'
 import { cashAmount } from '../../utils/payments'
 import {
   X, User, MapPin, CreditCard, Bike,
@@ -52,7 +52,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
     setLoading(true)
     try {
       const resolvedEmail = (driver?.id || driverId).toLowerCase().trim()
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:        'assigned',
         orderNumber:   orderNumber.trim(),
         quotedPrice:   qp,
@@ -67,8 +67,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
         driverPhone:   driver?.phone || null,
         driverNotes:   driverNotes.trim(),
         assignedAt:    serverTimestamp(),
-        updatedAt:     serverTimestamp(),
-      })
+      }, { rol: 'caja' })
       onClose()
     } finally { setLoading(false) }
   }

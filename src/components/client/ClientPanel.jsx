@@ -4,7 +4,7 @@ import {
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
 } from 'firebase/firestore'
 import {
-  db, storage, createOrderWithNumber, nuevoIdPedido,
+  db, storage, createOrderWithNumber, nuevoIdPedido, actualizarPedido,
   LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
   restoreLoyaltyRedemption, enablePush, pushPermission, usarSaldo, restaurarSaldo,
   registrarTelefonoDePedido, pedidosDeTelefono, reclamarPedidoPorTelefono,
@@ -73,6 +73,10 @@ const pasoCliente = status => (status === 'accepted' ? 'preparing' : status)
 // Etiqueta del paso: en "recoger en sede" no hay domiciliario que acepte nada.
 // Con pago adelantado no hubo cotización: 'quoted' significa que la caja aceptó.
 const labelPaso = (step, order) => {
+  // Etapa nueva "Listo" (Fase 2): el status sigue en 'preparing'.
+  if (step.key === 'preparing' && order?.etapa === 'listo') {
+    return order?.deliveryMode === 'pickup' ? '¡Listo para recoger!' : 'Listo, pronto sale'
+  }
   if (step.key === 'preparing' && order?.deliveryMode === 'pickup') return 'En preparación'
   if (step.key === 'quoted'  && order?.pagoAdelantado) return 'Pedido aceptado'
   if (step.key === 'pending' && order?.pagoAdelantado) return 'Pedido y pago enviados'
@@ -2267,7 +2271,8 @@ function ClientOrderDetail({ order, onClose }) {
     setExtraError('')
     setSavingExtra(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
+      // Si ya estaba cotizado vuelve a Enviado: la caja debe cotizar de nuevo.
+      await actualizarPedido(order, {
         items: `${order.items || ''}\n+ ${txt}`.trim(),
         needsRequote: true,
         ...(order.status === 'quoted'
@@ -2281,8 +2286,7 @@ function ClientOrderDetail({ order, onClose }) {
           text: `➕ Quiero agregar a mi pedido: ${txt}`,
           ts:   Date.now(),
         }),
-        updatedAt: serverTimestamp(),
-      })
+      }, { rol: 'cliente' }, { retroceder: order.status === 'quoted' })
       setExtraItem('')
       setAddingItem(false)
     } catch (_) {
@@ -2304,7 +2308,7 @@ function ClientOrderDetail({ order, onClose }) {
     setCancelling(true)
     const usóSaldo = order.saldoAplicado?.ids?.length > 0
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
+      await actualizarPedido(order, {
         status:       'cancelled',
         cancelReason: 'Cancelado por el cliente',
         cancelledAt:  serverTimestamp(),
@@ -2313,7 +2317,7 @@ function ClientOrderDetail({ order, onClose }) {
         // caja lo devuelva (si lo hace el cliente quedaría con saldo doble).
         ...(usóSaldo && order.status !== 'pending' ? { 'saldoAplicado.porDevolver': true } : {}),
         updatedAt:    serverTimestamp(),
-      })
+      }, { rol: 'cliente' })
       // Devuelve el premio de fidelización si lo había canjeado (best-effort).
       if (order.loyaltyRedemption?.rewardIds?.length) restoreLoyaltyRedemption(order).catch(() => {})
       if (usóSaldo && order.status === 'pending') restaurarSaldo(order).catch(() => {})

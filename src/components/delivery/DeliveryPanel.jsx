@@ -3,7 +3,7 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
-import { db, registerLoyaltyDelivery } from '../../services/firebase'
+import { db, registerLoyaltyDelivery, actualizarPedido } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
@@ -705,7 +705,7 @@ function DriverOrderDetail({ order, onClose }) {
   const update = async (data) => {
     setLoading(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), { ...data, updatedAt: serverTimestamp() })
+      await actualizarPedido(order, data, { rol: 'domiciliario' })
       onClose()
     } finally { setLoading(false) }
   }
