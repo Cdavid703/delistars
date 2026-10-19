@@ -197,7 +197,7 @@ export async function createOrderWithNumber(sedeId, orderData, orderId = null) {
       etapa, excepcion: null, excepcionMotivo: null, version: 1, ...orderData, origen, orderNumber: num,
     })
     tx.set(doc(collection(orderRef, 'historial')), {
-      at: serverTimestamp(), por: orderData.cashierEmail || orderData.clientEmail || '',
+      at: serverTimestamp(), por: orderData.cashierEmail || orderData.clientEmail || orderData.clientUid || '',
       rol: origen === 'caja' ? 'caja' : 'cliente', accion: 'crear',
       de: null, a: { etapa, excepcion: null }, status: orderData.status ?? null, version: 1,
     })
@@ -233,7 +233,7 @@ export async function actualizarPedido(order, cambios, actor = {}, { retroceder 
   const batch = writeBatch(db)
   batch.update(ref, { ...datos, version: increment(1) })
   batch.set(doc(collection(ref, 'historial')), {
-    at: serverTimestamp(), por: actor.por || auth.currentUser?.email || '', rol: actor.rol || '', accion: 'cambio',
+    at: serverTimestamp(), por: actor.por || auth.currentUser?.email || auth.currentUser?.uid || '', rol: actor.rol || '', accion: 'cambio',
     de: { etapa: antes.etapa, excepcion: antes.excepcion }, a: { etapa, excepcion },
     motivo: motivo ?? null, status: datos.status ?? null, version: (order.version ?? 0) + 1,
   })
