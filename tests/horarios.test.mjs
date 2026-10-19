@@ -82,3 +82,15 @@ test('sede con solo modo manual (sin semana guardada) vuelve al horario por defe
   assert.equal(estadoSede(h, t('2026-10-18T18:00:00-05:00')).abierta, false)
   assert.equal(estadoSede(h, t('2026-10-18T19:30:00-05:00')).abierta, true)
 })
+
+test('cerrada a mano por hoy: dice la hora real de apertura, no la medianoche', () => {
+  const turno = [{ desde: '17:00', hasta: '23:00' }]
+  const h = { semana: semana(() => turno), excepciones: {}, manual: { modo: 'cerrada', hasta: '2026-10-20T05:00:00.000Z' } }
+  const ahora = t('2026-10-19T18:30:00-05:00')
+  const e = estadoSede(h, ahora)
+  assert.equal(e.abierta, false)
+  assert.equal(textoEstado(e, ahora), 'Cerrada · abre mañana a las 5:00 p. m.')
+  // Cierre corto en pleno turno: abre justo cuando vence.
+  const corto = { ...h, manual: { modo: 'cerrada', hasta: '2026-10-19T19:00:00-05:00' } }
+  assert.equal(textoEstado(estadoSede(corto, ahora), ahora), 'Cerrada · abre hoy a las 7:00 p. m.')
+})

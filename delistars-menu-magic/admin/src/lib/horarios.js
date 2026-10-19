@@ -78,7 +78,15 @@ export function estadoSede(horario, ahora = Date.now()) {
   if (m && (m.modo === 'abierta' || m.modo === 'cerrada')) {
     const hasta = m.hasta ? Date.parse(m.hasta) : null
     if (hasta === null || ahora < hasta) {
-      return { abierta: m.modo === 'abierta', motivo: 'manual', hasta, proxima: m.modo === 'cerrada' ? hasta : null }
+      if (m.modo === 'abierta') return { abierta: true, motivo: 'manual', hasta, proxima: null }
+      // Cerrada a mano: vuelve a abrir en el primer turno desde que vence el
+      // cierre (no a la hora en que vence: "cerrar por hoy" vence a medianoche).
+      let proxima = null
+      if (hasta !== null) {
+        const despues = estadoSede({ ...h, manual: null }, hasta)
+        proxima = despues.abierta ? hasta : despues.proxima
+      }
+      return { abierta: false, motivo: 'manual', hasta, proxima }
     }
   }
   const { fecha } = enColombia(ahora)
