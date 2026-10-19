@@ -5,7 +5,7 @@
  * conoce (handoffItemLine), incluido "(= $X)" para verificar la suma.
  */
 import { handoffItemLine } from '../../../shared/handoff';
-import { CATEGORIA, COMBO_DRINKS, opcionesDe, esPromocion, sedePermitida } from './menu';
+import { CATEGORIA, COMBO_DRINKS, opcionesDe, sedePermitida, promoDe, estadoPromo, finTemporada, textoUnidad } from './menu';
 
 export interface ProductoCatalogo {
   id_producto: number;
@@ -26,6 +26,8 @@ export interface ItemPedido {
   opcion?: string;
   bebida?: string;
   nota?: string;
+  /** Combos de promoción: una entrada por hamburguesa/perro. */
+  unidades?: { salsas?: number[]; cebollas?: number[]; bebida?: string }[];
 }
 
 export class ErrorPedido extends Error {
@@ -35,7 +37,7 @@ export class ErrorPedido extends Error {
 const entero = (v: unknown, min: number, max: number) =>
   Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
-export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId: string) {
+export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId: string, ahora = Date.now()) {
   if (!Array.isArray(items) || items.length === 0) throw new ErrorPedido('pedido_vacio', 'El pedido no tiene productos');
   if (items.length > 40) throw new ErrorPedido('pedido_grande', 'Máximo 40 líneas por pedido');
   const porId = new Map(catalogo.map((p) => [p.id_producto, p]));
@@ -49,8 +51,14 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
     if (!p.disponible) throw new ErrorPedido('agotado', `${p.nombre_producto} no está disponible`);
     if (p.id_categoria === CATEGORIA.adiciones || p.id_categoria === CATEGORIA.salsas)
       throw new ErrorPedido('no_se_vende_solo', `${p.nombre_producto} solo se agrega a otro producto`);
-    if (esPromocion(p.nombre_producto))
-      throw new ErrorPedido('promo_no_disponible', `${p.nombre_producto} todavía no se puede pedir desde la app`);
+    const promo = promoDe(p.nombre_producto);
+    if (promo) {
+      const e = estadoPromo(promo, ahora);
+      if (e === 'antes') throw new ErrorPedido('promo_no_empieza', `${p.nombre_producto} todavía no está disponible`);
+      if (e === 'terminada') throw new ErrorPedido('promo_terminada', `${p.nombre_producto} ya terminó`);
+    }
+    const fin = finTemporada(p.nombre_producto);
+    if (fin != null && ahora >= fin) throw new ErrorPedido('promo_terminada', `${p.nombre_producto} ya terminó`);
     if (!sedePermitida(p, sedeId)) throw new ErrorPedido('no_en_sede', `${p.nombre_producto} no se vende en esta sede`);
     if (!entero(raw.cantidad, 1, 20)) throw new ErrorPedido('cantidad', `${donde}: la cantidad debe ser de 1 a 20`);
     const nota = typeof raw.nota === 'string' ? raw.nota.trim() : '';
@@ -64,6 +72,8 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
       if (!pres) throw new ErrorPedido('presentacion', `${p.nombre_producto}: elige sabor y tamaño`);
       base = Number(pres.precio_venta);
       nombre = `${p.nombre_producto} (${pres.sabor}, ${pres.tamano}${pres.base ? `, ${pres.base}` : ''})`;
+    } else if (promo) {
+      // La bebida va por unidad (abajo), no en el nombre.
     } else if (p.id_categoria === CATEGORIA.combos) {
       if (!raw.bebida || !COMBO_DRINKS.includes(raw.bebida))
         throw new ErrorPedido('bebida', `${p.nombre_producto}: elige la bebida del combo`);
@@ -93,11 +103,34 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
         if (esBebida || !x || !valido(x)) throw new ErrorPedido(tipo, `${p.nombre_producto}: ${tipo} no válida`);
         return x.nombre_producto;
       });
-    const salsas = nombres(raw.salsas, (x) => x.id_categoria === CATEGORIA.salsas, 'salsa');
-    const cebollas = nombres(raw.cebollas, (x) => x.id_categoria === CATEGORIA.adiciones && Number(x.precio_venta) === 0, 'cebolla');
+    const esSalsa = (x: ProductoCatalogo) => x.id_categoria === CATEGORIA.salsas;
+    const esCebolla = (x: ProductoCatalogo) => x.id_categoria === CATEGORIA.adiciones && Number(x.precio_venta) === 0;
+    let salsas: string[] = [];
+    let cebollas: string[] = [];
+    let unidades: string[] | undefined;
+    if (promo) {
+      // Cada unidad con sus salsas, cebolla y bebida (las salsas generales no aplican).
+      if ((raw.salsas?.length ?? 0) || (raw.cebollas?.length ?? 0))
+        throw new ErrorPedido('unidades', `${p.nombre_producto}: las salsas y la cebolla van por cada ${promo.unidad.toLowerCase()}`);
+      if (!Array.isArray(raw.unidades) || raw.unidades.length !== promo.unidades)
+        throw new ErrorPedido('unidades', `${p.nombre_producto}: arma las ${promo.unidades} unidades (${promo.unidad.toLowerCase()} 1 a ${promo.unidades})`);
+      unidades = raw.unidades.map((u, k) => {
+        if (!u?.bebida || !promo.bebidas.includes(u.bebida))
+          throw new ErrorPedido('bebida', `${p.nombre_producto}: elige la bebida de ${promo.unidad.toLowerCase()} ${k + 1}`);
+        return textoUnidad(promo, {
+          salsas: nombres(u.salsas, esSalsa, 'salsa'),
+          cebollas: nombres(u.cebollas, esCebolla, 'cebolla'),
+          bebida: u.bebida,
+        }, k);
+      });
+    } else {
+      if (raw.unidades != null) throw new ErrorPedido('unidades', `${p.nombre_producto} no se arma por unidades`);
+      salsas = nombres(raw.salsas, esSalsa, 'salsa');
+      cebollas = nombres(raw.cebollas, esCebolla, 'cebolla');
+    }
 
     subtotal += base * raw.cantidad;
-    lineasHandoff.push({ name: nombre, quantity: raw.cantidad, unitPrice: base, addons: adiciones, salsas, cebollas, notes: nota });
+    lineasHandoff.push({ name: nombre, quantity: raw.cantidad, unitPrice: base, addons: adiciones, salsas, cebollas, notes: nota, unidades });
   });
 
   const lineas = lineasHandoff.map((it) => handoffItemLine(it));

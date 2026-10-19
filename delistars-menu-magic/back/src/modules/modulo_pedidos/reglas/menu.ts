@@ -34,9 +34,41 @@ export function opcionesDe(p: { id_producto: number; nombre_producto: string }):
   return null;
 }
 
-/** Combos de promoción o temporada: se arman por unidades y aún no se piden por la API. */
-const PROMOCIONES = ['combo quincena', 'combo parche', 'combo amor', 'combo amistad'];
-export const esPromocion = (nombre: string) => PROMOCIONES.includes(normalizar(nombre));
+/**
+ * Combos de promoción con fechas (espejo de front/src/lib/promos.ts → PROMOS).
+ * Solo se piden entre `desde` y `hasta` (inclusive, hora de Colombia). Cada
+ * unidad (cada hamburguesa o perro) lleva sus salsas, cebolla y bebida.
+ */
+export interface PromoCombo { producto: string; desde: string; hasta: string; unidades: number; unidad: string; bebidas: string[] }
+export const PROMOS: PromoCombo[] = [
+  { producto: 'Combo Quincena', desde: '2026-10-15', hasta: '2026-10-17', unidades: 2, unidad: 'Hamburguesa',
+    bebidas: ['Coca Cola Sabor Original Pet 400 ml', 'Coca Cola Zero Pet 400 ml'] },
+  { producto: 'Combo Parche', desde: '2026-10-24', hasta: '2026-10-25', unidades: 4, unidad: 'Perro', bebidas: COMBO_DRINKS },
+];
+export const promoDe = (nombre: string) => PROMOS.find((p) => normalizar(p.producto) === normalizar(nombre));
+
+const inicioDia = (fecha: string) => new Date(`${fecha}T00:00:00-05:00`).getTime();
+export function estadoPromo(p: PromoCombo, ahora = Date.now()): 'antes' | 'activa' | 'terminada' {
+  if (ahora < inicioDia(p.desde)) return 'antes';
+  if (ahora >= inicioDia(p.hasta) + 24 * 3600 * 1000) return 'terminada';
+  return 'activa';
+}
+
+/** De temporada (espejo de front/src/lib/temporada.ts): combos normales con fecha de fin. */
+const TEMPORADA: Record<string, number> = {
+  'combo amor': new Date('2026-10-01T00:00:00-05:00').getTime(),
+  'combo amistad': new Date('2026-10-01T00:00:00-05:00').getTime(),
+};
+export const finTemporada = (nombre: string): number | null => TEMPORADA[normalizar(nombre)] ?? null;
+
+/** Texto de cada unidad para la cocina (igual que textoUnidad del menú web). */
+export const textoUnidad = (p: { unidad: string }, u: { salsas: string[]; cebollas: string[]; bebida: string }, i: number) =>
+  [
+    `${p.unidad} ${i + 1}`,
+    u.salsas.length ? `Salsas: ${u.salsas.join(', ')}` : 'Sin salsas',
+    u.cebollas.length ? `Cebolla: ${u.cebollas.join(', ')}` : null,
+    `Bebida: ${u.bebida}`,
+  ].filter(Boolean).join(' · ');
 
 /** Productos que solo se venden en una sede. */
 export function sedePermitida(p: { id_producto: number; nombre_producto: string }, sedeId: string): boolean {

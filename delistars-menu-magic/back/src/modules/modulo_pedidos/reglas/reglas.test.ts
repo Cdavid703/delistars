@@ -15,6 +15,8 @@ const CATALOGO: ProductoCatalogo[] = [
   prod(3, 'Hamburguesa de Pollo con Queso o Tocineta', 20000, 1),
   prod(24, 'Combo Hamburguesa Especial', 29000, 4),
   prod(81, 'Combo Quincena', 52900, 4),
+  prod(82, 'Combo Parche', 94900, 4),
+  prod(79, 'Combo Amor', 54900, 4),
   prod(48, 'Jugos de la Casa', 0, 7, { presentations: [{ id_presentacion: 9, sabor: 'Mora', tamano: 'Grande', base: 'Agua', precio_venta: 7000 }] }),
   prod(57, 'Coca Cola Sabor Original Pet 400 ml', 4500, 7),
   prod(44, 'Tocineta', 4000, 5),
@@ -54,7 +56,6 @@ describe('armarItems: precios del catálogo, nunca del cliente', () => {
     falla(() => armarItems([{ id_producto: 999, cantidad: 1 }], CATALOGO, 'santa_lucia'), 'producto_no_existe');
     falla(() => armarItems([{ id_producto: 13, cantidad: 1 }], CATALOGO, 'santa_lucia'), 'agotado');
     falla(() => armarItems([{ id_producto: 44, cantidad: 1 }], CATALOGO, 'santa_lucia'), 'no_se_vende_solo');
-    falla(() => armarItems([{ id_producto: 81, cantidad: 1 }], CATALOGO, 'santa_lucia'), 'promo_no_disponible');
     falla(() => armarItems([{ id_producto: 4, cantidad: 0 }], CATALOGO, 'santa_lucia'), 'cantidad');
   });
 });
@@ -62,6 +63,40 @@ describe('armarItems: precios del catálogo, nunca del cliente', () => {
 const usuario = (x: Partial<Usuario> = {}): Usuario =>
   ({ uid: 'u1', email: 'cliente@x.com', anonimo: false, nombre: '', esAdmin: false, esCaja: false, esDomiciliario: false, ...x });
 const caja = usuario({ uid: 'c1', email: 'caja@x.com', esCaja: true });
+
+describe('combos de promoción y de temporada', () => {
+  const parche = Date.parse('2026-10-24T19:00:00-05:00');
+  const u = (bebida: string, salsas: number[] = [], cebollas: number[] = []) => ({ salsas, cebollas, bebida });
+  it('solo entre sus fechas', () => {
+    falla(() => armarItems([{ id_producto: 82, cantidad: 1, unidades: [] }], CATALOGO, 'santa_lucia', Date.parse('2026-10-23T23:59:00-05:00')), 'promo_no_empieza');
+    falla(() => armarItems([{ id_producto: 81, cantidad: 1 }], CATALOGO, 'santa_lucia', parche), 'promo_terminada');
+    falla(() => armarItems([{ id_producto: 79, cantidad: 1, bebida: 'Coca Cola Zero Pet 400 ml' }], CATALOGO, 'santa_lucia', parche), 'promo_terminada');
+  });
+  it('cada unidad con sus salsas, cebolla y bebida; la línea queda como en la web', () => {
+    const r = armarItems([{ id_producto: 82, cantidad: 1, adiciones: [{ id_producto: 44, cantidad: 1 }], unidades: [
+      u('Coca Cola Zero Pet 400 ml', [74], [75]), u('Uva Postobón Pet 400 ml'), u('Colombiana Pet 400 ml', [74]), u('Coca Cola Zero Pet 400 ml'),
+    ] }], CATALOGO, 'santa_lucia', parche);
+    expect(r.subtotal).toBe(98900);
+    expect(r.itemsTexto).toBe([
+      '1x Combo Parche (Adición + Tocineta) (= $98.900)',
+      '   ↳ Perro 1 · Salsas: Guacamole · Cebolla: Cebolla cruda · Bebida: Coca Cola Zero Pet 400 ml',
+      '   ↳ Perro 2 · Sin salsas · Bebida: Uva Postobón Pet 400 ml',
+      '   ↳ Perro 3 · Salsas: Guacamole · Bebida: Colombiana Pet 400 ml',
+      '   ↳ Perro 4 · Sin salsas · Bebida: Coca Cola Zero Pet 400 ml',
+    ].join('\n'));
+  });
+  it('exige todas las unidades, bebidas de su lista y nada de salsas generales', () => {
+    const tres = [u('Coca Cola Zero Pet 400 ml'), u('Coca Cola Zero Pet 400 ml'), u('Coca Cola Zero Pet 400 ml')];
+    falla(() => armarItems([{ id_producto: 82, cantidad: 1, unidades: tres }], CATALOGO, 'santa_lucia', parche), 'unidades');
+    falla(() => armarItems([{ id_producto: 82, cantidad: 1, unidades: [...tres, u('Pepsi')] }], CATALOGO, 'santa_lucia', parche), 'bebida');
+    falla(() => armarItems([{ id_producto: 82, cantidad: 1, salsas: [74], unidades: [...tres, u('Coca Cola Zero Pet 400 ml')] }], CATALOGO, 'santa_lucia', parche), 'unidades');
+    falla(() => armarItems([{ id_producto: 4, cantidad: 1, unidades: tres }], CATALOGO, 'santa_lucia', parche), 'unidades');
+  });
+  it('el código STAR funciona con el Combo Parche', () => {
+    const r = armarItems([{ id_producto: 82, cantidad: 1, unidades: Array(4).fill(u('Coca Cola Zero Pet 400 ml')) }], CATALOGO, 'santa_lucia', parche);
+    expect(revisarCodigo('STAR', r.itemsTexto, false, parche)).toBe('STAR');
+  });
+});
 
 describe('planTransicion', () => {
   it('cliente cancela solo en Enviado; después solicita la cancelación', () => {
