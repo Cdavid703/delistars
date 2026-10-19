@@ -30,7 +30,14 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     env_file: .env
+    # Firebase Admin: verificar tokens, leer roles y (donde PEDIDOS_API=1)
+    # crear y mover pedidos. En producción la llave es de solo lectura hasta
+    # que se cree la cuenta de escritura; por eso la API de pedidos va apagada.
+    volumes:
+      - /opt/delistars/secrets:/secrets:ro
     environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/firestore-backup-key.json
+      PEDIDOS_API: ${PEDIDOS_API:-0}
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
       DB_HOST: ${DB_HOST}

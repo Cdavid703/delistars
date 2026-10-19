@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { RecorridoService } from '../services/recorrido.service';
+import { recorrido } from '../services/recorrido.instancia';
 
 const router = Router();
-const recorrido = new RecorridoService();
+
 
 /**
  * @swagger
