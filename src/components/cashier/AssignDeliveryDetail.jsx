@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { serverTimestamp } from 'firebase/firestore'
 import { actualizarPedido } from '../../services/firebase'
+import { conApi, ErrorApi } from '../../services/pedidosApi'
 import { cashAmount } from '../../utils/payments'
 import {
   X, User, MapPin, CreditCard, Bike,
@@ -52,8 +53,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
     setLoading(true)
     try {
       const resolvedEmail = (driver?.id || driverId).toLowerCase().trim()
-      await actualizarPedido(order, {
-        status:        'assigned',
+      const datos = {
         orderNumber:   orderNumber.trim(),
         quotedPrice:   qp,
         deliveryPrice: dp,
@@ -66,9 +66,14 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
         driverName:    driver?.name || driver?.id || driverId,
         driverPhone:   driver?.phone || null,
         driverNotes:   driverNotes.trim(),
-        assignedAt:    serverTimestamp(),
-      }, { rol: 'caja' })
+      }
+      // Por la API (valida que el domiciliario exista); si no responde, directo.
+      await conApi(`${order.id}/asignar`, { ...datos, version: order.version ?? 0 },
+        () => actualizarPedido(order, { status: 'assigned', ...datos, assignedAt: serverTimestamp() }, { rol: 'caja' }))
       onClose()
+    } catch (err) {
+      if (err instanceof ErrorApi) setErrors([err.message])
+      else throw err
     } finally { setLoading(false) }
   }
 

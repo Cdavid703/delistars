@@ -130,10 +130,14 @@ export const TRANSICIONES = [
   { a: 'confirmado',     desde: ['enviado'],         roles: ['caja'] },
   { a: 'en_preparacion', desde: ['confirmado'],      roles: ['caja'], bloquea: ['cambio_pendiente', 'cancelacion_solicitada'] },
   { a: 'listo',          desde: ['en_preparacion'],  roles: ['caja'] },
-  { a: 'en_camino',      desde: ['listo'],           roles: ['domiciliario'], tipos: ['domicilio'] },
+  // Operación actual (hasta la Fase 5, asignación automática): el domiciliario
+  // puede marcar preparación y salir sin que la caja haya marcado Listo.
+  { a: 'en_preparacion', desde: ['confirmado'],      roles: ['domiciliario'], tipos: ['domicilio'], bloquea: ['cambio_pendiente', 'cancelacion_solicitada'] },
+  { a: 'en_camino',      desde: ['confirmado', 'en_preparacion', 'listo'], roles: ['domiciliario'], tipos: ['domicilio'] },
   { a: 'llego',          desde: ['en_camino'],       roles: ['domiciliario'], tipos: ['domicilio'] },
   { a: 'entregado',      desde: ['llego'],           roles: ['domiciliario'], tipos: ['domicilio'] },
-  { a: 'entregado',      desde: ['listo'],           roles: ['caja'],         tipos: ['recoger'] },
+  // Operación actual: la caja entrega en sede aunque no haya marcado Listo.
+  { a: 'entregado',      desde: ['confirmado', 'en_preparacion', 'listo'], roles: ['caja'], tipos: ['recoger'] },
   { a: 'excepcion:rechazado',              desde: ['enviado'],                                   roles: ['caja'], motivo: true },
   { a: 'excepcion:cancelado',              desde: ['enviado'],                                   roles: ['cliente'] },
   { a: 'excepcion:cancelado',              desde: ['enviado', 'confirmado', 'en_preparacion', 'listo'], roles: ['caja'], motivo: true },

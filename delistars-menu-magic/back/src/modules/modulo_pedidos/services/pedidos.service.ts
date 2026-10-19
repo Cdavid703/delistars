@@ -8,9 +8,20 @@ import { precioDomicilio, RECORRIDO } from '../../../shared/tarifaDomicilio';
 import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
 import { planTransicion, esAhora, PedidoDoc } from '../reglas/transiciones';
 import { planPago } from '../reglas/pago';
+import { planCotizar, planAsignar, planAceptar, planCuadre, PlanCaja } from '../reglas/caja';
 import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, Premio, Credito } from '../reglas/beneficios';
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
+
+/** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
+function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(extras)) {
+    if (k.startsWith('__union:')) out[k.slice('__union:'.length)] = FieldValue.arrayUnion(v);
+    else out[k] = esAhora(v) || v === '__ahora__' ? ahora : v;
+  }
+  return out;
+}
 
 const a_confirmado = (plan: { etapa: string; excepcion: string | null }) => plan.etapa === 'confirmado' && !plan.excepcion;
 
@@ -214,7 +225,7 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     }
     const plan = planTransicion(p, String(b?.a || ''), u, b?.motivo);
     const ahora = FieldValue.serverTimestamp();
-    const extras = Object.fromEntries(Object.entries(plan.extras).map(([k, v]) => [k, esAhora(v) ? ahora : v]));
+    const extras = valoresFirestore(plan.extras, ahora);
     const version = versionActual + 1;
     const e = etapaDe(p);
     const antes = { etapa: e.etapa, excepcion: e.excepcion };
@@ -252,7 +263,12 @@ export async function transicionar(u: Usuario, id: string, b: any) {
       de: antes, a: { etapa: plan.etapa, excepcion: plan.excepcion },
       motivo: plan.motivo, status: (plan.extras.status as string) ?? null, version,
     });
-    return { id, etapa: plan.etapa, excepcion: plan.excepcion, version };
+    return { id, etapa: plan.etapa, excepcion: plan.excepcion, version, entregaDomicilio: plan.etapa === 'entregado' && e.tipo === 'domicilio' ? p : null };
+  }).then(async (r) => {
+    // Fidelización: cuenta la entrega (best-effort, nunca rompe la entrega).
+    if (r.entregaDomicilio) await registrarFidelizacion(r.entregaDomicilio).catch((err) => console.error('[pedidos] fidelización:', err?.message || err));
+    const { entregaDomicilio: _e, ...resto } = r;
+    return resto;
   });
 }
 
@@ -286,5 +302,97 @@ export async function registrarPago(u: Usuario, id: string, b: any) {
       faltaComprobante: plan.faltaComprobante,
     };
   });
+}
+
+// ─── Fidelización (espejo de registerLoyaltyDelivery en src/services/firebase.js) ──
+// Cada 10 domicilios entregados (1 por día, solo domicilio y cliente con cuenta)
+// gana 1 premio por sede. Máximo 3 disponibles; al llegar a 30 se reinicia.
+// Los premios vencen a los 60 días.
+const META = 10, CICLO = 30, MAX_PREMIOS = 3, VENCE_MS = 60 * 24 * 3600 * 1000;
+
+async function registrarFidelizacion(p: PedidoDoc) {
+  if (!p.clientUid || !p.clientEmail || p.deliveryMode === 'pickup' || !p.sedeId) return;
+  const db = firestore();
+  const cliente = db.doc(`customers/${p.clientUid}`);
+  const hoy = hoyColombia();
+  const nuevo = await db.runTransaction(async (tx) => {
+    const d = (await tx.get(cliente)).data() || {};
+    const l = d.loyalty?.[p.sedeId] || {};
+    if (l.lastCountedDate === hoy) return null;
+    const siguiente = (Number(l.count) || 0) + 1;
+    tx.set(cliente, { loyalty: { [p.sedeId]: {
+      count: siguiente === CICLO ? 0 : siguiente,
+      totalDelivered: (Number(l.totalDelivered) || 0) + 1,
+      lastCountedDate: hoy,
+    } } }, { merge: true });
+    return siguiente;
+  });
+  if (!nuevo || nuevo % META !== 0) return;
+  const disponibles = (await cliente.collection('rewards').where('sedeId', '==', p.sedeId).where('status', '==', 'available').get())
+    .docs.filter((x) => (x.data().expiresAt?.toMillis?.() ?? Infinity) > Date.now()).length;
+  if (disponibles >= MAX_PREMIOS) return;
+  const { Timestamp } = await import('firebase-admin/firestore');
+  await cliente.collection('rewards').add({
+    sedeId: p.sedeId, type: 'hamburguesa_especial', earnedAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + VENCE_MS), status: 'available',
+    redeemedAt: null, orderId: null, notified: false, cycleReset: nuevo === CICLO,
+  });
+}
+
+// ─── Acciones de caja y domiciliario (cotizar, asignar, aceptar, cuadre) ──────
+type Accion = 'cotizar' | 'asignar' | 'aceptar' | 'cuadre';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function accionCaja(u: Usuario, id: string, accion: Accion, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  // Datos que se leen fuera de la transacción (no cambian con el pedido).
+  const esDomiciliario = accion === 'asignar' ? await domiciliarioExiste(b?.driverEmail) : false;
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    const versionActual = Number(p.version) || 0;
+    if (b?.version != null && Number(b.version) !== versionActual) {
+      throw new ErrorPedido('version', `El pedido cambió mientras tanto (versión ${versionActual}). Recárgalo e intenta de nuevo`, 409);
+    }
+    // Saldo real usado en este pedido (como saldoVerificado de la web).
+    let saldoReal: number | null = null;
+    if (accion === 'cotizar' && p.clientUid && (p.saldoAplicado?.ids?.length ?? 0) > 0) {
+      const docs = await Promise.all((p.saldoAplicado.ids as string[]).map((cid) => tx.get(db.doc(`customers/${p.clientUid}/credits/${cid}`))));
+      saldoReal = docs.filter((d) => d.exists && d.data()?.usadoEnOrderId === id).reduce((t, d) => t + (Number(d.data()?.monto) || 0), 0);
+    }
+    const plan: PlanCaja = accion === 'cotizar' ? planCotizar(p, u, b, saldoReal)
+      : accion === 'asignar' ? planAsignar(p, u, b, esDomiciliario)
+      : accion === 'aceptar' ? planAceptar(p, u)
+      : planCuadre(p, u);
+    const ahora = FieldValue.serverTimestamp();
+    const e = etapaDe(p);
+    const version = plan.cambiaEtapa ? versionActual + 1 : versionActual;
+    tx.update(ref, {
+      ...valoresFirestore(plan.campos, ahora),
+      ...(plan.cambiaEtapa ? { etapa: plan.etapa, excepcion: null, excepcionMotivo: null, version } : {}),
+      updatedAt: ahora,
+    });
+    if (plan.sobrante > 0 && p.clientUid) {
+      tx.set(db.doc(`customers/${p.clientUid}/credits/sob_${id}`), {
+        sedeId: p.sedeId || '', monto: plan.sobrante, estado: 'disponible', origenOrderId: id, motivo: 'sobrante',
+        creadoPor: u.email || 'caja', createdAt: ahora, usadoEnOrderId: null, usadoAt: null,
+      });
+    }
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: accion === 'aceptar' ? 'domiciliario' : 'caja', accion,
+      de: { etapa: e.etapa, excepcion: e.excepcion }, a: { etapa: plan.etapa, excepcion: plan.cambiaEtapa ? null : e.excepcion },
+      motivo: null, status: (plan.campos.status as string) ?? null, version,
+    });
+    return { id, etapa: plan.etapa, version, status: plan.campos.status ?? p.status };
+  });
+}
+
+async function domiciliarioExiste(email: unknown): Promise<boolean> {
+  const e = typeof email === 'string' ? email.toLowerCase().trim() : '';
+  if (!e) return false;
+  if (['cdavid.jaramillo@gmail.com'].includes(e)) return true; // espejo de DEFAULT_DRIVERS
+  return (await firestore().doc(`roles_drivers/${e}`).get()).exists;
 }
 

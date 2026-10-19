@@ -4,6 +4,7 @@ import { join } from 'path';
 import { armarItems, ProductoCatalogo, ErrorPedido } from './armado';
 import { planTransicion } from './transiciones';
 import { planPago, totalConocido } from './pago';
+import { planCotizar, planAsignar, planAceptar, planCuadre } from './caja';
 import { elegirPremios, revisarCodigo, elegirSaldo, lineaPremio } from './beneficios';
 import type { Usuario } from '../../../middlewares/require-user';
 
@@ -221,6 +222,53 @@ describe('beneficios: código, premios y saldo', () => {
     const p = { deliveryMode: 'pickup', quotedPrice: 24000, status: 'pending', saldoAplicado: { ids: ['x'], monto: 30000 } };
     expect(planTransicion(p, 'confirmado', caja).extras)
       .toMatchObject({ totalPrice: 0, 'saldoAplicado.usado': 24000, 'saldoAplicado.sobrante': 6000, payment: 'Saldo a favor' });
+  });
+});
+
+describe('acciones de caja y domiciliario', () => {
+  const pend = { clientUid: 'u1', deliveryMode: 'delivery', status: 'pending', etapa: 'enviado', version: 1 };
+  it('cotizar: precios, total, etapa Confirmado y cambio recalculado del pago adelantado', () => {
+    const r = planCotizar(pend, caja, { quotedPrice: 24000, deliveryPrice: 5000, cashierNotes: ' ok ' }, null);
+    expect(r.campos).toMatchObject({ status: 'quoted', quotedPrice: 24000, deliveryPrice: 5000, totalPrice: 29000, cashierNotes: 'ok', needsRequote: false });
+    expect(r.etapa).toBe('confirmado');
+    expect(r.cambiaEtapa).toBe(true);
+    const ad = planCotizar({ ...pend, pagoAdelantado: true, payment: 'Efectivo', cashBillAmount: 20000 }, caja, { quotedPrice: 24000, deliveryPrice: 0 }, null);
+    expect(ad.campos).toMatchObject({ cashBillAmount: null, cashChange: null });
+    falla(() => planCotizar(pend, usuario(), { quotedPrice: 1 }, null), 'sin_permiso');
+    falla(() => planCotizar({ ...pend, etapa: 'en_camino' }, caja, { quotedPrice: 1 }, null), 'tarde');
+  });
+  it('cotizar con saldo real: descuenta y deja sobrante', () => {
+    const r = planCotizar({ ...pend, saldoAplicado: { ids: ['x'], monto: 99999 } }, caja, { quotedPrice: 10000, deliveryPrice: 4000 }, 20000);
+    expect(r.campos).toMatchObject({ totalPrice: 0, 'saldoAplicado.monto': 20000, 'saldoAplicado.usado': 14000, 'saldoAplicado.sobrante': 6000, payment: 'Saldo a favor' });
+    expect(r.sobrante).toBe(6000);
+  });
+  it('asignar: solo domicilio, a un domiciliario que existe; recotizar no retrocede', () => {
+    const q = { ...pend, status: 'quoted', etapa: 'confirmado' };
+    const r = planAsignar(q, caja, { driverEmail: 'Dom@X.com ', driverName: 'Dom' }, true);
+    expect(r.campos).toMatchObject({ status: 'assigned', driverEmail: 'dom@x.com', driverName: 'Dom' });
+    expect(r.cambiaEtapa).toBe(false);
+    falla(() => planAsignar(q, caja, { driverEmail: 'nadie@x.com' }, false), 'domiciliario');
+    falla(() => planAsignar({ ...q, deliveryMode: 'pickup' }, caja, { driverEmail: 'd@x.com' }, true), 'recoger');
+  });
+  it('aceptar y cuadre', () => {
+    const dom = usuario({ uid: 'd1', email: 'dom@x.com', esDomiciliario: true });
+    expect(planAceptar({ status: 'assigned', driverEmail: 'dom@x.com' }, dom).campos.status).toBe('accepted');
+    falla(() => planAceptar({ status: 'assigned', driverEmail: 'otro@x.com' }, dom), 'sin_permiso');
+    expect(planCuadre({ status: 'pending_cuadre' }, caja).campos.status).toBe('completed');
+    falla(() => planCuadre({ status: 'completed' }, caja), 'tarde');
+  });
+  it('operación actual: el domiciliario prepara y sale sin Listo; la caja entrega recoger sin Listo', () => {
+    const dom = usuario({ uid: 'd1', email: 'dom@x.com', esDomiciliario: true });
+    expect(planTransicion({ status: 'accepted', driverEmail: 'dom@x.com' }, 'en_preparacion', dom).extras.status).toBe('preparing');
+    expect(planTransicion({ status: 'accepted', driverEmail: 'dom@x.com' }, 'en_camino', dom).extras.status).toBe('in_transit');
+    expect(planTransicion({ status: 'quoted', deliveryMode: 'pickup' }, 'entregado', caja).extras.status).toBe('completed');
+  });
+  it('rechazar con pago por transferencia: devolución, comentario y mensaje al cliente', () => {
+    const p = { status: 'pending', payment: 'Nequi', transferReceiptUrl: 'x', totalPrice: 30000, sedeId: 'santa_lucia', clientEmail: 'c@x.com' };
+    const r = planTransicion(p, 'excepcion:rechazado', caja, 'Sin domiciliarios');
+    expect(r.extras).toMatchObject({ status: 'rejected', rejectionReason: 'Sin domiciliarios', devolucion: { estado: 'por_elegir', monto: 30000, sedeId: 'santa_lucia' } });
+    expect((r.extras['__union:comments'] as { text: string }).text).toBe('❌ Pedido rechazado. Motivo: Sin domiciliarios');
+    expect((r.extras['__union:clientMessages'] as { text: string }).text).toContain('o como saldo a favor');
   });
 });
 

@@ -4,6 +4,7 @@ import {
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
 import { db, registerLoyaltyDelivery, actualizarPedido } from '../../services/firebase'
+import { conApi, ErrorApi } from '../../services/pedidosApi'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
@@ -702,11 +703,21 @@ function DriverOrderDetail({ order, onClose }) {
   // cambia, el resultado viejo deja de valer sin tener que limpiarlo a mano.
   const [autoGeo, setAutoGeo] = useState({ addr: null, coords: null })
 
-  const update = async (data) => {
+  // Cambios del domiciliario por la API (el servidor valida y cuenta la
+  // fidelización al entregar). Si el servidor no responde, el camino directo.
+  // Devuelve false si hubo un error que se le mostró al domiciliario.
+  const update = async (ruta, cuerpo, data, despuesDirecto) => {
     setLoading(true)
     try {
-      await actualizarPedido(order, data, { rol: 'domiciliario' })
+      await conApi(`${order.id}/${ruta}`, { ...cuerpo, version: order.version ?? 0 }, async () => {
+        await actualizarPedido(order, data, { rol: 'domiciliario' })
+        despuesDirecto?.()
+      })
       onClose()
+      return true
+    } catch (err) {
+      if (err instanceof ErrorApi) { alert(err.message); return false }
+      throw err
     } finally { setLoading(false) }
   }
 
@@ -778,15 +789,15 @@ function DriverOrderDetail({ order, onClose }) {
     } finally { setSavingAddr(false) }
   }
 
-  const accept    = () => update({ status: 'accepted',   acceptedAt:   serverTimestamp() })
-  const prepare   = () => update({ status: 'preparing',  preparingAt:  serverTimestamp() })
+  const accept    = () => update('aceptar', {}, { status: 'accepted', acceptedAt: serverTimestamp() })
+  const prepare   = () => update('transiciones', { a: 'en_preparacion' }, { status: 'preparing', preparingAt: serverTimestamp() })
   // Al salir se calcula a qué hora llega: es el único momento seguro con la
   // página abierta (después el domiciliario navega con Google Maps o Waze y
   // el celular pausa la página y su GPS). Se guarda en el pedido para que el
   // cliente vea una hora real aunque no lleguen más ubicaciones.
   const transit = async () => {
-    await update({ status: 'in_transit', inTransitAt: serverTimestamp() })
-    if (!navCoords) return
+    const salio = await update('transiciones', { a: 'en_camino' }, { status: 'in_transit', inTransitAt: serverTimestamp() })
+    if (!salio || !navCoords) return
     const gps = await new Promise(res => {
       if (!navigator.geolocation) { res(null); return }
       navigator.geolocation.getCurrentPosition(
@@ -806,13 +817,14 @@ function DriverOrderDetail({ order, onClose }) {
       ...(gps ? { driverLat: gps.lat, driverLng: gps.lng, driverUpdatedAt: serverTimestamp() } : {}),
     }).catch(err => console.error('[DeliveryPanel] eta update failed:', err))
   }
-  const arrived   = () => update({ status: 'arrived',    arrivedAt:    serverTimestamp() })
+  const arrived   = () => update('transiciones', { a: 'llego' }, { status: 'arrived', arrivedAt: serverTimestamp() })
 
   const markDelivered = () => {
     const isCash = order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto'
     const newStatus = isCash ? 'pending_cuadre' : 'completed'
-    update({ status: newStatus, deliveredAt: serverTimestamp() })
-    registerLoyaltyDelivery(order) // best-effort, no bloquea la entrega
+    // Por la API el servidor cuenta la fidelización; en el respaldo, como siempre.
+    update('transiciones', { a: 'entregado' }, { status: newStatus, deliveredAt: serverTimestamp() },
+      () => registerLoyaltyDelivery(order)) // best-effort, no bloquea la entrega
   }
 
   // ── A dónde navegamos ──────────────────────────────────────────────────────

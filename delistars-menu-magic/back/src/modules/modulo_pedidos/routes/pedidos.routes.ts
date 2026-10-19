@@ -3,7 +3,7 @@ import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
-import { crearPedido, transicionar, registrarPago } from '../services/pedidos.service';
+import { crearPedido, transicionar, registrarPago, accionCaja } from '../services/pedidos.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
 
@@ -125,5 +125,31 @@ router.post('/:id/pago', activa, requireUser, async (req: Request, res: Response
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }
 });
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/{accion}:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: "Acciones de caja y domiciliario: cotizar | asignar | aceptar | cuadre"
+ *     description: >
+ *       cotizar (caja): { quotedPrice, deliveryPrice, cashierNotes?, orderNumber?, version? } → status quoted, etapa ≥ confirmado.
+ *       asignar (caja): { driverEmail, driverName?, driverPhone?, driverNotes?, quotedPrice?, deliveryPrice?, totalPrice?,
+ *       cashOnDelivery?, payExact?, payAmount?, change?, orderNumber? } → status assigned.
+ *       aceptar (domiciliario asignado) → status accepted. cuadre (caja): pending_cuadre → completed.
+ *     responses:
+ *       200: { description: "{ id, etapa, version, status }" }
+ */
+for (const accion of ['cotizar', 'asignar', 'aceptar', 'cuadre'] as const) {
+  router.post(`/:id/${accion}`, activa, requireUser, async (req: Request, res: Response) => {
+    try {
+      const cuerpo = { id: req.params.id, accion, ...req.body };
+      const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+        status: 200, body: await accionCaja(req.usuario!, req.params.id, accion, req.body),
+      }));
+      res.status(r.status).json(r.body);
+    } catch (err) { responderError(res, err); }
+  });
+}
 
 export default router;

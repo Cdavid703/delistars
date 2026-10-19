@@ -9,7 +9,7 @@ import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../s
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
 import { ErrorPedido } from './armado';
 import { totalConocido } from './pago';
-import { aplicarSaldo } from '../../../shared/devolucion';
+import { aplicarSaldo, devolucionInicial } from '../../../shared/devolucion';
 import type { Usuario } from '../../../middlewares/require-user';
 
 export type Rol = 'admin' | 'caja' | 'domiciliario' | 'cliente';
@@ -60,9 +60,30 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
 
   if (a.startsWith('excepcion:')) {
     const exc = a.slice('excepcion:'.length);
-    if (exc === 'rechazado') Object.assign(extras, { status: 'rejected', rejectionReason: motivo });
+    // Si ya había pagado por transferencia queda la devolución por elegir (igual que la web).
+    const devolucion = exc === 'rechazado' || exc === 'cancelado' ? devolucionInicial(p) : null;
+    if (exc === 'rechazado') {
+      const quien = u.nombre || u.email || 'Cajero';
+      const ts = Date.now();
+      Object.assign(extras, {
+        status: 'rejected', rejectionReason: motivo,
+        // `__union:<campo>` = se agrega al arreglo (el servicio lo vuelve arrayUnion).
+        '__union:comments': { role: 'cashier', name: quien, text: `❌ Pedido rechazado. Motivo: ${motivo}`, ts },
+        ...(devolucion ? {
+          devolucion,
+          '__union:clientMessages': {
+            role: 'cashier', name: quien, ts: ts + 1,
+            text: `Lo sentimos, tu pedido fue rechazado. Motivo: ${motivo}. ` +
+              `Como ya pagaste $${devolucion.monto.toLocaleString('es-CO')} por transferencia, te los devolvemos: ` +
+              'entra a tu pedido y elige si los quieres de vuelta por transferencia' +
+              (p.clientEmail ? ' o como saldo a favor para tu próximo pedido.' : '.'),
+          },
+        } : {}),
+      });
+    }
     if (exc === 'cancelado') Object.assign(extras, {
       status: 'cancelled', cancelReason: motivo || 'Cancelado por el cliente', cancelledAt: AHORA,
+      ...(devolucion ? { devolucion } : {}),
     });
     return { rol, etapa: actual.etapa, excepcion: exc, motivo: motivo || (exc === 'cancelado' ? 'Cancelado por el cliente' : null), extras };
   }

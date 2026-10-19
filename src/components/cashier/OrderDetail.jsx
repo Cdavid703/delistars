@@ -14,6 +14,7 @@ import { medirRecorrido, ubicarDireccion } from '../../services/recorrido'
 import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
 import { etapaDe } from '../../utils/etapas'
+import { conApi, ErrorApi } from '../../services/pedidosApi'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -283,6 +284,21 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           return
         }
       }
+      // Por la API (el servidor verifica el saldo y deja el sobrante); si no
+      // responde, el camino de siempre.
+      await conApi(`${order.id}/cotizar`, {
+        quotedPrice: lqp, deliveryPrice: ldp, cashierNotes: localCashierNotes.trim(),
+        orderNumber: orderNum, version: order.version ?? 0,
+      }, () => cotizarDirecto(orderNum))
+      onClose()
+    } catch (err) {
+      if (err instanceof ErrorApi) setQuoteErrors([err.message])
+      else throw err
+    } finally { setLoading(false) }
+  }
+
+  // Camino directo (respaldo si el servidor no responde): lo de siempre.
+  const cotizarDirecto = async (orderNum) => {
       // Saldo a favor: se verifica contra los saldos reales (no contra lo que
       // dice el pedido) y lo que sobre vuelve a la cuenta del cliente.
       let saldo = null
@@ -321,8 +337,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         needsRequote:  false, // el aviso de "el cliente agregó productos" ya quedó atendido
         updatedAt:     serverTimestamp(),
       }, { rol: 'caja' })
-      onClose()
-    } finally { setLoading(false) }
   }
 
   // Guarda el método de pago que la caja registra por el cliente. Escribe los
@@ -363,6 +377,17 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     setLoading(true)
     try {
       const motivo = rejectReason.trim()
+      // Por la API (devuelve premio y saldo y deja la devolución si ya pagó).
+      await conApi(`${order.id}/transiciones`, { a: 'excepcion:rechazado', motivo, version: order.version ?? 0 },
+        () => rechazarDirecto(motivo))
+      onClose()
+    } catch (err) {
+      if (err instanceof ErrorApi) alert(err.message)
+      else throw err
+    } finally { setLoading(false) }
+  }
+
+  const rechazarDirecto = async (motivo) => {
       const quien  = user?.displayName || user?.email || 'Cajero'
       // Si ya había pagado por transferencia, queda la devolución pendiente y
       // se le pregunta al cliente cómo la quiere.
@@ -387,39 +412,46 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       }, { rol: 'caja' })
       restoreLoyaltyRedemption(order) // si tenía un premio canjeado, se devuelve
       if (order.saldoAplicado?.ids?.length) restaurarSaldo(order, { comoCaja: true }).catch(() => {})
-      onClose()
+  }
+
+  // Cambio de etapa por la API (con respaldo directo). Los 4xx se muestran.
+  const moverEtapa = async (a, directo, despues) => {
+    setLoading(true)
+    try {
+      await conApi(`${order.id}/transiciones`, { a, version: order.version ?? 0 }, directo)
+      despues?.()
+    } catch (err) {
+      if (err instanceof ErrorApi) alert(err.message)
+      else throw err
     } finally { setLoading(false) }
   }
 
-  const markPreparing = async () => {
-    setLoading(true)
-    try {
-      await actualizarPedido(order, {
-        status:      'preparing',
-        preparingAt: serverTimestamp(),
-        updatedAt:   serverTimestamp(),
-      }, { rol: 'caja' })
-    } finally { setLoading(false) }
-  }
+  const markPreparing = () => moverEtapa('en_preparacion', () => actualizarPedido(order, {
+    status:      'preparing',
+    preparingAt: serverTimestamp(),
+    updatedAt:   serverTimestamp(),
+  }, { rol: 'caja' }))
 
   // Etapa nueva "Listo" (Fase 2): la caja la marca cuando cocina termina. El
   // status viejo sigue en 'preparing' para no mover el pedido de pestaña.
-  const markListo = async () => {
-    setLoading(true)
-    try {
-      await actualizarPedido(order, { etapa: 'listo', listoAt: serverTimestamp() }, { rol: 'caja' })
-    } finally { setLoading(false) }
-  }
+  const markListo = () => moverEtapa('listo',
+    () => actualizarPedido(order, { etapa: 'listo', listoAt: serverTimestamp() }, { rol: 'caja' }))
 
+  // Recoger en sede: entregar. Domicilio en efectivo: recibir la plata (cuadre).
   const markCashReceived = async () => {
+    const directo = () => actualizarPedido(order, {
+      status:          'completed',
+      completedAt:     serverTimestamp(),
+      updatedAt:       serverTimestamp(),
+    }, { rol: 'caja' })
+    if (order.status !== 'pending_cuadre') return moverEtapa('entregado', directo, onClose)
     setLoading(true)
     try {
-      await actualizarPedido(order, {
-        status:          'completed',
-        completedAt:     serverTimestamp(),
-        updatedAt:       serverTimestamp(),
-      }, { rol: 'caja' })
+      await conApi(`${order.id}/cuadre`, { version: order.version ?? 0 }, directo)
       onClose()
+    } catch (err) {
+      if (err instanceof ErrorApi) alert(err.message)
+      else throw err
     } finally { setLoading(false) }
   }
 
