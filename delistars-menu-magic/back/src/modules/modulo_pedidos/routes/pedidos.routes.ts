@@ -3,7 +3,7 @@ import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
-import { crearPedido, transicionar } from '../services/pedidos.service';
+import { crearPedido, transicionar, registrarPago } from '../services/pedidos.service';
 
 /**
  * Pedidos (Fase 3). Todas las rutas piden token de Firebase y `Idempotency-Key`.
@@ -71,6 +71,29 @@ router.post('/:id/transiciones', activa, requireUser, async (req: Request, res: 
     const cuerpo = { id: req.params.id, ...req.body };
     const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
       status: 200, body: await transicionar(req.usuario!, req.params.id, req.body),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/pago:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Elegir o corregir el pago (adelantado o tras la cotización)
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "metodo": "Efectivo", "billete": 50000 }
+ *     responses:
+ *       200: { description: "{ id, metodo, total, adelantado, cambio, faltaComprobante }" }
+ */
+router.post('/:id/pago', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const cuerpo = { id: req.params.id, pago: true, ...req.body };
+    const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+      status: 200, body: await registrarPago(req.usuario!, req.params.id, req.body),
     }));
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }

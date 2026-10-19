@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { armarItems, ProductoCatalogo, ErrorPedido } from './armado';
 import { planTransicion } from './transiciones';
+import { planPago, totalConocido } from './pago';
 import type { Usuario } from '../../../middlewares/require-user';
 
 const prod = (id: number, nombre: string, precio: number, cat: number, extra: Partial<ProductoCatalogo> = {}): ProductoCatalogo =>
@@ -93,6 +94,47 @@ describe('planTransicion', () => {
   });
   it('un pedido terminado no se mueve', () => {
     falla(() => planTransicion({ status: 'cancelled' }, 'confirmado', caja), 'terminado');
+  });
+});
+
+describe('planPago', () => {
+  const B = 'demo.firebasestorage.app';
+  const url = (id: string) => `https://firebasestorage.googleapis.com/v0/b/${B}/o/receipts%2F${id}%2F1_comp.jpg?alt=media`;
+  const base = { clientUid: 'u1', deliveryMode: 'pickup', quotedPrice: 24000, etapa: 'enviado', status: 'pending' };
+
+  it('adelantado en Enviado cuando el total se conoce (recoger): efectivo exige billete y calcula el cambio', () => {
+    expect(totalConocido(base)).toBe(24000);
+    expect(() => planPago(base, 'o1', 'u1', { metodo: 'Efectivo' }, B)).toThrow(/billete/);
+    const r = planPago(base, 'o1', 'u1', { metodo: 'Efectivo', billete: 50000 }, B);
+    expect(r.adelantado).toBe(true);
+    expect(r.campos).toMatchObject({ payment: 'Efectivo', cashOnDelivery: true, pagoAdelantado: true, totalPrice: 24000, cashBillAmount: 50000, cashChange: 26000 });
+  });
+  it('domicilio sin tarifa automática: no se puede pagar hasta que la caja cotice', () => {
+    falla(() => planPago({ ...base, deliveryMode: 'delivery' }, 'o1', 'u1', { metodo: 'Nequi' }, B), 'sin_cotizar');
+    const auto = planPago({ ...base, deliveryMode: 'delivery', deliveryPrice: 4000, deliveryPriceAuto: true }, 'o1', 'u1', { metodo: 'Nequi', comprobante: { url: url('o1'), nombre: 'c.jpg' } }, B);
+    expect(auto.total).toBe(28000);
+    expect(auto.campos.transferReceiptUrl).toBe(url('o1'));
+  });
+  it('tras la cotización: elige método sin billete; transferencia avisa si falta comprobante', () => {
+    const cot = { ...base, deliveryMode: 'delivery', etapa: 'confirmado', status: 'quoted', totalPrice: 30000 };
+    const ef = planPago(cot, 'o1', 'u1', { metodo: 'Efectivo' }, B);
+    expect(ef.adelantado).toBe(false);
+    expect(ef.campos.cashBillAmount).toBeUndefined();
+    expect(planPago(cot, 'o1', 'u1', { metodo: 'Transferencia' }, B).faltaComprobante).toBe(true);
+    falla(() => planPago(cot, 'o1', 'u1', { metodo: 'Transferencia', comprobante: { url: url('OTRO') } }, B), 'comprobante');
+    falla(() => planPago(cot, 'o1', 'u1', { metodo: 'Mixto', mixtoEfectivo: 10000, mixtoTransferencia: 5000 }, B), 'mixto');
+    expect(planPago(cot, 'o1', 'u1', { metodo: 'Mixto', mixtoEfectivo: 20000, mixtoTransferencia: 10000, billete: 50000 }, B).campos)
+      .toMatchObject({ mixtoEfectivo: '20000', mixtoTransferencia: '10000', cashChange: 30000 });
+  });
+  it('solo el cliente; no con excepción, ni al llegar, ni terminado', () => {
+    falla(() => planPago(base, 'o1', 'otro', { metodo: 'Efectivo', billete: 24000 }, B), 'sin_permiso');
+    falla(() => planPago({ ...base, excepcion: 'cambio_pendiente' }, 'o1', 'u1', { metodo: 'Nequi' }, B), 'bloqueado');
+    falla(() => planPago({ ...base, deliveryMode: 'delivery', etapa: 'llego', totalPrice: 1 }, 'o1', 'u1', { metodo: 'Nequi' }, B), 'tarde');
+    falla(() => planPago({ ...base, status: 'cancelled', etapa: undefined }, 'o1', 'u1', { metodo: 'Nequi' }, B), 'terminado');
+  });
+  it('confirmar por la API deja el total cuando ya se conoce', () => {
+    expect(planTransicion({ ...base }, 'confirmado', caja).extras).toMatchObject({ totalPrice: 24000, deliveryPrice: 0 });
+    expect(planTransicion({ ...base, deliveryMode: 'delivery' }, 'confirmado', caja).extras.totalPrice).toBeUndefined();
   });
 });
 

@@ -7,6 +7,7 @@ import { etapaDe } from '../../../shared/etapas';
 import { precioDomicilio, RECORRIDO } from '../../../shared/tarifaDomicilio';
 import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
 import { planTransicion, esAhora, PedidoDoc } from '../reglas/transiciones';
+import { planPago } from '../reglas/pago';
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
 
@@ -175,3 +176,36 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     return { id, etapa: plan.etapa, excepcion: plan.excepcion, version };
   });
 }
+
+/**
+ * Elige o corrige el pago (adelantado en `enviado` si el total ya se conoce, o
+ * tras la cotización). No cambia la etapa ni la versión; deja línea en el historial.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function registrarPago(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  const bucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || '';
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    const plan = planPago(p, id, u.uid, b, bucket);
+    const ahora = FieldValue.serverTimestamp();
+    const campos = Object.fromEntries(Object.entries(plan.campos).map(([k, v]) => [k, esAhora(v) || v === '__ahora__' ? ahora : v]));
+    tx.update(ref, { ...campos, updatedAt: ahora });
+    const e = etapaDe(p);
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: 'cliente', accion: 'pago',
+      de: { etapa: e.etapa, excepcion: e.excepcion }, a: { etapa: e.etapa, excepcion: e.excepcion },
+      motivo: null, status: p.status ?? null, version: Number(p.version) || 0,
+      metodo: (plan.campos.payment as string) ?? null, adelantado: plan.adelantado,
+    });
+    return {
+      id, metodo: plan.campos.payment, total: plan.total, adelantado: plan.adelantado,
+      cambio: (plan.campos.cashChange as number | null | undefined) ?? null,
+      faltaComprobante: plan.faltaComprobante,
+    };
+  });
+}
+

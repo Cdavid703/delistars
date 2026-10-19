@@ -8,6 +8,7 @@ import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../s
 
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
 import { ErrorPedido } from './armado';
+import { totalConocido } from './pago';
 import type { Usuario } from '../../../middlewares/require-user';
 
 export type Rol = 'admin' | 'caja' | 'domiciliario' | 'cliente';
@@ -66,7 +67,15 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
   }
 
   switch (a) {
-    case 'confirmado':     Object.assign(extras, { status: 'quoted', quotedAt: AHORA }); break;
+    case 'confirmado': {
+      Object.assign(extras, { status: 'quoted', quotedAt: AHORA });
+      // Si el total ya se conoce (recoger o domicilio automático), queda como cotización.
+      const total = totalConocido(p);
+      if (p.totalPrice == null && total != null) {
+        Object.assign(extras, { totalPrice: total, deliveryPrice: p.deliveryMode === 'pickup' ? 0 : Number(p.deliveryPrice) || 0 });
+      }
+      break;
+    }
     case 'en_preparacion': Object.assign(extras, { status: 'preparing', preparingAt: AHORA }); break;
     case 'listo':          Object.assign(extras, { listoAt: AHORA }); break;
     case 'en_camino':      Object.assign(extras, { status: 'in_transit', inTransitAt: AHORA }); break;
