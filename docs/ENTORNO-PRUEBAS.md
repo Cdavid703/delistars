@@ -45,8 +45,10 @@ premios ni cuadres reales (especificación §22.1). Creado el 18 de octubre de 2
 
 ## API de pedidos (Fase 3)
 
-- Activa solo aquí: `PEDIDOS_API=1` en `/opt/delistars-pruebas/delistars-menu-magic/.env`
-  (en producción no existe la variable y la API responde 503).
+- `PEDIDOS_API=1` en el `.env` de pruebas y, desde el 19 oct 2026, también en producción.
+  Producción usa la cuenta `servidor-pedidos@delistars-domicilios.iam.gserviceaccount.com`
+  (rol Usuario de Cloud Datastore; llave en `/opt/delistars/secrets/servidor-pedidos.json`,
+  elegida con `BACKEND_FIREBASE_KEY` en el `.env`).
 - Usuario de prueba `prueba-api@delistars-pruebas.test` en Firebase de pruebas. Su
   contraseña solo está en `/opt/delistars-pruebas-secrets/usuario-prueba-api.json` (600).
 - Prueba de punta a punta: `/opt/delistars-pruebas-secrets/prueba-api.js` (crea y mueve
