@@ -36,11 +36,13 @@ router.get('/datos-transferencia', (req: Request, res: Response) => {
   const sedeId = typeof req.query.sedeId === 'string' ? req.query.sedeId : '';
   if (sedeId && !SEDES[sedeId]) return res.status(400).json({ error: 'Sede no válida', codigo: 'sede' });
   const c = datosTransferencia(sedeId);
-  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0];
+  // Detrás del gateway el protocolo llega como http: fuera de local siempre es https.
+  const host = req.get('host') || 'delistars.com';
+  const proto = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https';
   res.set('Cache-Control', 'public, max-age=300').json({
     sedeId: sedeId || null,
     banco: c.banco, tipo: c.tipo, numero: c.numero, numeroVisible: c.numeroVisible, titular: c.titular,
-    qrUrl: `${proto}://${req.get('host')}/domicilios/${c.qr}`,
+    qrUrl: `${proto}://${host}/domicilios/${c.qr}`,
     instruccion: INSTRUCCION_TRANSFERENCIA,
   });
 });
