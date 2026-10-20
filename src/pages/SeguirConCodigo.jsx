@@ -64,7 +64,11 @@ export default function SeguirConCodigo({ codigoInicial = '' }) {
     } finally { setBusy(false) }
   }
 
-  const irAMisPedidos = () => window.location.replace('/domicilios/')
+  // A "Mis pedidos" ya en la sede del pedido (sin volver a preguntarla).
+  const irAMisPedidos = () => {
+    try { if (pedido?.sedeId) sessionStorage.setItem('ds_sede_pedido', pedido.sedeId) } catch { /* sin almacenamiento */ }
+    window.location.replace('/domicilios/')
+  }
 
   return (
     <div className="min-h-screen-safe bg-gradient-to-br from-cherry via-tangelo to-mustard px-4 py-8 flex flex-col items-center">

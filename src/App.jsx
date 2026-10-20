@@ -65,7 +65,8 @@ export default function App() {
       const handoff = JSON.parse(localStorage.getItem('ds_cart_handoff') || 'null')
       const draft   = JSON.parse(localStorage.getItem('ds_order_draft') || 'null')
       const cart    = JSON.parse(localStorage.getItem('ds_cart_items') || 'null')
-      const sedeId  = handoff?.sedeId || draft?.sedeId || cart?.sedeId
+      // …o la del pedido de caja que acaba de guardar en su cuenta con el código.
+      const sedeId  = handoff?.sedeId || draft?.sedeId || cart?.sedeId || sessionStorage.getItem('ds_sede_pedido')
       if (sedeId && SEDES[sedeId]) selectSede(SEDES[sedeId])
     } catch (_) {}
   }, [user, sede])
