@@ -99,18 +99,89 @@ service cloud.firestore {
     // un pedido a nombre de otro cajero). Domiciliario: solo lee/actualiza los
     // que tiene asignados (driverEmail == su email) — así ya filtra su propia
     // consulta en DeliveryPanel.jsx, esto solo lo refuerza del lado servidor.
+    // ── Qué puede cambiar cada rol en un pedido (19 oct 2026) ──────────────
+    // La caja y el admin cambian todo (cotizan, asignan, corrigen). El cliente y
+    // el domiciliario solo los campos que sus pantallas escriben de verdad: así
+    // nadie puede, desde la consola del navegador, ponerle total $0 a su pedido,
+    // marcarlo entregado o cambiarle el domiciliario. Los cambios de etapa
+    // "oficiales" pasan por la API del servidor (/api/v1/pedidos), que usa una
+    // cuenta de servicio y no depende de estas reglas.
+    function cambiados() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    // Campos de etapa que escribe services/firebase.js → actualizarPedido.
+    function etapaValida(etapasPermitidas, excepcionesPermitidas) {
+      return (!('etapa' in cambiados()) || request.resource.data.etapa in etapasPermitidas)
+          && (!('excepcion' in cambiados()) || request.resource.data.excepcion in excepcionesPermitidas)
+          && (!('version' in cambiados()) || request.resource.data.version == resource.data.get('version', 0) + 1);
+    }
+    function clientePuedeActualizar() {
+      let d = request.resource.data;
+      let antes = resource.data;
+      return cambiados().hasOnly([
+          // cancelar
+          'status', 'cancelReason', 'cancelledAt', 'devolucion', 'saldoAplicado',
+          // agregar algo al pedido (la caja vuelve a cotizar)
+          'items', 'needsRequote',
+          // pago tras la cotización, billete y comprobante
+          'payment', 'cashOnDelivery', 'mixtoEfectivo', 'mixtoTransferencia',
+          'cashBillAmount', 'cashChange', 'billSentAt', 'transferReceiptUrl', 'transferReceiptName',
+          // chat con la caja y calificación
+          'clientMessages', 'rating', 'ratingComment', 'ratedAt',
+          // modelo de etapas
+          'etapa', 'excepcion', 'excepcionMotivo', 'version', 'updatedAt'
+        ])
+        // Estados: cancelar antes de que lo despachen, o volver a "pendiente"
+        // al agregar algo a un pedido cotizado.
+        && (!('status' in cambiados())
+            || (d.status == 'cancelled' && antes.status in ['pending', 'quoted'])
+            || (d.status == 'pending' && antes.status == 'quoted'))
+        && etapaValida(['enviado'], ['cancelado'])
+        // Agregar productos obliga a recotizar.
+        && (!('items' in cambiados()) || (d.needsRequote == true && antes.status in ['pending', 'quoted']))
+        // Del saldo solo puede marcar que hay que devolverlo.
+        && (!('saldoAplicado' in cambiados())
+            || d.saldoAplicado.diff(antes.get('saldoAplicado', {})).affectedKeys().hasOnly(['porDevolver']))
+        // Devolución: al cancelar, nunca por más de lo que pagó; después solo elige cómo.
+        && (!('devolucion' in cambiados())
+            || (!('devolucion' in antes) && d.status == 'cancelled'
+                && d.devolucion.monto <= antes.get('totalPrice', 0))
+            || ('devolucion' in antes
+                && d.devolucion.diff(antes.devolucion).affectedKeys().hasOnly(['estado', 'datos', 'elegidaAt'])
+                && d.devolucion.estado in ['transferencia_solicitada', 'saldo_solicitado']));
+    }
+    function domiciliarioPuedeActualizar() {
+      return cambiados().hasOnly([
+          'status', 'acceptedAt', 'preparingAt', 'inTransitAt', 'arrivedAt', 'deliveredAt',
+          // llegada estimada y ubicación en vivo
+          'etaMin', 'etaLlegadaAt', 'etaDesde', 'driverLat', 'driverLng', 'driverUpdatedAt',
+          // corrige la dirección o pega el pin del cliente
+          'fullAddress', 'addrLat', 'addrLng', 'addrPinBy', 'addrPinAt',
+          'comments',
+          'etapa', 'excepcion', 'excepcionMotivo', 'version', 'updatedAt'
+        ])
+        && (!('status' in cambiados())
+            || request.resource.data.status in ['accepted', 'preparing', 'in_transit', 'arrived', 'pending_cuadre', 'completed'])
+        && etapaValida(['confirmado', 'en_preparacion', 'listo', 'en_camino', 'llego', 'entregado'], [null]);
+    }
+
     match /orders/{orderId} {
       allow create: if isAdmin()
                     || (isCashier() && request.resource.data.cashierId == request.auth.uid)
-                    || (isSignedIn() && request.resource.data.clientUid == request.auth.uid);
+                    // El cliente crea su pedido siempre "pendiente" y sin domiciliario.
+                    || (isSignedIn() && request.resource.data.clientUid == request.auth.uid
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.get('etapa', 'enviado') == 'enviado'
+                        && !('driverEmail' in request.resource.data)
+                        && !('cashierId' in request.resource.data));
       // Mercadeo NO lee pedidos (decisión C3, especificación §17.1): sus
       // indicadores son agregados que publica el servidor en mercadeo/indicadores.
       allow read:   if isAdmin() || isCashier()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid)
                     || (isDriver() && resource.data.driverEmail == userEmail());
       allow update: if isAdmin() || isCashier()
-                    || (isSignedIn() && resource.data.clientUid == request.auth.uid)
-                    || (isDriver() && resource.data.driverEmail == userEmail())
+                    || (isSignedIn() && resource.data.clientUid == request.auth.uid && clientePuedeActualizar())
+                    || (isDriver() && resource.data.driverEmail == userEmail() && domiciliarioPuedeActualizar())
                     // "Recuperar mi pedido con el teléfono": el cliente que
                     // pidió sin cuenta y perdió la sesión (otro navegador, datos
                     // borrados) vuelve a poner su pedido en su pantalla. El
