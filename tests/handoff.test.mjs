@@ -4,7 +4,7 @@
 // Corre con: npm test  (node --test, sin dependencias)
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseHandoff, handoffItemLine, HANDOFF_TTL_MS, parseMenuCart, CART_TTL_MS } from '../src/utils/handoff.js'
+import { parseHandoff, handoffItemLine, HANDOFF_TTL_MS, parseMenuCart, CART_TTL_MS , carritoParaApi } from '../src/utils/handoff.js'
 
 const NOW = 1_800_000_000_000
 
@@ -136,4 +136,38 @@ test('rescate del carrito: también trae las unidades del combo', () => {
   }], savedAt: Date.now() })
   const r = parseMenuCart(raw)
   assert.match(r.itemsText, /1x Combo Parche \(= \$94\.900\)\n   ↳ Perro 1 · Sin salsas · Bebida: Uva Postobón Pet 400 ml/)
+})
+
+test('carrito → API: ids del catálogo, adiciones contadas, opciones y unidades del combo', () => {
+  const ahora = Date.now()
+  const raw = JSON.stringify({ savedAt: ahora, items: [
+    { product: { id_producto: 4, nombre_producto: 'Hamburguesa Especial' }, quantity: 2,
+      addons: [{ id: 44, name: 'Tocineta', price: 4000 }, { id: 44, name: 'Tocineta', price: 4000 }],
+      salsas: [{ id: 74, name: 'Guacamole' }], cebollas: [{ id: 75, name: 'Cebolla cruda' }], notes: ' bien asada ' },
+    { product: { id_producto: 24, nombre_producto: 'Combo Especial' }, quantity: 1, addons: [], salsas: [], cebollas: [],
+      selectedDrink: 'Coca-Cola', selectedOption: 'Queso', notes: '' },
+    { product: { id_producto: 48, nombre_producto: 'Jugos' }, quantity: 1, addons: [], salsas: [], cebollas: [],
+      presentation: { id_presentacion: 9 }, notes: '' },
+    { product: { id_producto: 81, nombre_producto: 'Combo Quincena' }, quantity: 1, addons: [], salsas: [], cebollas: [], notes: '',
+      unidades: [{}, {}], unidadesIds: [{ salsas: [74], cebollas: [], bebida: 'Coca-Cola' }, { salsas: [], cebollas: [75], bebida: 'Sprite' }] },
+  ] })
+  const r = carritoParaApi(raw, ahora)
+  assert.deepEqual(r.rearmar, [])
+  assert.deepEqual(r.items, [
+    { id_producto: 4, cantidad: 2, adiciones: [{ id_producto: 44, cantidad: 2 }], salsas: [74], cebollas: [75], nota: 'bien asada' },
+    { id_producto: 24, cantidad: 1, opcion: 'Queso', bebida: 'Coca-Cola' },
+    { id_producto: 48, cantidad: 1, id_presentacion: 9 },
+    { id_producto: 81, cantidad: 1, unidades: [{ salsas: [74], cebollas: [], bebida: 'Coca-Cola' }, { salsas: [], cebollas: [75], bebida: 'Sprite' }] },
+  ])
+})
+
+test('carrito → API: combo viejo sin ids hay que rearmarlo; vencido o vacío no sirve', () => {
+  const ahora = Date.now()
+  const viejo = JSON.stringify({ savedAt: ahora, items: [
+    { product: { id_producto: 81, nombre_producto: 'Combo Quincena' }, quantity: 1, addons: [], salsas: [], cebollas: [], unidades: [{}, {}] },
+  ] })
+  assert.deepEqual(carritoParaApi(viejo, ahora), { items: [], rearmar: ['Combo Quincena'] })
+  assert.equal(carritoParaApi(JSON.stringify({ savedAt: 1, items: [{}] }), ahora), null)
+  assert.equal(carritoParaApi(null), null)
+  assert.equal(carritoParaApi('{mal'), null)
 })

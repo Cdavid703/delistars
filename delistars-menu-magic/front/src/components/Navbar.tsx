@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase, Building2 } from "lucide-react";
+import { ShoppingCart, MapPin, Menu, X, CalendarClock, LogIn, LogOut, Briefcase, Building2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.svg";
 import { useCart } from "@/context/CartContext";
@@ -9,10 +9,11 @@ import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { isStaff } from "@/lib/staff";
 import { useAllRoles } from "@/hooks/useAllRoles";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
-  const { user, login, loginMs, loginGuest, logout, isGuest } = useStaffAuth();
+  const { user, login, loginMs, logout, isGuest } = useStaffAuth();
   const staff = isStaff(user?.email);
   const allRoles = useAllRoles(user);
   const [scrolled, setScrolled] = useState(false);
@@ -33,10 +34,9 @@ export const Navbar = () => {
       /* popup cerrado: sin acción */
     }
   };
-  const doGuest = async () => {
-    try { await loginGuest(); setLoginOpen(false); setMobile(false); }
-    catch { /* sin acción */ }
-  };
+  // Correo y contraseña: la ventana completa (crear cuenta, olvidé mi
+  // contraseña, confirmar el correo) vive en domicilios.
+  const conCorreo = () => { window.location.href = "/domicilios/?entrar"; };
 
   // Obtener sedes directo del backend para mostrar el nombre correcto
   const { data: sedes = [] } = useQuery({
@@ -179,17 +179,17 @@ export const Navbar = () => {
                     <div className="px-2 pt-1.5 pb-2 mb-1 border-b border-border">
                       <p className="text-xs font-semibold text-foreground flex items-center gap-1">🎁 Programa de fidelización</p>
                       <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                        Inicia con <strong>Google</strong> o <strong>Microsoft</strong> y cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
+                        Para pedir necesitas tu cuenta: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>.
                       </p>
                     </div>
                     <button onClick={doLogin} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
-                      <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                      <LogoGoogle /> Entrar con Google
                     </button>
                     <button onClick={doLoginMs} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
-                      <LogIn className="w-4 h-4 text-primary" /> Entrar con Microsoft
+                      <LogoMicrosoft /> Entrar con Microsoft
                     </button>
-                    <button onClick={doGuest} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
-                      <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta
+                    <button onClick={conCorreo} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm font-medium hover:bg-secondary/60 transition-smooth text-left">
+                      <Mail className="w-[18px] h-[18px] text-primary" /> Con correo y contraseña
                     </button>
                   </div>
                 </>
@@ -251,17 +251,17 @@ export const Navbar = () => {
                 <div className="bg-secondary/40 rounded-lg px-2.5 py-2 mb-1">
                   <p className="text-xs font-semibold text-foreground">🎁 Programa de fidelización</p>
                   <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                    Inicia con <strong>Google</strong> o <strong>Microsoft</strong>: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>. Como invitado no acumulas.
+                    Para pedir necesitas tu cuenta: cada 10 domicilios entregados ganas una <strong>Hamburguesa Especial + un Perro Grande con tocineta gratis</strong>.
                   </p>
                 </div>
                 <button onClick={doLogin} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
-                  <LogIn className="w-4 h-4 text-primary" /> Entrar con Google
+                  <LogoGoogle /> Entrar con Google
                 </button>
                 <button onClick={doLoginMs} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
-                  <LogIn className="w-4 h-4 text-primary" /> Entrar con Microsoft
+                  <LogoMicrosoft /> Entrar con Microsoft
                 </button>
-                <button onClick={doGuest} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
-                  <ShoppingCart className="w-4 h-4 text-primary" /> Continuar sin cuenta
+                <button onClick={conCorreo} className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-smooth w-full text-left py-1.5">
+                  <Mail className="w-[18px] h-[18px] text-primary" /> Con correo y contraseña
                 </button>
               </div>
             )}

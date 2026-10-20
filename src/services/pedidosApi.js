@@ -14,7 +14,7 @@ export class ErrorApi extends Error {
   constructor(mensaje, codigo, status) { super(mensaje); this.codigo = codigo; this.status = status }
 }
 
-const nuevaClave = () =>
+export const nuevaClave = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '')
 
 /** POST a /api/v1/pedidos/<ruta>. Lanza ErrorApi con el texto para mostrar. */

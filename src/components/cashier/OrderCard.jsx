@@ -86,6 +86,15 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         </div>
       )}
 
+      {/* El cliente pidió cancelar: la caja lo resuelve en el detalle */}
+      {order.excepcion === 'cancelacion_solicitada' && (
+        <div className="mb-2 flex items-center gap-1.5 bg-pepper/15 border border-pepper/50 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-semibold text-pepper">
+            ⚠️ El cliente pidió cancelar — ábrelo para resolver
+          </span>
+        </div>
+      )}
+
       {/* El cliente agregó productos después de enviarlo: hay que recotizar */}
       {order.needsRequote && (
         <div className="mb-2 flex items-center gap-1.5 bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2">

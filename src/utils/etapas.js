@@ -140,10 +140,16 @@ export const TRANSICIONES = [
   { a: 'entregado',      desde: ['confirmado', 'en_preparacion', 'listo'], roles: ['caja'], tipos: ['recoger'] },
   { a: 'excepcion:rechazado',              desde: ['enviado'],                                   roles: ['caja'], motivo: true },
   { a: 'excepcion:cancelado',              desde: ['enviado'],                                   roles: ['cliente'] },
+  // La caja cancela con motivo; en camino o llegó solo si el cliente lo pidió
+  // (aprueba la solicitud de cancelación).
   { a: 'excepcion:cancelado',              desde: ['enviado', 'confirmado', 'en_preparacion', 'listo'], roles: ['caja'], motivo: true },
+  { a: 'excepcion:cancelado',              desde: ['en_camino', 'llego'], roles: ['caja'], motivo: true, solo: ['cancelacion_solicitada'] },
   { a: 'excepcion:cancelado',              desde: [],                                            roles: ['admin'], motivo: true },
   { a: 'excepcion:cancelacion_solicitada', desde: ['confirmado', 'en_preparacion', 'listo', 'en_camino', 'llego'], roles: ['cliente'], motivo: true },
   { a: 'excepcion:cambio_pendiente',       desde: ['confirmado'],                                roles: ['caja'] },
   { a: 'excepcion:no_entregado',           desde: ['llego'],                                     roles: ['domiciliario'], motivo: true },
   { a: 'excepcion:devuelto',               desde: ['llego'],                                     roles: ['caja'] },
+  // Quitar una excepción temporal sin mover la etapa: la caja niega la
+  // solicitud de cancelación o resuelve el cambio pendiente (Fase 4, 20 oct 2026).
+  { a: 'seguir',                           desde: [],                                            roles: ['caja'], solo: ['cancelacion_solicitada', 'cambio_pendiente'] },
 ]

@@ -232,7 +232,6 @@ export async function getNextOrderNumber(sedeId) {
 // recibían uno tardío al cotizar y desordenaban la secuencia).
 // `orderId` opcional: el checkout con pago adelantado lo genera antes para
 // subir el comprobante a receipts/{orderId}/ ANTES de crear el pedido.
-export const nuevoIdPedido = () => doc(collection(db, 'orders')).id
 export async function createOrderWithNumber(sedeId, orderData, orderId = null) {
   const today = bogotaToday()
   const counterRef = doc(db, 'counters', `orders_${sedeId || 'default'}`)
@@ -391,17 +390,6 @@ export async function registerLoyaltyDelivery(order) {
   } catch (_) { /* best-effort: nunca debe romper el flujo de entrega */ }
 }
 
-/** El cliente marca como canjeados N premios (ya escogidos) en un pedido recién creado. */
-export async function redeemLoyaltyRewards(uid, rewardIds, orderId) {
-  await Promise.all(rewardIds.map(id =>
-    updateDoc(doc(db, 'customers', uid, 'rewards', id), {
-      status:     'redeemed',
-      redeemedAt: serverTimestamp(),
-      orderId,
-    })
-  ))
-}
-
 /** El cliente confirma que ya vio el aviso de "ganaste un premio". */
 export async function markRewardNotified(uid, rewardId) {
   await updateDoc(doc(db, 'customers', uid, 'rewards', rewardId), { notified: true })
@@ -459,13 +447,6 @@ export async function acreditarSaldoDevolucion(order, cajero) {
   })
 }
 
-/** El cliente usa su saldo en un pedido recién creado. */
-export async function usarSaldo(uid, creditIds, orderId) {
-  await Promise.all(creditIds.map(id =>
-    updateDoc(doc(creditosCol(uid), id), { estado: 'usado', usadoEnOrderId: orderId, usadoAt: serverTimestamp() })
-  ))
-}
-
 /** Suma real de los saldos usados en un pedido (la caja no confía en el pedido). */
 export async function saldoVerificado(order) {
   const ids = order?.saldoAplicado?.ids || []
@@ -506,42 +487,4 @@ export async function restaurarSaldo(order, { comoCaja = false } = {}) {
       updatedAt: serverTimestamp(),
     }).catch(() => {})
   }
-}
-
-// ─── Recuperar el pedido con el teléfono ────────────────────────────────────
-// Índice telefonos/{últimos 10 dígitos}/pedidos/{orderId} con el id del pedido
-// y su fecha. Sirve para que el cliente que perdió la sesión vuelva a ver su
-// pedido. Reglas y límites (solo pedidos en curso de las últimas 24 h) en
-// firestore.rules; la lógica pura está en src/utils/recuperarPedido.js.
-export async function registrarTelefonoDePedido(phoneKey, orderId) {
-  if (!phoneKey || !orderId) return
-  await setDoc(doc(db, 'telefonos', phoneKey, 'pedidos', orderId), { createdAt: serverTimestamp() })
-}
-
-/** Ids de los pedidos recientes hechos con ese teléfono. */
-export async function pedidosDeTelefono(phoneKey) {
-  if (!phoneKey) return []
-  const snap = await getDocs(collection(db, 'telefonos', phoneKey, 'pedidos'))
-  const corte = Date.now() - 24 * 60 * 60 * 1000
-  return snap.docs
-    .filter(d => (d.data().createdAt?.toMillis?.() ?? 0) > corte)
-    .map(d => d.id)
-}
-
-/**
- * Pone el pedido en la sesión actual del cliente. Devuelve true si quedó.
- * Las reglas rechazan el intento si el pedido no está en curso, es viejo o el
- * teléfono no coincide: por eso los fallos se ignoran en silencio.
- */
-export async function reclamarPedidoPorTelefono(orderId, phoneKey, uid) {
-  try {
-    await updateDoc(doc(db, 'orders', orderId), {
-      clientUid:             uid,
-      reclamoTelefono:       phoneKey,
-      reclamadoPorTelefono:  true,
-      reclamadoAt:           serverTimestamp(),
-      updatedAt:             serverTimestamp(),
-    })
-    return true
-  } catch (_) { return false }
 }

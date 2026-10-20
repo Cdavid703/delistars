@@ -711,6 +711,9 @@ function mensajeDevolucion(o, tipo) {
   if (tipo === 'transferencia_solicitada') {
     return { rol: 'cashier', title: '💸 Devolución por transferencia', body: `${o.name || 'El cliente'} (pedido${n}) pidió que le transfieran ${monto}. Ábrelo para ver sus datos.` }
   }
+  if (tipo === 'cancelacion_solicitada') {
+    return { rol: 'cashier', title: '⚠️ El cliente pidió cancelar', body: `${o.name || 'El cliente'} (pedido${n}) pidió cancelar${o.excepcionMotivo ? `: «${o.excepcionMotivo}»` : ''}. Ábrelo para aprobar o seguir.` }
+  }
   if (tipo === 'saldo_solicitado') {
     return { rol: 'cashier', title: '💚 Devolución como saldo a favor', body: `${o.name || 'El cliente'} (pedido${n}) pidió ${monto} como saldo. Ábrelo para acreditarlo.` }
   }
@@ -742,6 +745,12 @@ function watchDevoluciones() {
   vigilar(
     adminDb.collection('orders').where('saldoAplicado.porDevolver', '==', true),
     () => 'saldo_por_devolver',
+  )
+  // Solicitud de cancelación (Fase 4): no cambia el status viejo, así que el
+  // vigía de pedidos tampoco la ve.
+  vigilar(
+    adminDb.collection('orders').where('excepcion', '==', 'cancelacion_solicitada'),
+    () => 'cancelacion_solicitada',
   )
   console.log('[scheduler] avisos de devoluciones a la caja activos')
 }

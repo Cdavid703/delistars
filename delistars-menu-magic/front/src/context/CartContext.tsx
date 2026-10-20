@@ -25,6 +25,8 @@ export type CartItem = {
   unidades?: UnidadCombo[];
   /** Las mismas unidades ya en texto para la cocina ("Hamburguesa 1 · Salsas: … · Bebida: …"). */
   unidadesTexto?: string[];
+  /** Las mismas unidades con los ids de salsas y cebollas: así las recibe la API de pedidos. */
+  unidadesIds?: { salsas: number[]; cebollas: number[]; bebida: string }[];
 };
 
 type CartCtx = {

@@ -269,6 +269,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       selectedDrink: bebidasCombo ? selectedDrink : undefined,
       unidades: unidadesFinales,
       unidadesTexto: promo && unidadesFinales ? unidadesFinales.map((u, i) => textoUnidad(promo, u, i)) : undefined,
+      unidadesIds: promo ? unidades.map((u) => ({ salsas: [...u.salsas], cebollas: [...u.cebollas], bebida: u.bebida })) : undefined,
       selectedOption: getProductCustomOptions(product) ? selectedOption : undefined
     });
     toast.success(`${product.nombre_producto} agregado al carrito 🎉`, {

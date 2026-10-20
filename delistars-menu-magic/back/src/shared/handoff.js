@@ -99,3 +99,57 @@ export function parseMenuCart(raw, now = Date.now()) {
     recovered: true, // vino del carrito del menú, no del handoff
   }
 }
+
+// ── Productos para la API de pedidos (Fase 4) ─────────────────────────────
+// El servidor arma y cobra el pedido con los ids del catálogo (nunca con los
+// precios ni los textos del navegador). Salen del carrito del menú
+// ('ds_cart_items'), que guarda el producto completo con sus ids.
+const contarAdiciones = (addons = []) => {
+  const porId = new Map()
+  for (const a of addons) if (a?.id != null) porId.set(a.id, (porId.get(a.id) || 0) + 1)
+  return [...porId].map(([id_producto, cantidad]) => ({ id_producto, cantidad }))
+}
+
+/** Un ítem del carrito del menú → ítem de POST /api/v1/pedidos (o null si falta información). */
+export function itemParaApi(it) {
+  const id = it?.product?.id_producto
+  if (!Number.isInteger(id)) return null
+  const item = { id_producto: id, cantidad: it.quantity || 1 }
+  if (it.presentation?.id_presentacion != null) item.id_presentacion = it.presentation.id_presentacion
+  const adiciones = contarAdiciones(it.addons)
+  if (adiciones.length) item.adiciones = adiciones
+  if (it.salsas?.length) item.salsas = it.salsas.map(s => s.id)
+  if (it.cebollas?.length) item.cebollas = it.cebollas.map(c => c.id)
+  if (it.selectedOption) item.opcion = it.selectedOption
+  if (it.selectedDrink) item.bebida = it.selectedDrink
+  if (it.notes?.trim()) item.nota = it.notes.trim()
+  // Combo de promoción: cada unidad con los ids de sus salsas y cebolla. Los
+  // carritos armados antes de este cambio solo traen el texto: hay que rearmarlos.
+  if (Array.isArray(it.unidades)) {
+    if (!Array.isArray(it.unidadesIds) || it.unidadesIds.length !== it.unidades.length) return null
+    item.unidades = it.unidadesIds.map(u => ({ salsas: u.salsas || [], cebollas: u.cebollas || [], bebida: u.bebida }))
+  }
+  return item
+}
+
+/**
+ * El carrito del menú listo para la API:
+ *   { items, rearmar: [nombres] }  — `rearmar` = productos que hay que volver a armar en el menú
+ *   null                           — no hay carrito vigente
+ */
+export function carritoParaApi(raw, now = Date.now()) {
+  if (!raw) return null
+  let data
+  try { data = JSON.parse(raw) } catch { return null }
+  const lista = data?.items
+  if (!Array.isArray(lista) || lista.length === 0) return null
+  if (now - (data.savedAt || 0) > CART_TTL_MS) return null
+  const items = []
+  const rearmar = []
+  for (const it of lista) {
+    const item = itemParaApi(it)
+    if (item) items.push(item)
+    else rearmar.push(it?.product?.nombre_producto || 'Un producto')
+  }
+  return { items, rearmar }
+}

@@ -4,14 +4,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { useCart, formatCOP } from "@/context/CartContext";
 import { SEDES } from "@/data/menu";
-import { Minus, Plus, Trash2, ShoppingBag, LogIn, UserX, Clock, ArrowLeft } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, Clock, ArrowLeft, Mail } from "lucide-react";
+import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { usePlatformStatus } from "@/hooks/usePlatformStatus";
 import { optimizeImage } from "@/lib/utils";
 
 export const CartSheet = () => {
   const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
-  const { user, login, loginGuest } = useStaffAuth();
+  const { user, login, loginMs } = useStaffAuth();
   const { abierta: platformActive, texto: textoHorario } = usePlatformStatus();
   const [needsLogin, setNeedsLogin] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -64,15 +65,17 @@ export const CartSheet = () => {
 
   const handleOrder = () => {
     if (closed) return;
-    if (!user) { setNeedsLogin(true); return; }
+    // Para pedir hay que tener cuenta (Fase 4). La sesión de invitado de antes
+    // también: Google y Microsoft la enlazan sin perder nada.
+    if (!user || user.isAnonymous) { setNeedsLogin(true); return; }
     proceed();
   };
 
-  const loginThen = async (method: "google" | "guest") => {
+  const loginThen = async (method: "google" | "microsoft") => {
     setBusy(true);
     try {
       if (method === "google") await login();
-      else await loginGuest();
+      else await loginMs();
       proceed();
     } catch {
       // popup cerrado o error: el cliente puede reintentar
@@ -204,17 +207,22 @@ export const CartSheet = () => {
                       carrito y hacer el pedido cuando estemos abiertos.
                     </p>
                   </div>
-                ) : needsLogin && !user ? (
+                ) : needsLogin && (!user || user.isAnonymous) ? (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground text-center">
                       Inicia sesión para continuar con tu pedido
                     </p>
-                    <Button onClick={() => loginThen("google")} disabled={busy} size="lg"
-                      className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth">
-                      <LogIn className="w-4 h-4" /> {busy ? "Conectando…" : "Entrar con Google"}
+                    <Button onClick={() => loginThen("google")} disabled={busy} variant="outline" size="lg"
+                      className="w-full bg-white text-foreground border-border hover:bg-secondary/40 gap-3">
+                      <LogoGoogle /> {busy ? "Conectando…" : "Continuar con Google"}
                     </Button>
-                    <Button onClick={() => loginThen("guest")} disabled={busy} variant="outline" size="lg" className="w-full">
-                      <UserX className="w-4 h-4" /> Continuar sin cuenta
+                    <Button onClick={() => loginThen("microsoft")} disabled={busy} variant="outline" size="lg"
+                      className="w-full bg-white text-foreground border-border hover:bg-secondary/40 gap-3">
+                      <LogoMicrosoft /> Continuar con Microsoft
+                    </Button>
+                    {/* Correo y contraseña: el carrito viaja y domicilios abre la ventana de ingreso. */}
+                    <Button onClick={proceed} disabled={busy} variant="ghost" size="lg" className="w-full gap-2">
+                      <Mail className="w-4 h-4" /> Con correo y contraseña
                     </Button>
                   </div>
                 ) : (

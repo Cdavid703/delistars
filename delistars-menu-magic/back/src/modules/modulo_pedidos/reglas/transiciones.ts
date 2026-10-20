@@ -47,7 +47,10 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
 
   const delTipo = TRANSICIONES.filter((t: { a: string; tipos?: string[] }) => t.a === a && (!t.tipos || t.tipos.includes(actual.tipo)));
   if (!delTipo.length) throw new ErrorPedido('transicion_invalida', `No existe la transición a ${a}`, 400);
-  const posibles = delTipo.filter((t: { desde: string[] }) => !t.desde.length || t.desde.includes(actual.etapa));
+  // `solo`: la transición existe únicamente con esa excepción puesta (ej. aprobar
+  // o negar una solicitud de cancelación).
+  const posibles = delTipo.filter((t: { desde: string[]; solo?: string[] }) =>
+    (!t.desde.length || t.desde.includes(actual.etapa)) && (!t.solo || (!!actual.excepcion && t.solo.includes(actual.excepcion))));
   if (!posibles.length) throw new ErrorPedido('transicion_invalida', `No se puede pasar de ${actual.etapa} a ${a}`, 409);
   const t = posibles.find((x: { roles: string[] }) => x.roles.some((r) => roles.includes(r as Rol)));
   if (!t) throw new ErrorPedido('sin_permiso', 'Tu rol no puede hacer este cambio', 403);
@@ -58,6 +61,11 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
 
   const rol = t.roles.find((r: string) => roles.includes(r as Rol)) as Rol;
   const extras: Record<string, unknown> = {};
+
+  // Seguir: la caja quita la excepción temporal y el pedido sigue donde estaba.
+  if (a === 'seguir') {
+    return { rol, etapa: actual.etapa, excepcion: null, motivo: null, extras };
+  }
 
   if (a.startsWith('excepcion:')) {
     const exc = a.slice('excepcion:'.length);

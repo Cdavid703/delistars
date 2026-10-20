@@ -71,8 +71,10 @@ test('transiciones: solo etapas y excepciones que existen', () => {
   for (const t of TRANSICIONES) {
     const [clase, id] = t.a.startsWith('excepcion:') ? ['exc', t.a.slice(10)] : ['etapa', t.a]
     if (clase === 'exc') assert.ok(EXCEPCIONES[id], t.a)
-    else assert.ok(ETAPAS.domicilio.some((e) => e.id === id), t.a)
+    // 'seguir' no mueve la etapa: solo quita una excepción temporal.
+    else assert.ok(id === 'seguir' || ETAPAS.domicilio.some((e) => e.id === id), t.a)
     for (const d of t.desde) assert.ok(ETAPAS.domicilio.some((e) => e.id === d), d)
+    for (const x of t.solo ?? []) assert.ok(EXCEPCIONES[x] && !EXCEPCIONES[x].final, x)
   }
 })
 

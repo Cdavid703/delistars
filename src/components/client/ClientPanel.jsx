@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import {
   collection, query, where, onSnapshot, serverTimestamp, getDocs, limit,
-  doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion, increment
+  doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion
 } from 'firebase/firestore'
 import {
-  db, storage, createOrderWithNumber, nuevoIdPedido, actualizarPedido,
-  LOYALTY_REWARD, availableRewardsForSede, redeemLoyaltyRewards, markRewardNotified,
-  restoreLoyaltyRedemption, enablePush, pushPermission, usarSaldo, restaurarSaldo,
-  registrarTelefonoDePedido, pedidosDeTelefono, reclamarPedidoPorTelefono,
+  db, storage, actualizarPedido,
+  availableRewardsForSede, markRewardNotified,
+  enablePush, pushPermission,
 } from '../../services/firebase'
+import { llamarPedidos, ErrorApi, nuevaClave } from '../../services/pedidosApi'
+import { etapaDe } from '../../utils/etapas'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -16,7 +17,7 @@ import RoleSwitcher from '../common/RoleSwitcher'
 import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
-import { parseHandoff, parseMenuCart } from '../../utils/handoff'
+import { parseHandoff, parseMenuCart, carritoParaApi } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
 import { medirRuta } from '../../services/recorrido'
 import { sugerirOtraSede } from '../../utils/checkoutRuta'
@@ -24,12 +25,11 @@ import { debeOfrecerPromos } from '../../utils/promociones'
 import { validarCodigo, CODIGOS } from '../../utils/codigos'
 import { estadoSede, textoEstado } from '../../utils/horarios'
 import {
-  aplicaPagoAdelantado, totalAPagar, erroresPago, camposPago, llevaComprobante,
+  aplicaPagoAdelantado, totalAPagar, erroresPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
 import {
   devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo,
 } from '../../utils/devolucion'
-import { normalizarTelefono, telefonoValido } from '../../utils/recuperarPedido'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
 // Mapa en vivo del domiciliario: Leaflet diferido, solo se descarga en "en camino".
@@ -463,27 +463,10 @@ export default function ClientPanel() {
     )
   }
 
-  // Cliente sin pedidos en esta sesión: puede ser alguien nuevo o alguien que
-  // ya pidió y perdió la sesión. Se le dan las dos salidas.
+  // Cliente sin pedidos: al menú a pedir. Un invitado antiguo (sesión anónima)
+  // entra a su cuenta: si ya pidió con ella, ahí están sus pedidos.
   if (ordersLoaded && orders.length === 0 && effectiveRole === 'client' && !showForm && !hayPedidoPendiente()) {
-    return (
-      <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-soft px-5 py-10">
-        <div className="w-full max-w-sm flex flex-col gap-4">
-          <div className="text-center">
-            <Logo variant="light" size="lg" />
-            <p className="font-display text-2xl text-coal tracking-wide mt-4">No tienes pedidos aquí</p>
-            <p className="font-body text-sm text-coal/60 mt-1 leading-relaxed">
-              Si ya hiciste un pedido desde otro navegador o celular, recupéralo con tu teléfono.
-            </p>
-          </div>
-          <RecuperarPedido uid={user?.uid} />
-          <a href="/" className="btn-secondary w-full">Ver el menú y pedir</a>
-          <button onClick={logout} className="font-body text-xs text-coal/50 underline underline-offset-2">
-            Cerrar sesión
-          </button>
-        </div>
-      </div>
-    )
+    return <SinPedidos anonimo={!!user?.isAnonymous} onSalir={logout} />
   }
 
   const handleCreateOrder = async (data) => {
@@ -513,39 +496,29 @@ export default function ClientPanel() {
       }
     }
 
-    const { redeemRewardIds = [], orderId = null, ...orderData } = data
-    // Número + pedido en UNA transacción atómica: el pedido SIEMPRE llega a
-    // la caja con su consecutivo asignado, sin saltos ni números quemados.
-    // Si falla, no se crea nada y el formulario muestra el error (el borrador
-    // se conserva para reintentar).
-    const { orderRef: newOrderRef } = await createOrderWithNumber(sede?.id, {
-      ...orderData,
-      clientUid:   user.uid,
-      clientEmail: user.email   || null,
-      clientName:  data.name    || user.displayName || 'Invitado',
-      sedeId:      sede?.id     || '',
-      // Últimos 10 dígitos: con esto el cliente puede recuperar su pedido si
-      // pierde la sesión (ver "Recuperar mi pedido" y firestore.rules).
-      phoneKey:    normalizarTelefono(data.phone),
-      sedeName:    sede?.name   || '',
-      status:      'pending',
-      // Sin pago adelantado, el pago se elige tras la cotización de la caja.
-      // Con pago adelantado, orderData ya trae el medio de pago.
-      payment:        orderData.pagoAdelantado ? orderData.payment : '',
-      cashOnDelivery: orderData.pagoAdelantado ? !!orderData.cashOnDelivery : false,
-      ...(redeemRewardIds.length > 0 ? {
-        loyaltyRedemption: { sedeId: sede?.id || '', rewardIds: redeemRewardIds, count: redeemRewardIds.length },
-      } : {}),
-      createdAt:   serverTimestamp(),
-      updatedAt:   serverTimestamp(),
-    }, orderId)
-    if (redeemRewardIds.length > 0) {
-      redeemLoyaltyRewards(user.uid, redeemRewardIds, newOrderRef.id).catch(() => {})
-    }
-    const phoneKey = normalizarTelefono(data.phone)
-    if (phoneKey) registrarTelefonoDePedido(phoneKey, newOrderRef.id).catch(() => {})
-    if (orderData.saldoAplicado?.ids?.length) {
-      await usarSaldo(user.uid, orderData.saldoAplicado.ids, newOrderRef.id).catch(() => {})
+    // El servidor arma el pedido (precios del catálogo, domicilio por recorrido,
+    // código, premios y saldo) y le da su consecutivo (Fase 4: el cliente ya no
+    // escribe pedidos directo en Firestore). La clave de idempotencia es la del
+    // formulario: si se reintenta tras un corte, no se crea un pedido doble.
+    const { cuerpo, pago, comprobante, clave, onSubiendo } = data
+    const creado = await llamarPedidos('', cuerpo, clave)
+    // Pago adelantado (el total ya se conoce): se registra con el pedido creado.
+    // Si no se puede, el pedido igual quedó enviado: la sede lo confirma y el
+    // cliente elige cómo pagar desde el pedido.
+    let avisoPago = ''
+    if (pago) {
+      try {
+        let comp = null
+        if (comprobante) {
+          const url = await subirComprobante(creado.id, comprobante, onSubiendo)
+          comp = { url, nombre: comprobante.name }
+        }
+        await llamarPedidos(`${creado.id}/pago`, { ...pago, ...(comp ? { comprobante: comp } : {}) }, `${clave}-pago`)
+      } catch (err) {
+        avisoPago = err instanceof ErrorApi && err.codigo === 'sin_cotizar'
+          ? 'Tu pedido quedó enviado. La sede va a confirmar el valor del domicilio y ahí eliges cómo pagar.'
+          : 'Tu pedido quedó enviado, pero el pago no se registró. Ábrelo y elige cómo pagar.'
+      }
     }
     // Solo AHORA que el pedido existe en Firestore se limpian el carrito
     // entregado por el menú y el borrador — nunca antes, para que una recarga
@@ -555,19 +528,9 @@ export default function ClientPanel() {
     localStorage.removeItem(DRAFT_KEY)
     sessionStorage.removeItem('ds_funnel_logged')  // próximo carrito = nuevo evento de embudo
     setShowForm(false)
-    // Guardar/actualizar perfil del cliente frecuente (best-effort, no bloquea)
-    if (user.uid) {
-      setDoc(doc(db, 'customers', user.uid), {
-        uid:         user.uid,
-        name:        data.name        || user.displayName || '',
-        email:       user.email       || '',
-        phone:       data.phone       || '',
-        // Solo guardamos la dirección en pedidos a domicilio (en recoger viene vacía)
-        ...(data.fullAddress?.trim() ? { addresses: arrayUnion(data.fullAddress) } : {}),
-        lastOrderAt: serverTimestamp(),
-        orderCount:  increment(1),
-      }, { merge: true }).catch(() => {})
-    }
+    // El perfil del cliente frecuente (nombre, teléfono, direcciones) lo guarda el servidor.
+    openOrderDetail(creado.id)
+    if (avisoPago) window.alert(avisoPago)
   }
 
   // ── Checkout a pantalla completa ─────────────────────────────────────────
@@ -676,17 +639,12 @@ export default function ClientPanel() {
       )}
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
-      {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" />}
+      {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" siguiendo />}
       {/* Cuenta de correo sin confirmar: no puede enviar el primer pedido */}
       {faltaVerificarCorreo(user) && (
         <AvisoVerificarCorreo email={user.email} className="mx-4 mt-3" onVerificado={() => setCorreoConfirmado(n => n + 1)} />
       )}
       {completarPerfil}
-      {user?.isAnonymous && (
-        <div className="mx-4 mt-3">
-          <RecuperarPedido uid={user?.uid} compacto />
-        </div>
-      )}
 
       {/* Devolución esperando que el cliente elija cómo la quiere */}
       {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
@@ -1227,6 +1185,10 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
   // El cliente pidió que la caja revise el valor del domicilio: se manda a
   // cotizar a mano, como toda la vida, en vez de cobrarle el automático.
   const [pidioRevisión,     setPidioRevisión]     = useState(false)
+  // Productos del carrito del menú con sus ids, para la API (null = no hay carrito).
+  const [carritoApi,        setCarritoApi]        = useState(null)
+  // Una clave por pedido: si el envío se reintenta, el servidor no lo duplica.
+  const claveEnvio = useRef(nuevaClave())
   const errorsRef = useRef(null)
 
   // ─── Domicilio automático ──────────────────────────────────────────────────
@@ -1320,6 +1282,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         parsed = null
       }
       if (!parsed) parsed = parseMenuCart(localStorage.getItem('ds_cart_items'))
+      setCarritoApi(carritoParaApi(localStorage.getItem('ds_cart_items')))
       if (!parsed) return
 
       setForm(f => ({ ...f, items: parsed.itemsText }))
@@ -1410,8 +1373,10 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
-    if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
+    if (!carritoApi?.items.length && !carritoApi?.rearmar.length) errs.push('Elige tus productos en el menú para hacer el pedido')
+    else if (carritoApi.rearmar.length) errs.push(`Vuelve a agregar desde el menú: ${carritoApi.rearmar.join(', ')}. El menú cambió desde que lo pusiste en el carrito.`)
     // Cuenta de correo sin confirmar: primero el enlace (el borrador se conserva).
+    if (!user || user.isAnonymous) errs.push('Entra a tu cuenta para enviar el pedido (tu carrito se conserva).')
     if (faltaVerificarCorreo(user)) errs.push('Confirma tu correo para enviar el pedido: abre el enlace que te enviamos.')
     // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
     if (codigoAplicado) {
@@ -1431,65 +1396,39 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     setLoading(true)
     submittingRef.current = true
     try {
-      const redeemRewardIds = redeemCount > 0 ? sortedRewards.slice(0, redeemCount).map(r => r.id) : []
-      const conPremio = redeemRewardIds.length > 0
-        ? `${form.items}\n${redeemRewardIds.length}x ${LOYALTY_REWARD.name} — GRATIS (premio fidelización, NO cobrar)`
-        : form.items
-      // El código suma su línea gratis al pedido (la caja la ve y no la cobra).
-      const items = codigoAplicado ? `${conPremio}\n${CODIGOS[codigoAplicado].linea}` : conPremio
-
-      // Pago adelantado: el id del pedido se genera antes para subir el
-      // comprobante a su carpeta, y el pedido se crea ya con el comprobante.
-      let pago = {}
-      let orderId = null
-      if (pagoAhora) {
-        orderId = nuevoIdPedido()
-        pago = camposPago({
-          metodo: form.payment, total, precioProductos: menuTotal, precioDomicilio: precioDom,
-          billete: form.billete, mixtoEfectivo: form.mixtoEfectivo, mixtoTransferencia: form.mixtoTransferencia,
-        })
-        if (llevaComprobante(form.payment)) {
-          const url = await subirComprobante(orderId, comprobante, setSubiendo)
-          pago = { ...pago, transferReceiptUrl: url, transferReceiptName: comprobante.name }
-        }
-      }
-
-      // Si el pedido viene del menú web, traslada el precio ya calculado a la
-      // cotización para que el cajero lo reciba pre-llenado (solo agrega el domicilio).
-      // Los campos de pago del formulario solo viajan dentro de `pago`: si el
-      // cliente tocó el selector y luego cambió a un pedido que la caja cotiza,
-      // no deben quedar datos de pago sueltos en el pedido.
-      const { payment: _p, billete: _b, mixtoEfectivo: _me, mixtoTransferencia: _mt, ...datosForm } = form
+      const delivery = form.deliveryMode === 'delivery'
       await onSubmit({
-        ...datosForm,
-        items,
-        redeemRewardIds,
-        orderId,
-        ...(codigoAplicado ? { codigoPromo: codigoAplicado } : {}),
-        ...(fromMenu ? { quotedPrice: menuTotal, fromMenu: true } : {}),
-        // Domicilio cobrado automáticamente por distancia. Si el cliente pidió
-        // revisión, o no había pin, no va precio y la caja cotiza como siempre.
-        ...(cobroAutomático && form.deliveryMode === 'delivery'
-          ? {
-              deliveryPrice:     tarifa.precio,
-              deliveryPriceAuto: true,
-              deliveryKm:        Number(kmSede.toFixed(2)),
-              // Con qué se midió: 'recorrido' (Google) o 'linea_recta' (respaldo).
-              deliveryKmMedida:  distancia.medida,
-              deliveryKmLinea:   Number(kmLinea.toFixed(2)),
-            }
-          : {}),
-        ...(pidioRevisión ? { deliveryPriceReview: true } : {}),
-        ...pago,
-        // Saldo usado. Con pago adelantado ya va calculado; si la caja cotiza,
-        // la caja lo descuenta al enviar la cotización.
-        ...(conSaldo ? {
-          saldoAplicado: {
-            ids: creditos.map(c => c.id),
-            monto: saldo,
-            ...(pagoAhora ? { usado: saldoCalc.usado, sobrante: saldoCalc.sobrante } : {}),
-          },
-        } : {}),
+        clave: claveEnvio.current,
+        cuerpo: {
+          sedeId:       sede?.id,
+          deliveryMode: form.deliveryMode,
+          nombre:       form.name.trim(),
+          telefono:     form.phone.trim(),
+          direccion:    delivery ? form.fullAddress.trim() : '',
+          barrio:       delivery ? form.barrio : '',
+          referencia:   delivery ? form.reference : '',
+          notas:        form.notes,
+          ...(delivery && form.addrLat != null && form.addrLng != null
+            ? { coords: { lat: Number(form.addrLat), lng: Number(form.addrLng) }, pinFuente: form.addrPinFuente || 'app' }
+            : {}),
+          // Pidió que la caja revise el valor: no se cobra el automático.
+          ...(delivery && pidioRevisión ? { revisarDomicilio: true } : {}),
+          items:        carritoApi.items,
+          ...(codigoAplicado ? { codigo: codigoAplicado } : {}),
+          ...(redeemCount > 0 ? { premios: redeemCount } : {}),
+          usarSaldo:    conSaldo,
+        },
+        // Pago adelantado: se registra en cuanto el pedido existe (el comprobante
+        // va a la carpeta del pedido, que el servidor crea).
+        pago: pagoAhora ? {
+          metodo: total === 0 ? undefined : form.payment,
+          ...(form.billete != null ? { billete: Number(form.billete) } : {}),
+          ...(form.payment === 'Mixto'
+            ? { mixtoEfectivo: Number(form.mixtoEfectivo), mixtoTransferencia: Number(form.mixtoTransferencia) }
+            : {}),
+        } : null,
+        comprobante: pagoAhora && llevaComprobante(form.payment) ? comprobante : null,
+        onSubiendo:  setSubiendo,
       })
       if (ofrecerPromos && quierePromos) {
         setDoc(doc(db, 'customers', user.uid), {
@@ -1499,7 +1438,9 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     } catch (err) {
       // Falló el envío: se reactiva el autoguardado para no perder el borrador.
       submittingRef.current = false
-      const msg = err?.code === 'permission-denied'
+      const msg = err instanceof ErrorApi
+        ? (err.status === 401 ? 'Tu sesión venció. Recarga la página y vuelve a entrar.' : err.message)
+        : err?.code === 'permission-denied'
         ? 'Sin permisos para enviar el pedido. Recarga la app e intenta de nuevo.'
         : err?.code?.startsWith?.('storage/')
           ? 'No se pudo subir el comprobante. Revisa tu conexión e intenta de nuevo.'
@@ -1728,14 +1669,23 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       )}
 
       <div>
-        <label className="label-field">¿Qué vas a pedir? *</label>
-        <textarea
-          className={`textarea-field h-28 scroll-custom ${fromMenu ? 'bg-coal/5 text-coal/70' : ''}`}
-          value={form.items}
-          onChange={e => !fromMenu && set('items', e.target.value)}
-          readOnly={fromMenu}
-          placeholder="Ej: 1 hamburguesa clásica, 1 papas medianas, 1 gaseosa…"
-        />
+        <label className="label-field">Tu pedido</label>
+        {/* Los productos se escogen en el menú: el servidor los cobra con los
+            precios del catálogo, así que aquí ya no se escriben a mano. */}
+        {form.items.trim() ? (
+          <div className="bg-coal/5 border border-coal/10 rounded-xl px-4 py-3 max-h-48 overflow-y-auto scroll-custom">
+            <p className="font-body text-sm text-coal/80 whitespace-pre-line leading-relaxed">{form.items}</p>
+          </div>
+        ) : (
+          <div className="bg-coal/5 border border-dashed border-coal/20 rounded-xl px-4 py-4 text-center">
+            <p className="font-body text-sm text-coal/70">Tu carrito está vacío.</p>
+          </div>
+        )}
+        {(!carritoApi || carritoApi.rearmar.length > 0 || !carritoApi.items.length) && (
+          <a href="/" className="btn-secondary w-full mt-2">
+            {carritoApi?.rearmar.length ? `Volver a agregar ${carritoApi.rearmar.join(', ')}` : 'Elegir mis productos en el menú'}
+          </a>
+        )}
         {fromMenu && menuTotal > 0 && (
           <div className="mt-2 flex items-center justify-between bg-cherry/10 border border-cherry/20 rounded-xl px-4 py-2.5">
             <span className="font-body text-sm text-coal/70">Total del pedido</span>
@@ -2043,35 +1993,44 @@ function PushOptIn({ uid, className = '' }) {
 function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) {
   // Entrar o crear cuenta ENLAZA la sesión de invitado (mismo uid): no se
   // pierde el pedido. Se recarga para que toda la página vea la cuenta nueva.
-  const [abierto, setAbierto] = useState(false)
+  // Para pedir ya no se puede sin cuenta (Fase 4): en el checkout la ventana
+  // de ingreso se abre de una vez.
+  const [abierto, setAbierto] = useState(!siguiendo)
+  const ventana = abierto && (
+    <AccesoCuenta titulo={siguiendo ? 'Guarda tus pedidos' : 'Entra para enviar tu pedido'}
+      onCerrar={() => setAbierto(false)} onListo={() => window.location.reload()} />
+  )
+  if (!siguiendo) {
+    return (
+      <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
+        <p className="font-display text-base tracking-wide text-coal">🔑 Entra para enviar tu pedido</p>
+        <p className="font-body text-xs text-coal/75 mt-1.5 leading-relaxed">
+          Para pedir necesitas tu cuenta. Tu carrito se conserva
+          {!compacto && <>, sigues tus pedidos desde cualquier celular y acumulas premios</>}.
+        </p>
+        <button onClick={() => setAbierto(true)} className="btn-primary w-full mt-3">Entrar o crear cuenta</button>
+        {ventana}
+      </div>
+    )
+  }
   return (
     <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
-      <p className="font-display text-base tracking-wide text-coal">
-        {siguiendo ? '⚠️ Estás siguiendo tu pedido sin cuenta' : '⚠️ Estás pidiendo sin cuenta'}
-      </p>
+      <p className="font-display text-base tracking-wide text-coal">⚠️ Estás siguiendo tu pedido sin cuenta</p>
       {/* Lo más importante va primero y en grande: si se sale, pierde el rastro
           de su pedido y termina pidiendo otra vez creyendo que no entró. */}
       <div className="bg-cream border border-mustard/50 rounded-xl px-3 py-2.5 mt-2">
         <p className="font-body text-sm font-bold text-coal leading-snug">
-          👉 No cierres esta página {siguiendo ? 'hasta que te entreguen el pedido' : 'hasta terminar tu pedido'}.
+          👉 No cierres esta página hasta que te entreguen el pedido.
         </p>
         <p className="font-body text-[11px] text-coal/70 mt-1 leading-relaxed">
-          Puedes dejarla abierta en segundo plano. Si la cierras o abres el enlace en otro
-          navegador, <strong>vas a perder de vista tu pedido</strong> (el pedido sigue en la
-          cocina: escríbenos por WhatsApp si te pasa).
+          Sin cuenta, el pedido se ve <strong>solo en este navegador</strong>. Crea tu cuenta aquí mismo
+          y lo sigues desde cualquier celular.
         </p>
       </div>
-      <p className="font-body text-xs text-coal/75 mt-2 leading-relaxed">
-        Sin cuenta, tus pedidos quedan guardados <strong>solo en este navegador</strong>.
-        {!compacto && <> Con tu cuenta los sigues desde cualquier celular y acumulas premios.</>}
-      </p>
       <button onClick={() => setAbierto(true)} className="btn-primary w-full mt-3">
         Entrar o crear cuenta y guardar mis pedidos
       </button>
-      {abierto && (
-        <AccesoCuenta titulo="Guarda tus pedidos" onCerrar={() => setAbierto(false)}
-          onListo={() => window.location.reload()} />
-      )}
+      {ventana}
       <p className="font-body text-[11px] text-coal/55 mt-1.5 text-center">
         No pierdes nada de lo que ya hiciste: tu pedido actual se conserva.
       </p>
@@ -2079,62 +2038,33 @@ function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) 
   )
 }
 
-// Recuperar el pedido con el teléfono. El cliente sin cuenta que abre el
-// enlace en otro navegador (o al que el celular le borró los datos del sitio)
-// no ve nada y cree que su pedido se perdió: escribe su número y vuelve.
-// Solo trae pedidos EN CURSO de las últimas 24 h; las reglas de Firestore
-// validan lo mismo del lado del servidor.
-function RecuperarPedido({ uid, compacto = false }) {
-  const [abierto, setAbierto] = useState(!compacto)
-  const [tel,  setTel]  = useState('')
-  const [busy, setBusy] = useState(false)
-  const [msg,  setMsg]  = useState('')
-
-  const buscar = async () => {
-    const clave = normalizarTelefono(tel)
-    if (!telefonoValido(tel)) { setMsg('Escribe tu número completo, de 10 dígitos.'); return }
-    setBusy(true); setMsg('')
-    try {
-      const ids = await pedidosDeTelefono(clave)
-      let recuperados = 0
-      for (const id of ids) {
-        if (await reclamarPedidoPorTelefono(id, clave, uid)) recuperados++
-      }
-      setMsg(recuperados > 0
-        ? `¡Listo! Recuperamos ${recuperados === 1 ? 'tu pedido' : `${recuperados} pedidos`}. Ya puedes seguirlo aquí.`
-        : 'No encontramos pedidos en curso con ese número de las últimas 24 horas. Si tu pedido es de antes, escríbenos por WhatsApp.')
-    } catch (_) {
-      setMsg('No se pudo buscar. Revisa tu conexión e intenta de nuevo.')
-    } finally { setBusy(false) }
-  }
-
-  if (!abierto) {
-    return (
-      <button onClick={() => setAbierto(true)}
-        className="w-full bg-white border-2 border-coal/15 rounded-2xl px-4 py-3 text-left">
-        <p className="font-body text-sm font-bold text-coal">🔎 Ya pedí y no veo mi pedido</p>
-        <p className="font-body text-[11px] text-coal/60 mt-0.5">Recupéralo con tu número de teléfono</p>
-      </button>
-    )
-  }
-
+// Pantalla sin pedidos. Con cuenta: ir al menú. Sin cuenta (sesión anónima de
+// antes de la Fase 4): entrar o crear la cuenta, que es lo que ahora se pide.
+function SinPedidos({ anonimo, onSalir }) {
+  const [acceso, setAcceso] = useState(false)
   return (
-    <div className="bg-white border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-2">
-      <p className="font-display text-base tracking-wide text-cherry">🔎 Recuperar mi pedido</p>
-      <p className="font-body text-xs text-coal/70 leading-relaxed">
-        Escribe el teléfono con el que pediste y te lo devolvemos a esta pantalla.
-      </p>
-      <input className="input-field" type="tel" inputMode="numeric" placeholder="3001234567"
-        value={tel} onChange={e => setTel(e.target.value)} />
-      <button onClick={buscar} disabled={busy} className="btn-primary w-full">
-        {busy ? 'Buscando…' : 'Buscar mi pedido'}
-      </button>
-      {msg && <p className="font-body text-xs text-coal/75 leading-relaxed">{msg}</p>}
-      {compacto && (
-        <button onClick={() => setAbierto(false)} className="font-body text-[11px] text-coal/50 underline underline-offset-2">
-          Cerrar
+    <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-soft px-5 py-10">
+      <div className="w-full max-w-sm flex flex-col gap-4">
+        <div className="text-center">
+          <Logo variant="light" size="lg" />
+          <p className="font-display text-2xl text-coal tracking-wide mt-4">
+            {anonimo ? 'Entra a tu cuenta' : 'Todavía no tienes pedidos'}
+          </p>
+          <p className="font-body text-sm text-coal/60 mt-1 leading-relaxed">
+            {anonimo
+              ? 'Para pedir y seguir tus pedidos desde cualquier celular necesitas tu cuenta. Es gratis y acumulas premios.'
+              : 'Elige tus productos en el menú y aquí sigues tu pedido.'}
+          </p>
+        </div>
+        {anonimo && (
+          <button onClick={() => setAcceso(true)} className="btn-primary w-full">Entrar o crear cuenta</button>
+        )}
+        <a href="/" className={anonimo ? 'btn-secondary w-full' : 'btn-primary w-full'}>Ver el menú y pedir</a>
+        <button onClick={onSalir} className="font-body text-xs text-coal/50 underline underline-offset-2">
+          Cerrar sesión
         </button>
-      )}
+      </div>
+      {acceso && <AccesoCuenta onCerrar={() => setAcceso(false)} onListo={() => window.location.reload()} />}
     </div>
   )
 }
@@ -2287,7 +2217,8 @@ function ClientOrderDetail({ order, onClose }) {
   // que recotizar antes de seguir.
   // Con pago adelantado no: el total ya está pagado (o el cambio ya está
   // calculado) y sumar productos lo descuadraría. Para eso está el chat.
-  const canAddItems = ['pending', 'quoted'].includes(order.status) && !order.pagoAdelantado
+  // Con una solicitud de cancelación (u otra excepción) en curso, tampoco.
+  const canAddItems = ['pending', 'quoted'].includes(order.status) && !order.pagoAdelantado && !etapaDe(order).excepcion
   const addExtraItem = async () => {
     const txt = extraItem.trim()
     if (!txt) { setExtraError('Escribe qué quieres agregar'); return }
@@ -2317,37 +2248,48 @@ function ClientOrderDetail({ order, onClose }) {
     } finally { setSavingExtra(false) }
   }
 
-  // El cliente puede cancelar su propio pedido ANTES de que un domiciliario lo
-  // tome (estados pending/quoted). Si había canjeado un premio de fidelización,
-  // se le devuelve. Después de asignado, debe coordinar por el chat/WhatsApp.
-  const canClientCancel = ['pending', 'quoted'].includes(order.status)
+  // Cancelar (Fase 4, por la API): en Enviado el cliente cancela solo y el
+  // servidor le devuelve premios y saldo. Ya confirmado, solo PIDE la
+  // cancelación con un motivo y la caja la aprueba o sigue con el pedido.
+  const { etapa: etapaActual, excepcion: excepcionActual } = etapaDe(order)
+  const solicitudCancelacion = excepcionActual === 'cancelacion_solicitada'
+  const canClientCancel = !excepcionActual &&
+    ['enviado', 'confirmado', 'en_preparacion', 'listo', 'en_camino', 'llego'].includes(etapaActual)
+  const cancelaDirecto = etapaActual === 'enviado'
   const cancelOrder = async () => {
     if (!canClientCancel) return
-    const devolucion = devolucionInicial(order)
-    if (!window.confirm(
-      '¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.' +
-      (devolucion ? `\n\nYa pagaste $${devolucion.monto.toLocaleString('es-CO')} por transferencia: después de cancelar eliges cómo quieres la devolución.` : '')
-    )) return
-    setCancelling(true)
-    const usóSaldo = order.saldoAplicado?.ids?.length > 0
-    try {
-      await actualizarPedido(order, {
-        status:       'cancelled',
-        cancelReason: 'Cancelado por el cliente',
-        cancelledAt:  serverTimestamp(),
-        ...(devolucion ? { devolucion } : {}),
-        // Ya aceptado, la caja pudo haber dejado un sobrante de saldo: que la
-        // caja lo devuelva (si lo hace el cliente quedaría con saldo doble).
-        ...(usóSaldo && order.status !== 'pending' ? { 'saldoAplicado.porDevolver': true } : {}),
-        updatedAt:    serverTimestamp(),
-      }, { rol: 'cliente' })
-      // Devuelve el premio de fidelización si lo había canjeado (best-effort).
-      if (order.loyaltyRedemption?.rewardIds?.length) restoreLoyaltyRedemption(order).catch(() => {})
-      if (usóSaldo && order.status === 'pending') restaurarSaldo(order).catch(() => {})
-    } catch (_) {
-      setCancelling(false)
+    let cuerpo
+    if (cancelaDirecto) {
+      const devolucion = devolucionInicial(order)
+      if (!window.confirm(
+        '¿Seguro que quieres cancelar este pedido? Esta acción no se puede deshacer.' +
+        (devolucion ? `\n\nYa pagaste $${devolucion.monto.toLocaleString('es-CO')} por transferencia: después de cancelar eliges cómo quieres la devolución.` : '')
+      )) return
+      cuerpo = { a: 'excepcion:cancelado', version: order.version ?? 0 }
+    } else {
+      const motivo = window.prompt('La sede ya está trabajando en tu pedido. Cuéntanos por qué quieres cancelarlo y la caja te confirma:')
+      if (!motivo?.trim()) return
+      cuerpo = { a: 'excepcion:cancelacion_solicitada', motivo: motivo.trim(), version: order.version ?? 0 }
     }
+    setCancelling(true)
+    try {
+      await llamarPedidos(`${order.id}/transiciones`, cuerpo)
+    } catch (err) {
+      window.alert(err instanceof ErrorApi ? err.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
+    } finally { setCancelling(false) }
   }
+
+  // Pago tras la cotización, billete y comprobante: todo por /pago. El servidor
+  // valida el total y escribe los mismos campos que antes.
+  const pagar = (extra) => llamarPedidos(`${order.id}/pago`, {
+    metodo: order.payment,
+    ...(order.payment === 'Mixto'
+      ? { mixtoEfectivo: Number(order.mixtoEfectivo), mixtoTransferencia: Number(order.mixtoTransferencia) }
+      : {}),
+    ...(order.cashBillAmount != null ? { billete: Number(order.cashBillAmount) } : {}),
+    ...extra,
+  })
+  const textoError = (err, porDefecto) => err instanceof ErrorApi && err.status < 500 ? err.message : porDefecto
 
   const confirmPaymentMethod = async () => {
     if (!payMethod) { setPayError('Selecciona cómo vas a pagar'); return }
@@ -2357,16 +2299,14 @@ function ClientOrderDetail({ order, onClose }) {
     setPayError('')
     setSavingPay(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        payment:        payMethod,
-        cashOnDelivery: payMethod === 'Efectivo' || payMethod === 'Mixto',
+      await llamarPedidos(`${order.id}/pago`, {
+        metodo: payMethod,
         ...(payMethod === 'Mixto'
-          ? { mixtoEfectivo: payMixtoEf, mixtoTransferencia: payMixtoTr }
+          ? { mixtoEfectivo: Number(payMixtoEf), mixtoTransferencia: Number(payMixtoTr) }
           : {}),
-        updatedAt: serverTimestamp(),
       })
     } catch (err) {
-      setPayError('No se pudo guardar el método de pago. Intenta de nuevo.')
+      setPayError(textoError(err, 'No se pudo guardar el método de pago. Intenta de nuevo.'))
     } finally { setSavingPay(false) }
   }
 
@@ -2378,14 +2318,9 @@ function ClientOrderDetail({ order, onClose }) {
     setBillError('')
     setSendingBill(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        cashBillAmount: billAmount,
-        cashChange:     billAmount - order.totalPrice,
-        billSentAt:     serverTimestamp(),
-        updatedAt:      serverTimestamp(),
-      })
+      await pagar({ billete: billAmount })
     } catch (err) {
-      setBillError('No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
+      setBillError(textoError(err, 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.'))
     } finally { setSendingBill(false) }
   }
 
@@ -2426,14 +2361,10 @@ function ClientOrderDetail({ order, onClose }) {
       async () => {
         try {
           const url = await getDownloadURL(task.snapshot.ref)
-          await updateDoc(doc(db, 'orders', order.id), {
-            transferReceiptUrl:  url,
-            transferReceiptName: file.name,
-            updatedAt:           serverTimestamp(),
-          })
+          await pagar({ comprobante: { url, nombre: file.name } })
           setUploadProgress(null)
         } catch (err) {
-          setUploadError('Error al guardar comprobante: ' + err.message)
+          setUploadError(textoError(err, 'No se pudo guardar el comprobante. Intenta de nuevo.'))
           setUploadProgress(null)
         }
       }
@@ -3112,7 +3043,18 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
-          {/* Cancelar pedido — solo antes de que un domiciliario lo tome */}
+          {/* Pidió cancelar: la caja lo está revisando */}
+          {solicitudCancelacion && (
+            <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-4">
+              <p className="font-display text-base tracking-wide text-coal">⏳ Pediste cancelar este pedido</p>
+              <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
+                La sede lo está revisando y te confirma aquí mismo.
+                {order.excepcionMotivo ? <> Tu motivo: «{order.excepcionMotivo}».</> : null}
+              </p>
+            </div>
+          )}
+
+          {/* Cancelar: directo en Enviado; después, se le pide a la sede */}
           {canClientCancel && (
             <div className="flex flex-col gap-1.5 pt-1">
               <button
@@ -3120,10 +3062,13 @@ function ClientOrderDetail({ order, onClose }) {
                 disabled={cancelling}
                 className="w-full py-2.5 rounded-xl border border-pepper/40 text-pepper font-body text-sm font-semibold hover:bg-pepper/5 transition-colors disabled:opacity-50"
               >
-                {cancelling ? 'Cancelando…' : '✕ Cancelar pedido'}
+                {cancelling ? 'Enviando…' : cancelaDirecto ? '✕ Cancelar pedido' : '✕ Pedir que cancelen el pedido'}
               </button>
               <p className="font-body text-[11px] text-coal/45 text-center">
-                Puedes cancelar mientras la caja no lo haya despachado. ¿Solo quieres cambiar algo? Escríbele por el chat de arriba.
+                {cancelaDirecto
+                  ? 'Puedes cancelar mientras la sede no lo haya confirmado.'
+                  : 'La sede ya lo confirmó: revisa tu solicitud y te responde.'}
+                {' '}¿Solo quieres cambiar algo? Escríbele por el chat de arriba.
               </p>
             </div>
           )}

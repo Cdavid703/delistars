@@ -130,6 +130,18 @@ describe('planTransicion', () => {
     expect(e.extras.status).toBe('pending_cuadre');
     falla(() => planTransicion({ etapa: 'llego', driverEmail: 'otro@x.com' }, 'entregado', dom), 'sin_permiso');
   });
+  it('la caja resuelve la solicitud de cancelación: aprueba (aun en camino) o sigue', () => {
+    const sol = { clientUid: 'u1', status: 'in_transit', etapa: 'en_camino', excepcion: 'cancelacion_solicitada', excepcionMotivo: 'me equivoqué' };
+    const ok = planTransicion(sol, 'excepcion:cancelado', caja, 'Lo pidió el cliente');
+    expect(ok.excepcion).toBe('cancelado');
+    expect(ok.extras.status).toBe('cancelled');
+    const sigue = planTransicion(sol, 'seguir', caja);
+    expect(sigue).toMatchObject({ etapa: 'en_camino', excepcion: null });
+    // Sin solicitud, la caja no cancela en camino ni hay nada que "seguir".
+    falla(() => planTransicion({ ...sol, excepcion: null }, 'excepcion:cancelado', caja, 'x'), 'sin_permiso'); // solo el admin
+    falla(() => planTransicion({ ...sol, excepcion: null }, 'seguir', caja), 'transicion_invalida');
+    falla(() => planTransicion(sol, 'seguir', usuario()), 'sin_permiso');
+  });
   it('un pedido terminado no se mueve', () => {
     falla(() => planTransicion({ status: 'cancelled' }, 'confirmado', caja), 'terminado');
   });

@@ -12,7 +12,12 @@ export default function LoginPage() {
   const { login } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
-  const [acceso, setAcceso]   = useState(false)
+  // Llega del menú con su carrito (o con ?entrar): la ventana de ingreso se abre
+  // de una vez. Al entrar, domicilios lo lleva directo a completar el pedido.
+  const [conCarrito] = useState(() => {
+    try { return !!(localStorage.getItem('ds_cart_handoff') || localStorage.getItem('ds_cart_items')) } catch { return false }
+  })
+  const [acceso, setAcceso]   = useState(() => conCarrito || new URLSearchParams(window.location.search).has('entrar'))
 
   const handleLogin = async () => {
     setLoading(true)
@@ -81,7 +86,10 @@ export default function LoginPage() {
             <UserRound size={20} />
             Entrar o crear cuenta
           </button>
-          {acceso && <AccesoCuenta onCerrar={() => setAcceso(false)} onListo={() => setAcceso(false)} />}
+          {acceso && (
+            <AccesoCuenta titulo={conCarrito ? 'Entra para enviar tu pedido' : undefined}
+              onCerrar={() => setAcceso(false)} onListo={() => setAcceso(false)} />
+          )}
 
           {/* Login del equipo / acceso directo */}
           <button

@@ -4,7 +4,7 @@ export const SEDES: Record<string, { id: string; nombre: string; coords: { lat: 
   santa_teresita: { id: 'santa_teresita', nombre: 'Santa Teresita', coords: { lat: 6.244691, lng: -75.613159 } },
 };
 
-/** Últimos 10 dígitos (igual que src/utils/recuperarPedido.js → normalizarTelefono). */
+/** Últimos 10 dígitos del teléfono (phoneKey del pedido). */
 export function normalizarTelefono(tel: unknown): string {
   const d = String(tel || '').replace(/\D/g, '');
   return d.length >= 10 ? d.slice(-10) : '';

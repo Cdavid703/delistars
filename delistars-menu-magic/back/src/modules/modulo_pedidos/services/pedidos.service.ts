@@ -25,6 +25,8 @@ function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): R
 
 const a_confirmado = (plan: { etapa: string; excepcion: string | null }) => plan.etapa === 'confirmado' && !plan.excepcion;
 
+const FUENTES_PIN = ['mapa', 'google', 'photon', 'app'];
+
 const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Fecha de hoy en Colombia (yyyy-mm-dd), para el consecutivo diario por sede. */
@@ -84,8 +86,10 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   const codigo = revisarCodigo(b?.codigo, itemsTexto, yaLoUso);
 
   // Domicilio: con ubicación se cobra por recorrido (C1); sin ella, lo cotiza la caja.
-  let domicilio: Record<string, unknown> = {};
-  if (coords) {
+  // `revisarDomicilio`: el cliente pidió que la caja revise el valor (se cotiza a mano).
+  const revisar = modo === 'delivery' && b?.revisarDomicilio === true;
+  let domicilio: Record<string, unknown> = revisar ? { deliveryPriceReview: true } : {};
+  if (coords && !revisar) {
     const r = await recorrido.medir(sede.coords, coords, ip);
     if (r.ok) {
       const t = precioDomicilio(r.km, RECORRIDO);
@@ -109,7 +113,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     fullAddress: modo === 'delivery' ? direccion : '',
     addrLat: coords?.lat ?? null,
     addrLng: coords?.lng ?? null,
-    addrPinFuente: coords ? 'app' : null,
+    // De dónde salió el pin: lo que diga la web ('mapa', 'google', 'photon') o 'app'.
+    addrPinFuente: coords ? (FUENTES_PIN.includes(b?.pinFuente) ? b.pinFuente : 'app') : null,
     barrio: texto(b?.barrio, 80),
     reference: texto(b?.referencia, 200),
     items: itemsTexto,
@@ -181,7 +186,6 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
       at: ahora, por: u.email, rol: 'cliente', accion: 'crear',
       de: null, a: { etapa: 'enviado', excepcion: null }, status: 'pending', version: 1,
     });
-    tx.set(db.doc(`telefonos/${phoneKey}/pedidos/${orderRef.id}`), { createdAt: ahora });
     return num;
   });
 

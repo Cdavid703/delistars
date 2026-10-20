@@ -14,7 +14,7 @@ import { medirRecorrido, ubicarDireccion } from '../../services/recorrido'
 import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
 import { etapaDe } from '../../utils/etapas'
-import { conApi, ErrorApi } from '../../services/pedidosApi'
+import { conApi, llamarPedidos, ErrorApi } from '../../services/pedidosApi'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -426,6 +426,25 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     } finally { setLoading(false) }
   }
 
+  // Solicitud de cancelación del cliente (Fase 4): la caja la aprueba (cancela,
+  // devuelve premios y saldo y deja la devolución si ya pagó) o sigue con el
+  // pedido. Solo por la API: un respaldo directo saltaría esas devoluciones.
+  const resolverCancelacion = async (aprobar) => {
+    const motivo = order.excepcionMotivo ? `Lo pidió el cliente: ${order.excepcionMotivo}` : 'Lo pidió el cliente'
+    if (!window.confirm(aprobar
+      ? '¿Cancelar este pedido como pidió el cliente?'
+      : '¿Seguir con el pedido? Escríbele al cliente por el chat para contarle por qué.')) return
+    setLoading(true)
+    try {
+      await llamarPedidos(`${order.id}/transiciones`, aprobar
+        ? { a: 'excepcion:cancelado', motivo, version: order.version ?? 0 }
+        : { a: 'seguir', version: order.version ?? 0 })
+      if (aprobar) onClose()
+    } catch (err) {
+      alert(err instanceof ErrorApi ? err.message : 'No se pudo guardar. Revisa la conexión e intenta de nuevo.')
+    } finally { setLoading(false) }
+  }
+
   const markPreparing = () => moverEtapa('en_preparacion', () => actualizarPedido(order, {
     status:      'preparing',
     preparingAt: serverTimestamp(),
@@ -664,6 +683,32 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
         <div className="p-5 flex flex-col gap-4">
           <p className="font-body text-xs text-coal/40">{time}</p>
+
+          {etapaDe(order).excepcion === 'cancelacion_solicitada' && (
+            <div className="bg-pepper/10 border-2 border-pepper rounded-2xl p-4 flex flex-col gap-3">
+              <div>
+                <p className="font-display text-lg tracking-wide text-pepper flex items-center gap-2">
+                  <AlertTriangle size={18} /> El cliente pidió cancelar
+                </p>
+                <p className="font-body text-sm text-coal/80 mt-1">
+                  {order.excepcionMotivo ? <>Motivo: «{order.excepcionMotivo}»</> : 'No dejó motivo.'}
+                </p>
+                <p className="font-body text-[11px] text-coal/55 mt-1">
+                  No se puede pasar a preparación hasta resolverlo.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => resolverCancelacion(true)} disabled={loading}
+                  className="py-2.5 rounded-xl bg-pepper text-cream font-body text-sm font-bold disabled:opacity-50">
+                  Cancelar pedido
+                </button>
+                <button onClick={() => resolverCancelacion(false)} disabled={loading}
+                  className="py-2.5 rounded-xl border-2 border-coal/20 bg-white text-coal font-body text-sm font-bold disabled:opacity-50">
+                  Seguir con el pedido
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Facturación — botón grande y claro, en todos los pedidos */}
           <button

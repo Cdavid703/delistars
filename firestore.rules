@@ -5,7 +5,11 @@ rules_version = '2';
 //
 // Modelo de auth:
 //   • Staff (admin/cajero/domiciliario): Google sign-in.
-//   • Clientes: sign-in anónimo o Google (signInAnonymously / Google).
+//   • Clientes: cuenta obligatoria (Google, Microsoft o correo verificado).
+//     Crean, cancelan y pagan sus pedidos por la API del servidor
+//     (/api/v1/pedidos, Fase 4); aquí solo escriben lo que aún no tiene API:
+//     agregar productos, chat, calificación y cómo quieren su devolución.
+//     Las sesiones anónimas quedan para vacantes y /empresas.
 //
 // Roles:
 //   • Admin: lista hardcodeada (DEBE coincidir con ADMIN_EMAILS del front —
@@ -119,33 +123,27 @@ service cloud.firestore {
       let d = request.resource.data;
       let antes = resource.data;
       return cambiados().hasOnly([
-          // cancelar
-          'status', 'cancelReason', 'cancelledAt', 'devolucion', 'saldoAplicado',
-          // agregar algo al pedido (la caja vuelve a cotizar)
-          'items', 'needsRequote',
-          // pago tras la cotización, billete y comprobante
-          'payment', 'cashOnDelivery', 'mixtoEfectivo', 'mixtoTransferencia',
-          'cashBillAmount', 'cashChange', 'billSentAt', 'transferReceiptUrl', 'transferReceiptName',
+          // agregar algo al pedido (la caja vuelve a cotizar): vuelve a "pendiente"
+          // y se borra el billete elegido, que puede no alcanzar con el nuevo total
+          'items', 'needsRequote', 'status', 'cashBillAmount', 'cashChange',
           // chat con la caja y calificación
           'clientMessages', 'rating', 'ratingComment', 'ratedAt',
-          // modelo de etapas
+          // cómo quiere la devolución (la crea el servidor al cancelar o rechazar)
+          'devolucion',
+          // modelo de etapas (agregar productos devuelve a Enviado)
           'etapa', 'excepcion', 'excepcionMotivo', 'version', 'updatedAt'
         ])
-        // Estados: cancelar antes de que lo despachen, o volver a "pendiente"
-        // al agregar algo a un pedido cotizado.
-        && (!('status' in cambiados())
-            || (d.status == 'cancelled' && antes.status in ['pending', 'quoted'])
-            || (d.status == 'pending' && antes.status == 'quoted'))
-        && etapaValida(['enviado'], ['cancelado'])
-        // Agregar productos obliga a recotizar.
+        // Solo puede escribir la excepción vacía donde no había (pedidos viejos
+        // sin el campo): nunca quitar ni poner una.
+        && (!('excepcion' in cambiados()) || (antes.get('excepcion', null) == null && d.excepcion == null))
+        && (!('excepcionMotivo' in cambiados()) || (antes.get('excepcion', null) == null && d.excepcionMotivo == null))
+        // Cancelar, pagar, el saldo y los premios van por la API del servidor.
+        && (!('status' in cambiados()) || (d.status == 'pending' && antes.status == 'quoted' && d.needsRequote == true))
+        && (!('cashBillAmount' in cambiados()) || d.cashBillAmount == null)
+        && (!('cashChange' in cambiados()) || d.cashChange == null)
+        && etapaValida(['enviado'], [null])
         && (!('items' in cambiados()) || (d.needsRequote == true && antes.status in ['pending', 'quoted']))
-        // Del saldo solo puede marcar que hay que devolverlo.
-        && (!('saldoAplicado' in cambiados())
-            || d.saldoAplicado.diff(antes.get('saldoAplicado', {})).affectedKeys().hasOnly(['porDevolver']))
-        // Devolución: al cancelar, nunca por más de lo que pagó; después solo elige cómo.
         && (!('devolucion' in cambiados())
-            || (!('devolucion' in antes) && d.status == 'cancelled'
-                && d.devolucion.monto <= antes.get('totalPrice', 0))
             || ('devolucion' in antes
                 && d.devolucion.diff(antes.devolucion).affectedKeys().hasOnly(['estado', 'datos', 'elegidaAt'])
                 && d.devolucion.estado in ['transferencia_solicitada', 'saldo_solicitado']));
@@ -166,14 +164,10 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
+      // El cliente crea sus pedidos por la API del servidor (cuenta obligatoria,
+      // precios del catálogo): directo solo la caja y el admin.
       allow create: if isAdmin()
-                    || (isCashier() && request.resource.data.cashierId == request.auth.uid)
-                    // El cliente crea su pedido siempre "pendiente" y sin domiciliario.
-                    || (isSignedIn() && request.resource.data.clientUid == request.auth.uid
-                        && request.resource.data.status == 'pending'
-                        && request.resource.data.get('etapa', 'enviado') == 'enviado'
-                        && !('driverEmail' in request.resource.data)
-                        && !('cashierId' in request.resource.data));
+                    || (isCashier() && request.resource.data.cashierId == request.auth.uid);
       // Mercadeo NO lee pedidos (decisión C3, especificación §17.1): sus
       // indicadores son agregados que publica el servidor en mercadeo/indicadores.
       allow read:   if isAdmin() || isCashier()
@@ -181,25 +175,7 @@ service cloud.firestore {
                     || (isDriver() && resource.data.driverEmail == userEmail());
       allow update: if isAdmin() || isCashier()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid && clientePuedeActualizar())
-                    || (isDriver() && resource.data.driverEmail == userEmail() && domiciliarioPuedeActualizar())
-                    // "Recuperar mi pedido con el teléfono": el cliente que
-                    // pidió sin cuenta y perdió la sesión (otro navegador, datos
-                    // borrados) vuelve a poner su pedido en su pantalla. El
-                    // teléfono no es secreto, así que esto SOLO permite:
-                    //   · pedidos EN CURSO (el historial no se puede reclamar),
-                    //   · de las últimas 24 horas,
-                    //   · escribiendo el mismo teléfono que ya tiene el pedido,
-                    //   · y sin tocar nada más que el dueño del pedido.
-                    || (
-                      isSignedIn() &&
-                      request.resource.data.diff(resource.data).affectedKeys()
-                        .hasOnly(['clientUid', 'reclamoTelefono', 'reclamadoAt', 'reclamadoPorTelefono', 'updatedAt']) &&
-                      request.resource.data.clientUid == request.auth.uid &&
-                      resource.data.phoneKey is string &&
-                      request.resource.data.reclamoTelefono == resource.data.phoneKey &&
-                      !(resource.data.status in ['delivered_paid', 'delivered_cash', 'pending_cuadre', 'completed', 'rejected', 'cancelled']) &&
-                      resource.data.createdAt > request.time - duration.value(24, 'h')
-                    );
+                    || (isDriver() && resource.data.driverEmail == userEmail() && domiciliarioPuedeActualizar());
       allow delete: if isAdmin();
     }
 
@@ -224,16 +200,6 @@ service cloud.firestore {
                     || getAfter(/databases/$(database)/documents/orders/$(orderId)).data.clientUid == request.auth.uid
                   );
       allow update, delete: if false;
-    }
-
-    // ── Índice teléfono → pedidos (para "recuperar mi pedido") ──────────────
-    // Solo guarda ids de pedidos, nada más. Se crea y se lee, nunca se borra
-    // ni se edita: así nadie puede dejar a otro sin su índice. Ver el permiso
-    // de reclamo arriba: conocer el id no da acceso al pedido por sí solo.
-    match /telefonos/{phoneKey}/pedidos/{orderId} {
-      allow read:   if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
     }
 
     // ── Config de la app (config/client_platform, config/eta_stats) ────────
@@ -345,10 +311,9 @@ service cloud.firestore {
     // ── Premios de fidelización (subcolección de customers) ─────────────────
     // Solo isLoyaltyManager() puede CREAR un premio (otorgarlo al entregar el
     // pedido #10/#20/#30, o el otorgamiento manual desde /admin/fidelizacion
-    // — este último solo lo puede hacer un super admin). El cliente solo
-    // puede: marcar que ya lo vio (notified) o canjear un premio propio que
-    // esté vigente y disponible — nunca inventar uno, revivir uno vencido/ya
-    // usado, ni canjear el de otra persona (se valida contra el pedido real).
+    // — este último solo lo puede hacer un super admin). Canjearlo lo hace el
+    // servidor al crear el pedido (Fase 4); el cliente solo marca que ya vio
+    // el aviso de "ganaste un premio" (notified).
     match /customers/{uid}/rewards/{rewardId} {
       allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
       allow create: if isLoyaltyManager();
@@ -356,45 +321,16 @@ service cloud.firestore {
       allow update: if isLoyaltyManager()
                     || (
                       isSignedIn() && request.auth.uid == uid &&
-                      resource.data.status == 'available' &&
-                      resource.data.expiresAt > request.time &&
-                      (
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notified'])
-                        || (
-                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','redeemedAt','orderId','notified']) &&
-                          request.resource.data.status == 'redeemed' &&
-                          get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.clientUid == uid
-                        )
-                      )
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notified'])
                     );
     }
 
     // ── Saldo a favor (devoluciones de pedidos pagados que no siguieron) ────
-    // Solo la caja/admin CREA saldo: el cliente nunca puede inventarse plata.
-    // El cliente solo puede (a) marcar como usado un saldo propio disponible en
-    // un pedido suyo, o (b) recuperarlo cuando cancela ese mismo pedido. En
-    // ambos casos no puede tocar el monto ni la sede.
+    // Solo la caja/admin lo crea y lo corrige. Usarlo en un pedido y
+    // devolverlo al cancelar lo hace el servidor (Fase 4): el cliente solo lo lee.
     match /customers/{uid}/credits/{creditId} {
       allow read:   if isStaff() || (isSignedIn() && request.auth.uid == uid);
-      allow create, delete: if isCashier() || isAdmin();
-      allow update: if isCashier() || isAdmin()
-                    || (
-                      isSignedIn() && request.auth.uid == uid &&
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado','usadoEnOrderId','usadoAt']) &&
-                      (
-                        (
-                          resource.data.estado == 'disponible' &&
-                          request.resource.data.estado == 'usado' &&
-                          get(/databases/$(database)/documents/orders/$(request.resource.data.usadoEnOrderId)).data.clientUid == uid
-                        )
-                        || (
-                          resource.data.estado == 'usado' &&
-                          request.resource.data.estado == 'disponible' &&
-                          get(/databases/$(database)/documents/orders/$(resource.data.usadoEnOrderId)).data.clientUid == uid &&
-                          get(/databases/$(database)/documents/orders/$(resource.data.usadoEnOrderId)).data.status == 'cancelled'
-                        )
-                      )
-                    );
+      allow create, update, delete: if isCashier() || isAdmin();
     }
 
     // ── Turnos (horarios del equipo) ───────────────────────────────────────
@@ -404,10 +340,9 @@ service cloud.firestore {
     }
 
     // ── Contador de número de pedido (transacción) ─────────────────────────
-    // Lo necesita CUALQUIER usuario firmado (incluye clientes anónimos): el
-    // cliente también obtiene su propio número al crear el pedido.
+    // Lo usa la caja al crear pedidos; los del cliente los numera el servidor.
     match /counters/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isAdmin() || isCashier();
     }
 
     // ── Vacantes publicadas (ofertas de trabajo) ──────────────────────────

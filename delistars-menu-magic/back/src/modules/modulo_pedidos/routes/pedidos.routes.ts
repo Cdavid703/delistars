@@ -55,6 +55,8 @@ router.get('/datos-transferencia', (req: Request, res: Response) => {
  *     summary: Crear un pedido (cliente con cuenta)
  *     description: >
  *       Precios del catálogo del servidor; domicilio por recorrido si llega `coords`.
+ *       Opcionales: `revisarDomicilio: true` (la caja cotiza el domicilio a mano),
+ *       `pinFuente` (mapa | google | photon | app), `codigo`, `premios` (cantidad), `usarSaldo`.
  *       Encabezados: Authorization: Bearer <idToken>, Idempotency-Key: <uuid>.
  *     requestBody:
  *       content:
