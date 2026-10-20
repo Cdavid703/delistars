@@ -1,5 +1,9 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup } from 'firebase/auth'
+import {
+  getAuth, GoogleAuthProvider, OAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup,
+  EmailAuthProvider, linkWithCredential, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  sendEmailVerification, sendPasswordResetEmail, updateProfile,
+} from 'firebase/auth'
 import {
   getFirestore, runTransaction, doc,
   collection, getDocs, getDoc, addDoc, updateDoc, setDoc, deleteDoc, serverTimestamp, Timestamp, arrayUnion,
@@ -39,11 +43,18 @@ export const loginAnon = () => signInAnonymously(auth)
 // mantiene y los pedidos (y la fidelización) siguen ahí. Si ese correo ya
 // tenía cuenta propia, no se puede enlazar: se entra normal, que es lo que
 // pasaba antes, y el cliente recupera su historial de esa cuenta de Google.
-export async function loginGoogle() {
+export const loginGoogle = () => entrarCon(provider)
+
+// Microsoft (cuentas personales y de trabajo), igual que en el menú y el panel.
+export const microsoftProvider = new OAuthProvider('microsoft.com')
+microsoftProvider.setCustomParameters({ prompt: 'select_account' })
+export const loginMicrosoft = () => entrarCon(microsoftProvider)
+
+async function entrarCon(proveedor) {
   const actual = auth.currentUser
   if (actual?.isAnonymous) {
     try {
-      return await linkWithPopup(actual, provider)
+      return await linkWithPopup(actual, proveedor)
     } catch (err) {
       const code = err?.code || ''
       // Ese correo ya tiene cuenta propia (o el anónimo ya no vale): se entra
@@ -53,7 +64,51 @@ export async function loginGoogle() {
             'auth/user-mismatch', 'auth/invalid-user-token'].includes(code)) throw err
     }
   }
-  return signInWithPopup(auth, provider)
+  return signInWithPopup(auth, proveedor)
+}
+
+// ─── Correo y contraseña (especificación §6.1, Fase 4) ──────────────────────
+// Los correos de Firebase (verificación, recuperar contraseña) salen en español.
+auth.languageCode = 'es'
+const volverA = () => ({ url: `${window.location.origin}/domicilios/` })
+
+/**
+ * Crea la cuenta con nombre, teléfono, correo y contraseña. Si estaba como
+ * invitado, ENLAZA (mismo uid: no pierde su pedido). Manda el enlace de
+ * verificación: sin confirmar el correo no se puede enviar el primer pedido.
+ */
+export async function crearCuentaCorreo({ nombre, telefono, email, password }) {
+  const correo = email.trim().toLowerCase()
+  const actual = auth.currentUser
+  const cred = actual?.isAnonymous
+    ? await linkWithCredential(actual, EmailAuthProvider.credential(correo, password))
+    : await createUserWithEmailAndPassword(auth, correo, password)
+  await updateProfile(cred.user, { displayName: nombre.trim() })
+  await setDoc(doc(db, 'customers', cred.user.uid), {
+    uid: cred.user.uid, name: nombre.trim(), phone: String(telefono).replace(/\D/g, '').slice(-10), email: correo,
+  }, { merge: true })
+  await sendEmailVerification(cred.user, volverA()).catch(() => {})
+  return cred
+}
+
+/** Entra con correo y contraseña. */
+export const entrarConCorreo = (email, password) =>
+  signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password)
+
+/** Enlace para crear una contraseña nueva (no hay SMS, spec §6.1). */
+export const recuperarContrasena = (email) =>
+  sendPasswordResetEmail(auth, email.trim().toLowerCase(), volverA())
+
+/** Vuelve a mandar el enlace de verificación del correo. */
+export const reenviarVerificacion = () =>
+  auth.currentUser ? sendEmailVerification(auth.currentUser, volverA()) : Promise.resolve()
+
+/** Relee la cuenta (para saber si ya confirmó el correo). Devuelve si está verificado. */
+export async function correoVerificado() {
+  if (!auth.currentUser) return false
+  await auth.currentUser.reload()
+  await auth.currentUser.getIdToken(true) // el servidor ve el correo verificado de inmediato
+  return auth.currentUser.emailVerified
 }
 
 

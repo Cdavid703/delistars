@@ -44,6 +44,9 @@ import {
 import { SEDES } from '../../services/roles'
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
+import AccesoCuenta from '../common/AccesoCuenta'
+import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
+import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
   { key: 'pending',       label: 'Pedido enviado',        emoji: '📋' },
@@ -230,13 +233,18 @@ export default function ClientPanel() {
   // Permiso de promociones (undefined = cargando). Se ofrece a los clientes
   // con correo que no han respondido, también a los antiguos: ver PromosOptIn.
   const [promociones, setPromociones] = useState(undefined)
+  // Nombre y teléfono del perfil: si faltan, se piden una sola vez (Fase 4).
+  const [perfil, setPerfil] = useState(undefined)
   useEffect(() => {
     if (!user?.uid || !user?.email) return
     return onSnapshot(doc(db, 'customers', user.uid), snap => {
       setLoyaltyProgress(snap.exists() ? (snap.data().loyalty || {}) : {})
       setPromociones(snap.exists() ? (snap.data().promociones ?? null) : null)
+      setPerfil(snap.exists() ? { name: snap.data().name || '', phone: snap.data().phone || '' } : { name: '', phone: '' })
     }, () => {})
   }, [user?.uid, user?.email])
+  // Sube cuando el cliente confirma su correo (Firebase actualiza la cuenta sin avisar).
+  const [, setCorreoConfirmado] = useState(0)
 
   // Premios recién ganados que el cliente todavía no ha visto.
   useEffect(() => {
@@ -665,6 +673,11 @@ export default function ClientPanel() {
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
       {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" />}
+      {/* Cuenta de correo sin confirmar: no puede enviar el primer pedido */}
+      {faltaVerificarCorreo(user) && (
+        <AvisoVerificarCorreo email={user.email} className="mx-4 mt-3" onVerificado={() => setCorreoConfirmado(n => n + 1)} />
+      )}
+      {user && !user.isAnonymous && perfil !== undefined && <CompletarPerfil user={user} perfil={perfil} />}
       {user?.isAnonymous && (
         <div className="mx-4 mt-3">
           <RecuperarPedido uid={user?.uid} compacto />
@@ -1392,6 +1405,8 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!form.items.trim())       errs.push('El pedido no puede estar vacío')
+    // Cuenta de correo sin confirmar: primero el enlace (el borrador se conserva).
+    if (faltaVerificarCorreo(user)) errs.push('Confirma tu correo para enviar el pedido: abre el enlace que te enviamos.')
     // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
     if (codigoAplicado) {
       const r = validarCodigo(codigoAplicado, { items: form.items, tieneCuenta: !!user?.email && !user?.isAnonymous })
@@ -2015,18 +2030,9 @@ function PushOptIn({ uid, className = '' }) {
 // Entrar con Google ENLAZA la cuenta de invitado (no se pierde nada) y desde
 // ahí sus pedidos lo siguen a cualquier dispositivo.
 function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) {
-  const { login } = useAuth()
-  const [busy, setBusy]   = useState(false)
-  const [error, setError] = useState('')
-  const entrar = async () => {
-    setBusy(true); setError('')
-    try { await login() }
-    catch (err) {
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
-        setError('No se pudo entrar con Google. Intenta de nuevo.')
-      }
-    } finally { setBusy(false) }
-  }
+  // Entrar o crear cuenta ENLAZA la sesión de invitado (mismo uid): no se
+  // pierde el pedido. Se recarga para que toda la página vea la cuenta nueva.
+  const [abierto, setAbierto] = useState(false)
   return (
     <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
       <p className="font-display text-base tracking-wide text-coal">
@@ -2046,15 +2052,18 @@ function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) 
       </div>
       <p className="font-body text-xs text-coal/75 mt-2 leading-relaxed">
         Sin cuenta, tus pedidos quedan guardados <strong>solo en este navegador</strong>.
-        {!compacto && <> Con Google los sigues desde cualquier celular y acumulas premios.</>}
+        {!compacto && <> Con tu cuenta los sigues desde cualquier celular y acumulas premios.</>}
       </p>
-      <button onClick={entrar} disabled={busy} className="btn-primary w-full mt-3">
-        {busy ? 'Conectando…' : 'Entrar con Google y guardar mis pedidos'}
+      <button onClick={() => setAbierto(true)} className="btn-primary w-full mt-3">
+        Entrar o crear cuenta y guardar mis pedidos
       </button>
+      {abierto && (
+        <AccesoCuenta titulo="Guarda tus pedidos" onCerrar={() => setAbierto(false)}
+          onListo={() => window.location.reload()} />
+      )}
       <p className="font-body text-[11px] text-coal/55 mt-1.5 text-center">
         No pierdes nada de lo que ya hiciste: tu pedido actual se conserva.
       </p>
-      {error && <p className="font-body text-xs text-pepper mt-1">{error}</p>}
     </div>
   )
 }

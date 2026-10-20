@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/common/Logo'
-import { Globe, Star, UserX, ShoppingBag } from 'lucide-react'
+import AccesoCuenta from '../components/common/AccesoCuenta'
+import { Globe, Star, UserX, ShoppingBag, UserRound } from 'lucide-react'
 
 export default function LoginPage() {
   const { login, loginGuest } = useAuth()
   const [loading,      setLoading]      = useState(false)
   const [loadingGuest, setLoadingGuest] = useState(false)
   const [error, setError]               = useState('')
+  const [acceso, setAcceso]             = useState(false)
 
   const handleLogin = async () => {
     setLoading(true)
@@ -82,6 +84,13 @@ export default function LoginPage() {
             <span className="font-body text-[11px] text-coal/40 uppercase tracking-wider">o</span>
             <div className="flex-1 h-px bg-coal/10" />
           </div>
+
+          {/* Cliente con cuenta: Google, Microsoft o correo y contraseña */}
+          <button onClick={() => setAcceso(true)} disabled={busy} className="btn-secondary btn-lg w-full">
+            <UserRound size={20} />
+            Entrar o crear cuenta
+          </button>
+          {acceso && <AccesoCuenta onCerrar={() => setAcceso(false)} onListo={() => setAcceso(false)} />}
 
           {/* Login del equipo / acceso directo */}
           <button

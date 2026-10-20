@@ -6,7 +6,7 @@ import type { Usuario } from '../../middlewares/require-user';
 
 const u = (x: Partial<Usuario> = {}): Usuario => ({
   uid: 'u1', email: 'ana@x.com', anonimo: false, nombre: 'Ana', esAdmin: false, esCaja: false, esDomiciliario: false,
-  esMercadeo: false, sedes: { caja: [], domiciliario: [] }, ...x,
+  esMercadeo: false, proveedor: 'google.com', correoVerificado: true, sedes: { caja: [], domiciliario: [] }, ...x,
 });
 const falla = (fn: () => unknown, codigo: string) => {
   try { fn(); } catch (e) { expect((e as { codigo: string }).codigo).toBe(codigo); return; }

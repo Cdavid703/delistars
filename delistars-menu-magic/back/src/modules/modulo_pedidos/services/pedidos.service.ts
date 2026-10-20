@@ -51,6 +51,10 @@ async function catalogo(): Promise<ProductoCatalogo[]> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function crearPedido(u: Usuario, b: any, ip: string) {
   if (u.anonimo || !u.email) throw new ErrorPedido('cuenta_obligatoria', 'Para pedir necesitas entrar con tu cuenta', 403);
+  // Cuenta de correo y contraseña: primero confirmar el correo (especificación §6.1).
+  if (u.proveedor === 'password' && !u.correoVerificado) {
+    throw new ErrorPedido('correo_sin_verificar', 'Confirma tu correo para enviar el pedido: abre el enlace que te enviamos', 403);
+  }
   const sede = SEDES[b?.sedeId];
   if (!sede) throw new ErrorPedido('sede', 'Sede no válida');
   const modo = b?.deliveryMode;

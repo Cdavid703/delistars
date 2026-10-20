@@ -22,6 +22,10 @@ export interface Usuario {
   esCaja: boolean;
   esDomiciliario: boolean;
   esMercadeo: boolean;
+  /** Cómo entró: 'google.com', 'microsoft.com', 'password', 'anonymous'… */
+  proveedor: string;
+  /** Correo confirmado (las cuentas de correo y contraseña lo exigen para pedir). */
+  correoVerificado: boolean;
   /** Sedes autorizadas por rol (vacío = no tiene ese rol). */
   sedes: { caja: string[]; domiciliario: string[] };
 }
@@ -75,6 +79,8 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
       esCaja: caja.length > 0,
       esDomiciliario: dom.length > 0,
       esMercadeo: !baja && !!mercadeoDinamico,
+      proveedor: d.firebase?.sign_in_provider || '',
+      correoVerificado: d.email_verified === true,
       sedes: { caja, domiciliario: dom },
     };
     next();
