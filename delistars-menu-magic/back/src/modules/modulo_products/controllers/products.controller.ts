@@ -1,6 +1,13 @@
 import { Request, Response } from 'express';
 import { ProductsService } from '../services/products.service';
 import { ApiResponse } from '../../../utils/api-response';
+import { reglasDeProducto } from '../../modulo_pedidos/reglas/menu';
+
+// Cada producto lleva `reglas` (visibilidad por fecha, destacado, sede, si es una
+// opción y qué pide la ficha) para que la app no copie las reglas del menú web.
+// Es un campo nuevo: lo que ya leían la web y el panel no cambia.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const conReglas = (p: any) => ({ ...p, reglas: reglasDeProducto(p) });
 
 export class ProductsController {
   private service = new ProductsService();
@@ -8,7 +15,7 @@ export class ProductsController {
   async getAll(req: Request, res: Response): Promise<void> {
     try {
       const products = await this.service.getAll();
-      ApiResponse.success(res, products, 'Productos obtenidos exitosamente');
+      ApiResponse.success(res, products.map(conReglas), 'Productos obtenidos exitosamente');
     } catch (error) {
       ApiResponse.error(res, 'Error al obtener productos', 500);
     }
@@ -24,7 +31,7 @@ export class ProductsController {
         return;
       }
 
-      ApiResponse.success(res, product, 'Producto obtenido exitosamente');
+      ApiResponse.success(res, conReglas(product), 'Producto obtenido exitosamente');
     } catch (error) {
       ApiResponse.error(res, 'Error al obtener producto', 500);
     }

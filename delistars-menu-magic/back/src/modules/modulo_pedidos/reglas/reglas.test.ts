@@ -282,3 +282,31 @@ describe('copias compartidas', () => {
     }
   });
 });
+
+import { reglasDeProducto } from './menu';
+describe('reglas del menú en /products', () => {
+  const p = (id: number, nombre: string, cat: number, precio = 10000, extra = {}) => ({ id_producto: id, nombre_producto: nombre, id_categoria: cat, precio_venta: precio, ...extra });
+  const dia = Date.parse('2026-10-20T12:00:00-05:00');
+  it('promo y temporada: ocultas fuera de sus fechas, con datos para armar por unidad', () => {
+    const parche = reglasDeProducto(p(82, 'Combo Parche', 4), dia);
+    expect(parche).toMatchObject({ visible: false, motivoOculto: 'promo_no_empieza', promo: { unidades: 4, unidad: 'Perro', desde: '2026-10-24' } });
+    expect(parche.ficha).toMatchObject({ porUnidad: true, bebidaCombo: null, admiteSalsas: false, admiteAdiciones: true });
+    expect(reglasDeProducto(p(82, 'Combo Parche', 4), Date.parse('2026-10-24T18:00:00-05:00')).visible).toBe(true);
+    expect(reglasDeProducto(p(79, 'Combo Amor', 4), dia)).toMatchObject({ visible: false, motivoOculto: 'promo_terminada', destacado: true });
+  });
+  it('ficha: bebida del combo, opción obligatoria, bebidas sin adiciones', () => {
+    expect(reglasDeProducto(p(24, 'Combo Hamburguesa Especial', 4), dia).ficha.bebidaCombo).toHaveLength(8);
+    expect(reglasDeProducto(p(3, 'Hamburguesa de Pollo con Queso o Tocineta', 1), dia).ficha.opcion)
+      .toEqual({ titulo: 'Elige un ingrediente', subtitulo: 'Selecciona una opción para tu hamburguesa (sin costo adicional)', items: ['Queso', 'Tocineta'] });
+    expect(reglasDeProducto(p(20, 'Papastars', 3), dia).ficha.opcion?.items).toEqual(['Chicharron', 'Pollo']);
+    expect(reglasDeProducto(p(57, 'Coca Cola Sabor Original Pet 400 ml', 7), dia).ficha).toMatchObject({ admiteAdiciones: false, admiteSalsas: false });
+  });
+  it('opciones, sede y destacados', () => {
+    expect(reglasDeProducto(p(44, 'Tocineta', 5, 4000), dia)).toMatchObject({ visible: false, esOpcion: true, tipoOpcion: 'adicion' });
+    expect(reglasDeProducto(p(75, 'Cebolla cruda', 5, 0), dia).tipoOpcion).toBe('cebolla');
+    expect(reglasDeProducto(p(74, 'Guacamole', 8, 0), dia).tipoOpcion).toBe('salsa');
+    expect(reglasDeProducto(p(48, 'Jugos de la Casa', 7, 0), dia).soloSedes).toEqual(['santa_teresita']);
+    expect(reglasDeProducto(p(77, 'Mexistars', 1), dia)).toMatchObject({ visible: true, destacado: true, soloSedes: null });
+    expect(reglasDeProducto(p(4, 'Hamburguesa Especial', 1, 20000, { disponible: false }), dia).motivoOculto).toBe('no_disponible');
+  });
+});
