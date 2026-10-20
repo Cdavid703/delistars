@@ -124,6 +124,17 @@ P-11 (**decidida 18 oct 2026**: recoger = Enviado → Confirmado → En preparac
 sede), P-15 (identidades e invitados antiguos), P-16 (vigencia de los códigos
 privados) y P-10 (tiempos configurables). Se preguntan uno a uno cuando toque.
 
+**Decisiones del 20 oct 2026 (Fase 4):**
+- **P-15:** la recuperación de pedidos solo con el teléfono se quita cuando entre la cuenta
+  obligatoria. Los invitados no tenían premios ni saldo; un invitado con pedido en curso lo sigue
+  viendo en su navegador y, si crea la cuenta ahí mismo, el pedido queda en su cuenta (vincular
+  el anónimo, como ya hace Google). No se fusionan cuentas por correo o teléfono.
+- **P-16:** el código privado de un pedido creado por la caja sirve mientras el pedido esté en curso
+  y 30 días después de terminado; la caja puede generar uno nuevo (anula el anterior); 5 intentos
+  fallidos lo bloquean un rato. El código no es el número del pedido.
+- **Apple:** todavía no hay cuenta de Apple Developer; la Fase 4 arranca sin Apple (correo y
+  contraseña, Google, Microsoft) y Apple se agrega cuando exista la cuenta.
+
 ## 6. Plan de trabajo (después de las decisiones)
 
 | Fase | Contenido | Depende de |
