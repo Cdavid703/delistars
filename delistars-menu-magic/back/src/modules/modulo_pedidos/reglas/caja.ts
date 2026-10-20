@@ -19,8 +19,10 @@ const precio = (v: unknown, nombre: string) => {
 
 export interface PlanCaja { campos: Record<string, unknown>; etapa: string; cambiaEtapa: boolean; sobrante: number }
 
-function exigeCaja(u: Usuario) {
-  if (!u.esCaja && !u.esAdmin) throw new ErrorPedido('sin_permiso', 'Solo la caja puede hacer esto', 403);
+function exigeCaja(u: Usuario, p: PedidoDoc) {
+  if (u.esAdmin) return;
+  if (!u.esCaja) throw new ErrorPedido('sin_permiso', 'Solo la caja puede hacer esto', 403);
+  if (p.sedeId && !(u.sedes?.caja ?? []).includes(p.sedeId)) throw new ErrorPedido('sin_permiso', 'No tienes acceso de caja en esa sede', 403);
 }
 function exigeActivo(p: PedidoDoc) {
   if (terminado(p)) throw new ErrorPedido('terminado', 'El pedido ya terminó', 409);
@@ -34,7 +36,7 @@ function exigeActivo(p: PedidoDoc) {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function planCotizar(p: PedidoDoc, u: Usuario, b: any, saldoReal: number | null): PlanCaja {
-  exigeCaja(u);
+  exigeCaja(u, p);
   exigeActivo(p);
   const actual = etapaDe(p);
   if (!['enviado', 'confirmado'].includes(actual.etapa)) throw new ErrorPedido('tarde', 'Ya no se puede cotizar este pedido', 409);
@@ -68,7 +70,7 @@ export function planCotizar(p: PedidoDoc, u: Usuario, b: any, saldoReal: number 
 /** Asignar domiciliario (AssignDeliveryDetail). Puede traer también la cotización. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function planAsignar(p: PedidoDoc, u: Usuario, b: any, esDomiciliario: boolean): PlanCaja {
-  exigeCaja(u);
+  exigeCaja(u, p);
   exigeActivo(p);
   const actual = etapaDe(p);
   if (actual.tipo !== 'domicilio') throw new ErrorPedido('recoger', 'Los pedidos para recoger no llevan domiciliario', 409);
@@ -112,7 +114,7 @@ export function planAceptar(p: PedidoDoc, u: Usuario): PlanCaja {
 
 /** La caja recibe el efectivo del domiciliario (cuadre): pending_cuadre → completed. */
 export function planCuadre(p: PedidoDoc, u: Usuario): PlanCaja {
-  exigeCaja(u);
+  exigeCaja(u, p);
   if (p.status !== 'pending_cuadre') throw new ErrorPedido('tarde', 'Este pedido no está pendiente de cuadre', 409);
   return { campos: { status: 'completed', completedAt: AHORA }, etapa: 'entregado', cambiaEtapa: false, sobrante: 0 };
 }

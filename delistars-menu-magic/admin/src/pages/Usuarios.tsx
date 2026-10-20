@@ -4,6 +4,7 @@ import { db } from '@/services/firebase'
 import { toast } from 'sonner'
 import { DEFAULT_CASHIERS, DEFAULT_DRIVERS, ADMIN_EMAILS, EMPLOYEES, MARKETING_EMAILS } from '@/lib/team'
 import { Lock, Pencil, RotateCcw, Save, Trash2, X } from 'lucide-react'
+import SolicitudesAcceso from '@/components/SolicitudesAcceso'
 
 type Role = 'cashier' | 'driver'
 
@@ -265,6 +266,8 @@ export default function Usuarios() {
           un empleado puede tener ambos roles
         </p>
       </div>
+
+      <SolicitudesAcceso onCambio={load} />
 
       <MercadeoCard />
 

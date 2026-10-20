@@ -28,6 +28,7 @@ import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
 import rutasRoutes from './modules/modulo_rutas/routes/rutas.routes';
 import mercadeoRoutes from './modules/modulo_mercadeo/routes/mercadeo.routes';
 import pedidosRoutes from './modules/modulo_pedidos/routes/pedidos.routes';
+import equipoRoutes from './modules/modulo_equipo/routes/equipo.routes';
 
 const app: Express = express();
 
@@ -112,6 +113,7 @@ app.use(`${apiPrefix}/categories`, categoriesRoutes);
 app.use(`${apiPrefix}/sedes`, sedesRoutes);
 app.use(`${apiPrefix}/rutas`, rutasRoutes);
 app.use(`${apiPrefix}/pedidos`, pedidosRoutes);
+app.use(`${apiPrefix}/equipo`, equipoRoutes);
 app.use(`${apiPrefix}/mercadeo`, mercadeoRoutes);
 
 // 404 Handler

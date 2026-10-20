@@ -20,7 +20,8 @@ export type PedidoDoc = Record<string, any>;
 export function rolesDe(u: Usuario, p: PedidoDoc): Rol[] {
   const roles: Rol[] = [];
   if (u.esAdmin) roles.push('admin');
-  if (u.esCaja) roles.push('caja');
+  // La caja solo en las sedes que tiene autorizadas (el admin en todas).
+  if (u.esCaja && (!p.sedeId || (u.sedes?.caja ?? []).includes(p.sedeId))) roles.push('caja');
   if (u.esDomiciliario && u.email && (p.driverEmail || '').toLowerCase() === u.email) roles.push('domiciliario');
   if (p.clientUid && p.clientUid === u.uid) roles.push('cliente');
   return roles;

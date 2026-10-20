@@ -203,6 +203,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Solicitudes de acceso al equipo ────────────────────────────────────
+    // Las crea y resuelve el servidor (/api/v1/equipo). Cada quien lee la suya
+    // (para ver si ya la aprobaron) y administración todas. Nadie escribe directo.
+    match /solicitudes_acceso/{uid} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+
     // ── Historial (auditoría) del pedido — Fase 2 ──────────────────────────
     // Una línea por cada cambio de etapa o excepción. Se escribe junto con el
     // pedido (services/firebase.js → actualizarPedido / createOrderWithNumber)

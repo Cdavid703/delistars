@@ -62,7 +62,8 @@ describe('armarItems: precios del catálogo, nunca del cliente', () => {
 });
 
 const usuario = (x: Partial<Usuario> = {}): Usuario =>
-  ({ uid: 'u1', email: 'cliente@x.com', anonimo: false, nombre: '', esAdmin: false, esCaja: false, esDomiciliario: false, ...x });
+  ({ uid: 'u1', email: 'cliente@x.com', anonimo: false, nombre: '', esAdmin: false, esCaja: false, esDomiciliario: false, esMercadeo: false,
+    sedes: { caja: x.esCaja ? ['santa_lucia', 'santa_teresita'] : [], domiciliario: x.esDomiciliario ? ['santa_lucia', 'santa_teresita'] : [] }, ...x });
 const caja = usuario({ uid: 'c1', email: 'caja@x.com', esCaja: true });
 
 describe('combos de promoción y de temporada', () => {
