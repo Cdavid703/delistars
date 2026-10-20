@@ -6,6 +6,7 @@ import {
 } from '../../services/firebase'
 import { devolucionInicial, aplicarSaldo } from '../../utils/devolucion'
 import ClientChat from './ClientChat'
+import CodigoPrivado from './CodigoPrivado'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
 import { SEDES } from '../../services/roles'
@@ -777,6 +778,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               )
             })()}
           </Section>
+
+          {/* Pedido de caja sin cuenta: código privado para que el cliente lo siga */}
+          <CodigoPrivado order={order} />
 
           {/* Chat con el cliente — disponible DESDE que entra el pedido (pending),
               justo debajo de sus datos para que el cajero pueda escribirle sin

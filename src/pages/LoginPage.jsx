@@ -101,6 +101,11 @@ export default function LoginPage() {
             {loading ? 'Conectando…' : 'Soy del equipo · Entrar con Google'}
           </button>
 
+          {/* Pedido hecho en la caja: se sigue con el código que manda la sede */}
+          <a href="/domicilios/?codigo" className="font-body text-xs text-coal/60 underline underline-offset-2 hover:text-coal">
+            Tengo un código de pedido
+          </a>
+
           {error && (
             <p className="text-sm text-pepper font-body text-center">{error}</p>
           )}

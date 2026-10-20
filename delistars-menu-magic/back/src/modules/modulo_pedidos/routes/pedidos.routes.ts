@@ -4,6 +4,7 @@ import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
 import { crearPedido, transicionar, registrarPago, accionCaja } from '../services/pedidos.service';
+import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
 
@@ -45,6 +46,64 @@ router.get('/datos-transferencia', (req: Request, res: Response) => {
     qrUrl: `${proto}://${host}/domicilios/${c.qr}`,
     instruccion: INSTRUCCION_TRANSFERENCIA,
   });
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/codigo/ver:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Ver un pedido de caja con su código privado (sin cuenta)
+ *     description: >
+ *       Público (sin token). 5 códigos equivocados seguidos desde la misma conexión la
+ *       bloquean 15 min (429 `bloqueado`). Código vencido (pedido terminado hace más de 30 días) → 410.
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "codigo": "K7QM-4ZP9" }
+ *     responses:
+ *       200: { description: "{ id, orderNumber, sedeName, deliveryMode, etapa, excepcion, items, total, pago, domiciliario, vinculado, ... }" }
+ */
+router.post('/codigo/ver', activa, async (req: Request, res: Response) => {
+  try {
+    res.set('Cache-Control', 'no-store').json(await verConCodigo(req.body?.codigo, req.ip ?? ''));
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/codigo/vincular:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Guardar un pedido de caja en la cuenta de quien tiene el código
+ *     description: Requiere cuenta (no anónima). Después el pedido sale en "Mis pedidos".
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "codigo": "K7QM-4ZP9" }
+ *     responses:
+ *       200: { description: "{ id, vinculado: true }" }
+ */
+router.post('/codigo/vincular', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    res.json(await vincularConCodigo(req.usuario!, req.body?.codigo, req.ip ?? ''));
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/codigo:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Generar el código privado de un pedido de caja (caja o admin)
+ *     description: Uno nuevo anula el anterior. Solo pedidos sin cuenta y vigentes.
+ *     responses:
+ *       200: { description: "{ id, codigo, reemplazo }" }
+ */
+router.post('/:id/codigo', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    res.json(await generarCodigoPedido(req.usuario!, req.params.id));
+  } catch (err) { responderError(res, err); }
 });
 
 /**

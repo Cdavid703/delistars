@@ -4,6 +4,7 @@ import {
   serverTimestamp, doc, setDoc, updateDoc, getDocs
 } from 'firebase/firestore'
 import { db, createOrderWithNumber } from '../../services/firebase'
+import { llamarPedidos } from '../../services/pedidosApi'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -365,8 +366,11 @@ export default function CashierPanel() {
     try {
       // El N° de pedido lo asigna SIEMPRE el sistema: número + pedido en una
       // sola transacción atómica siguiendo la numeración del día de la sede.
-      await createOrderWithNumber(sede.id, orderData)
+      const { orderRef } = await createOrderWithNumber(sede.id, orderData)
       setShowForm(false)
+      // Código privado para que el cliente siga su pedido sin cuenta (Fase 4,
+      // P-16). Si falla, se genera después desde el detalle del pedido.
+      llamarPedidos(`${orderRef.id}/codigo`).catch(err => console.warn('[CashierPanel] código privado:', err?.message || err))
     } catch (err) {
       console.error('[CashierPanel] crear pedido ERROR:', err)
       throw err   // re-lanzar para que OrderForm muestre el error

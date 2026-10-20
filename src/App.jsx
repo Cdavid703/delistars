@@ -12,6 +12,11 @@ import { ROLES, SEDES } from './services/roles'
 const CashierPanel  = lazy(() => import('./components/cashier/CashierPanel'))
 const DeliveryPanel = lazy(() => import('./components/delivery/DeliveryPanel'))
 const ClientPanel   = lazy(() => import('./components/client/ClientPanel'))
+const SeguirConCodigo = lazy(() => import('./pages/SeguirConCodigo'))
+
+// ?codigo=K7QM-4ZP9 (o ?codigo vacío): seguir un pedido de caja con su código
+// privado, con o sin cuenta (Fase 4, P-16).
+const codigoEnUrl = new URLSearchParams(window.location.search).get('codigo')
 
 function LoadingScreen() {
   return (
@@ -66,6 +71,14 @@ export default function App() {
   }, [user, sede])
 
   if (loading) return <LoadingScreen />
+
+  if (codigoEnUrl !== null) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <SeguirConCodigo codigoInicial={codigoEnUrl} />
+      </Suspense>
+    )
+  }
 
   if (!user) return <LoginPage />
   if (!sede) return <SedeSelectionPage />
