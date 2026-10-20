@@ -14,6 +14,7 @@ const nodemailer = require('nodemailer')
 const MailComposer = require('nodemailer/lib/mail-composer')
 const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
+const { mensajeSolicitud, claveSolicitud } = require('./solicitudAviso')
 const { calcularDias } = require('./indicadores')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -340,6 +341,33 @@ async function avisarMercadeoDelDia() {
   } catch (err) {
     console.error('[scheduler] Error en el aviso de mercadeo:', err?.message || err)
   }
+}
+
+// ─── Solicitudes de acceso al equipo → celular de administración ────────────
+// Quien pide acceso de caja o domiciliario desde la app (POST /equipo/solicitudes)
+// queda pendiente hasta que un admin lo apruebe en Panel → Usuarios. Esto le
+// avisa al celular a cada admin que tenga notificaciones activas (staff_push).
+// Al arrancar solo toma foto de las pendientes: no repite avisos viejos.
+function watchSolicitudesAcceso() {
+  const avisadas = new Set()
+  let baseline = true
+  adminDb.collection('solicitudes_acceso').where('estado', '==', 'pendiente')
+    .onSnapshot((snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') continue
+        const s = chg.doc.data()
+        const clave = claveSolicitud(chg.doc.id, s)
+        if (baseline || avisadas.has(clave)) { avisadas.add(clave); continue }
+        avisadas.add(clave)
+        const msg = mensajeSolicitud(s)
+        for (const email of ADMIN_EMAILS) {
+          sendPushForStaff(`solicitud-${chg.doc.id}`, {}, { ...msg, soloA: email })
+            .catch((e) => console.error('[scheduler] aviso de solicitud error:', e?.message || e))
+        }
+      }
+      baseline = false
+    }, (err) => console.error('[scheduler] vigía de solicitudes error:', err?.message || err))
+  console.log('[scheduler] avisos de solicitudes de acceso a administración activos')
 }
 
 // ─── WhatsApp del negocio (CallMeBot) ─────────────────────────────────────────
@@ -749,6 +777,8 @@ async function main() {
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
       try { watchDevoluciones() }
       catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
+      try { watchSolicitudesAcceso() }
+      catch (err) { console.error('[scheduler] avisos de solicitudes deshabilitados:', err?.message || err) }
       // Resumen del día al WhatsApp del dueño (11:45 PM, antes del cierre).
       cron.schedule('45 23 * * *', sendDailySummary, { timezone: TIMEZONE })
       // Vigía de pedidos sin cotizar: cada 3 min durante el servicio.
