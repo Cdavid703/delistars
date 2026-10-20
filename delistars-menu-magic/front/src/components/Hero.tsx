@@ -34,6 +34,8 @@ export const Hero = () => {
         // y que NO sean hamburguesas de pollo
         const filteredProducts = products.filter((p: ApiProduct) => {
           if (p.id_categoria === 5 || p.id_categoria === 8) return false;
+          // Combos fuera de fecha o agotados no salen en el carrusel (reglas de /products).
+          if (p.reglas && !p.reglas.visible) return false;
           
           const isHamburguesaDePollo = 
             p.nombre_producto.toLowerCase().includes("hamburguesa") && 

@@ -5,9 +5,8 @@ import { ProductDialog } from "@/components/ProductDialog";
 import { apiService, type Category, type Product as ApiProduct } from "@/services/api";
 import { SearchBar } from "@/components/SearchBar";
 import { useCart } from "@/context/CartContext";
-import { destacadosPrimero, normalizarNombre } from "@/lib/destacados";
-import { vigente } from "@/lib/temporada";
-import { promoPorSlug, estadoPromo } from "@/lib/promos";
+import { destacadosPrimero, normalizarNombre, visibleEnMenu, promoPorSlug, estadoPromo } from "@/lib/reglas";
+import { SEDES } from "@/data/menu";
 import { toast } from "sonner";
 import { PromoFranja } from "@/components/PromoFranja";
 import { ChevronDown } from "lucide-react";
@@ -24,6 +23,8 @@ const EMOJI_MAP: Record<string, string> = {
 
 export const MenuSection = () => {
   const { sede, reconcilePrices } = useCart();
+  // Slug de la sede elegida ('santa_lucia' | 'santa_teresita'), como lo usa el servidor.
+  const sedeSlug = SEDES.find((s) => s.id === sede)?.slug ?? null;
   const [selected, setSelected] = useState<ApiProduct | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -76,12 +77,9 @@ export const MenuSection = () => {
     destacadosPrimero(
       products.filter((p) => {
         if (p.id_categoria !== idCategoria) return false;
-        // Los combos de temporada desaparecen solos al pasar su fecha.
-        if (!vigente(p.nombre_producto)) return false;
-        const isJugo =
-          p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
-        if (isJugo && Number(sede) !== 2) return false;
-        return true;
+        // Combos con fecha, temporada, agotados y productos de una sola sede:
+        // lo decide el servidor (reglas de /products).
+        return visibleEnMenu(p, sedeSlug);
       }),
     );
 
@@ -117,16 +115,17 @@ export const MenuSection = () => {
     if (!comboEnlazado.current || products.length === 0) return;
     let slug: string | null = null;
     try { slug = new URLSearchParams(window.location.search).get("combo"); } catch { /* sin URL */ }
-    const promo = promoPorSlug(slug);
-    if (!promo) { comboEnlazado.current = false; return; }
+    const enlazado = promoPorSlug(products, slug);
+    if (!enlazado) { comboEnlazado.current = false; return; }
+    const { producto, promo } = enlazado;
     const estado = estadoPromo(promo);
     if (estado === "activa") {
       if (!sede) return; // espera a que elija sede
-      setPedido(promo.producto);
+      setPedido(producto.nombre_producto);
     } else if (estado === "antes") {
-      toast.info(`El ${promo.producto} estará disponible ${promo.fechasTexto}. ¡Te esperamos!`, { duration: 8000 });
+      toast.info(`El ${producto.nombre_producto} estará disponible ${promo.fechasTexto}. ¡Te esperamos!`, { duration: 8000 });
     } else {
-      toast.info(`El ${promo.producto} ya terminó. Mira lo que tenemos hoy 😋`, { duration: 8000 });
+      toast.info(`El ${producto.nombre_producto} ya terminó. Mira lo que tenemos hoy 😋`, { duration: 8000 });
     }
     comboEnlazado.current = false;
     try {
@@ -151,16 +150,9 @@ export const MenuSection = () => {
   }, [pedido, products, categories]);
 
   const filteredProducts = products.filter((p) => {
-    // Excluir adiciones (categoría 5) y salsas (categoría 8)
-    if (p.id_categoria === 5 || p.id_categoria === 8) return false;
-
-    // Un producto de temporada vencido tampoco debe salir en el buscador: si no,
-    // se encuentra por nombre aunque ya no esté en su categoría.
-    if (!vigente(p.nombre_producto)) return false;
-
-    // Los jugos solo aparecen en la sede de Santa Teresita (sede === 2)
-    const isJugo = p.id_producto === 48 || p.nombre_producto.toLowerCase().includes("jugos de la casa");
-    if (isJugo && Number(sede) !== 2) return false;
+    // Opciones (adiciones y salsas), combos fuera de fecha y productos de otra
+    // sede tampoco salen en el buscador (reglas de /products).
+    if (!visibleEnMenu(p, sedeSlug)) return false;
 
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;

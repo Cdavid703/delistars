@@ -39,11 +39,21 @@ export function opcionesDe(p: { id_producto: number; nombre_producto: string }):
  * Solo se piden entre `desde` y `hasta` (inclusive, hora de Colombia). Cada
  * unidad (cada hamburguesa o perro) lleva sus salsas, cebolla y bebida.
  */
-export interface PromoCombo { producto: string; desde: string; hasta: string; unidades: number; unidad: string; bebidas: string[] }
+export interface PromoCombo {
+  slug: string; producto: string; desde: string; hasta: string; fechasTexto: string;
+  unidades: number; unidad: string; bebidas: string[];
+}
+/**
+ * FUENTE ÚNICA de los combos con fecha (desde el 20 oct 2026 el menú web y la
+ * app los leen de /products → reglas.promo). Para una promo nueva basta
+ * agregarla aquí. `slug` es el del enlace de la campaña (?combo=<slug>).
+ */
 export const PROMOS: PromoCombo[] = [
-  { producto: 'Combo Quincena', desde: '2026-10-15', hasta: '2026-10-17', unidades: 2, unidad: 'Hamburguesa',
+  { slug: 'combo-quincena', producto: 'Combo Quincena', desde: '2026-10-15', hasta: '2026-10-17',
+    fechasTexto: 'del 15 al 17 de octubre', unidades: 2, unidad: 'Hamburguesa',
     bebidas: ['Coca Cola Sabor Original Pet 400 ml', 'Coca Cola Zero Pet 400 ml'] },
-  { producto: 'Combo Parche', desde: '2026-10-24', hasta: '2026-10-25', unidades: 4, unidad: 'Perro', bebidas: COMBO_DRINKS },
+  { slug: 'combo-parche', producto: 'Combo Parche', desde: '2026-10-24', hasta: '2026-10-25',
+    fechasTexto: 'el 24 y 25 de octubre', unidades: 4, unidad: 'Perro', bebidas: COMBO_DRINKS },
 ];
 export const promoDe = (nombre: string) => PROMOS.find((p) => normalizar(p.producto) === normalizar(nombre));
 
@@ -93,7 +103,7 @@ export interface ReglasProducto {
   soloSedes: string[] | null;
   esOpcion: boolean;
   tipoOpcion: null | 'adicion' | 'cebolla' | 'salsa';
-  promo: null | { desde: string; hasta: string; unidades: number; unidad: string; bebidas: string[] };
+  promo: null | { slug: string; desde: string; hasta: string; fechasTexto: string; unidades: number; unidad: string; bebidas: string[] };
   temporadaHasta: string | null;
   ficha: {
     bebidaCombo: string[] | null;
@@ -134,7 +144,7 @@ export function reglasDeProducto(
     soloSedes: soloTeresita ? ['santa_teresita'] : null,
     esOpcion: tipoOpcion !== null,
     tipoOpcion,
-    promo: promo ? { desde: promo.desde, hasta: promo.hasta, unidades: promo.unidades, unidad: promo.unidad, bebidas: promo.bebidas } : null,
+    promo: promo ? { slug: promo.slug, desde: promo.desde, hasta: promo.hasta, fechasTexto: promo.fechasTexto, unidades: promo.unidades, unidad: promo.unidad, bebidas: promo.bebidas } : null,
     temporadaHasta: fin != null ? new Date(fin).toISOString() : null,
     ficha: {
       bebidaCombo: p.id_categoria === CATEGORIA.combos && !promo ? COMBO_DRINKS : null,

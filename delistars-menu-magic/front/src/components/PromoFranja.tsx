@@ -1,6 +1,5 @@
 import type { Product as ApiProduct } from "@/services/api";
-import { PROMOS, estadoPromo } from "@/lib/promos";
-import { normalizarNombre } from "@/lib/destacados";
+import { promosVigentes } from "@/lib/reglas";
 
 const fmt = (v: string | number) => `$${Math.round(Number(v)).toLocaleString("es-CO")}`;
 
@@ -9,13 +8,8 @@ const fmt = (v: string | number) => `$${Math.round(Number(v)).toLocaleString("es
 // ventanas emergentes intrusivas; decisión C5 del 18 oct 2026). Si no hay
 // ninguno vigente, no ocupa espacio.
 export const PromoFranja = ({ products, onVer }: { products: ApiProduct[]; onVer: (p: ApiProduct) => void }) => {
-  const vigentes = PROMOS
-    .filter((promo) => estadoPromo(promo) === "activa")
-    .map((promo) => ({
-      promo,
-      producto: products.find((p) => normalizarNombre(p.nombre_producto) === normalizarNombre(promo.producto)),
-    }))
-    .filter((x): x is { promo: typeof x.promo; producto: ApiProduct } => !!x.producto);
+  // Las fechas de cada combo vienen del servidor (reglas de /products).
+  const vigentes = promosVigentes(products);
 
   if (vigentes.length === 0) return null;
 

@@ -10,52 +10,18 @@ import { optimizeImage } from "@/lib/utils";
 import { DescripcionProducto } from "@/components/DescripcionProducto";
 import { toast } from "sonner";
 
-import { COMBO_DRINKS, promoDe, textoUnidad } from "@/lib/promos";
+import { promoDe, textoUnidad, opcionDe, bebidasComboDe, admiteAdiciones, admiteSalsas } from "@/lib/reglas";
 
 // Una unidad de un combo de promoción mientras el cliente la arma.
 type UnidadElegida = { salsas: number[]; cebollas: number[]; bebida: string };
 const FONDO_PROMO = "#FC7F09"; // naranja de las piezas de campaña
 
-const PRODUCT_OPTIONS = {
-  hamburguesa_pollo: {
-    title: "Elige un ingrediente",
-    subtitle: "Selecciona una opción para tu hamburguesa (sin costo adicional)",
-    items: ["Queso", "Tocineta"],
-  },
-  papastars: {
-    title: "Elige tu proteína",
-    subtitle: "Selecciona cómo deseas tu Papastars (sin costo adicional)",
-    items: ["Chicharron", "Pollo"],
-  }
-};
-
+// Opción obligatoria sin costo (queso/tocineta, chicharrón/pollo): la decide el
+// servidor en reglas.ficha.opcion (back/.../reglas/menu.ts), la misma regla que
+// valida el pedido.
 const getProductCustomOptions = (product: ApiProduct | null) => {
-  if (!product) return null;
-  const name = product.nombre_producto.toLowerCase();
-  
-  const isHamburguesaPollo = 
-    product.id_producto === 3 || 
-    name === "hamburguesa de pollo" || 
-    name === "hamburguesa de pollo con queso o tocineta" ||
-    name === "hamburguesa de pollo con queso y tocineta" ||
-    // Combos donde el cliente también elige queso o tocineta.
-    product.id_producto === 26 ||
-    name === "combo hamburguesa sencilla con queso o tocineta" ||
-    name === "combo hamburguesa de pollo con queso o tocineta";
-    
-  if (isHamburguesaPollo) {
-    return PRODUCT_OPTIONS.hamburguesa_pollo;
-  }
-  
-  const isPapastars = 
-    product.id_producto === 20 || 
-    name === "papastars";
-    
-  if (isPapastars) {
-    return PRODUCT_OPTIONS.papastars;
-  }
-  
-  return null;
+  const o = opcionDe(product);
+  return o ? { title: o.titulo, subtitle: o.subtitulo, items: o.items } : null;
 };
 
 export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null; onClose: () => void }) => {
@@ -84,7 +50,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const hasPresentations = !!(product?.presentations && product.presentations.length > 0);
 
   // Combo de promoción: cada hamburguesa/perro con sus salsas, cebolla y bebida.
-  const promo = product ? promoDe(product.nombre_producto) : undefined;
+  const promo = promoDe(product);
   const [unidades, setUnidades] = useState<UnidadElegida[]>([]);
   const cambiarUnidad = (i: number, cambio: (u: UnidadElegida) => UnidadElegida) =>
     setUnidades((prev) => prev.map((u, k) => (k === i ? cambio(u) : u)));
@@ -129,12 +95,10 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
         setSelectedBase("");
       }
 
-      if (product.id_categoria === 4 && !promoDe(product.nombre_producto)) {
-        setSelectedDrink(COMBO_DRINKS[0]);
-      } else {
-        setSelectedDrink("");
-      }
-      const p = promoDe(product.nombre_producto);
+      // Bebidas del combo y armado por unidad: reglas del servidor (/products).
+      const bebidas = bebidasComboDe(product);
+      setSelectedDrink(bebidas ? bebidas[0] : "");
+      const p = promoDe(product);
       setUnidades(p ? Array.from({ length: p.unidades }, () => ({ salsas: [], cebollas: [], bebida: p.bebidas[0] })) : []);
 
       // Initialize selectedOption
@@ -263,10 +227,14 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       return next;
     });
 
-  // Hide additions for category 7 (Bebidas)
   const isBebida = product.id_categoria === 7;
+  // Qué ofrece la ficha (reglas.ficha): las bebidas no llevan adiciones ni
+  // salsas; los combos de promoción piden salsas y cebolla por unidad.
+  const sinAdiciones = !admiteAdiciones(product);
+  const sinSalsas = !admiteSalsas(product);
+  const bebidasCombo = bebidasComboDe(product);
 
-  const selectedAddons = isBebida
+  const selectedAddons = sinAdiciones
     ? []
     : addons.flatMap((a) => Array(addonQtys[a.id] ?? 0).fill(a));
 
@@ -274,8 +242,8 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
   const unit = basePrice + selectedAddons.reduce((s, a) => s + a.price, 0);
   const total = unit * qty;
 
-  const chosenSalsas = isBebida ? [] : salsas.filter((s) => selectedSalsas.has(s.id));
-  const chosenCebollas = isBebida ? [] : cebollas.filter((c) => selectedCebollas.has(c.id));
+  const chosenSalsas = sinSalsas ? [] : salsas.filter((s) => selectedSalsas.has(s.id));
+  const chosenCebollas = sinSalsas ? [] : cebollas.filter((c) => selectedCebollas.has(c.id));
 
   const unidadesFinales = promo
     ? unidades.map((u) => ({
@@ -298,7 +266,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
       cebollas: chosenCebollas,
       notes: notes.trim(),
       presentation: selectedPresentation || undefined,
-      selectedDrink: product.id_categoria === 4 && !promo ? selectedDrink : undefined,
+      selectedDrink: bebidasCombo ? selectedDrink : undefined,
       unidades: unidadesFinales,
       unidadesTexto: promo && unidadesFinales ? unidadesFinales.map((u, i) => textoUnidad(promo, u, i)) : undefined,
       selectedOption: getProductCustomOptions(product) ? selectedOption : undefined
@@ -506,13 +474,13 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
             ))}
 
             {/* SECCIÓN BEBIDA DEL COMBO (Solo si es combo) */}
-            {product.id_categoria === 4 && !promo && (
+            {bebidasCombo && (
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <div>
                   <p className="font-display text-base tracking-wide mb-1">Elige tu Bebida</p>
                   <p className="text-xs text-muted-foreground mb-3">Selecciona una gaseosa para tu combo (sin costo adicional)</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {COMBO_DRINKS.map((drink) => (
+                    {bebidasCombo.map((drink) => (
                       <button
                         key={drink}
                         type="button"
@@ -560,7 +528,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
             )}
 
             {/* SECCIÓN SALSAS (Ocultar para bebidas; los combos de promo las piden por unidad) */}
-            {!isBebida && !promo && salsas.length > 0 && (
+            {!sinSalsas && salsas.length > 0 && (
               <div className="border-t border-border/60 pt-4">
                 <p className="font-display text-lg tracking-wide mb-1">Salsas</p>
                 <p className="text-xs text-muted-foreground mb-3">Selecciona las salsas que deseas (sin costo adicional)</p>
@@ -587,7 +555,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
             )}
 
             {/* SECCIÓN CEBOLLAS (Ocultar para bebidas; los combos de promo las piden por unidad) */}
-            {!isBebida && !promo && cebollas.length > 0 && (
+            {!sinSalsas && cebollas.length > 0 && (
               <div className="border-t border-border/60 pt-4">
                 <p className="font-display text-lg tracking-wide mb-1">Cebolla</p>
                 <p className="text-xs text-muted-foreground mb-3">Selecciona el tipo de cebolla (sin costo adicional)</p>
@@ -614,7 +582,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
             )}
 
             {/* SECCIÓN ADICIONES (Ocultar para bebidas/gaseosas/jugos) */}
-            {!isBebida && (
+            {!sinAdiciones && (
               <div className="border-t border-border/60 pt-4">
                 <p className="font-display text-lg tracking-wide mb-1">Adiciones</p>
                 <p className="text-xs text-muted-foreground mb-3">Personaliza tu pedido</p>

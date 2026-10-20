@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import type { Addon, Salsa, Cebolla, Product as ApiProduct } from "@/services/api";
 import { SEDES } from "@/data/menu";
-import type { UnidadCombo } from "@/lib/promos";
+import type { UnidadCombo } from "@/lib/reglas";
 
 export type CartItem = {
   uid: string;
@@ -21,7 +21,7 @@ export type CartItem = {
   };
   selectedDrink?: string;
   selectedOption?: string;
-  /** Combos de promoción (lib/promos.ts): lo que eligió para cada hamburguesa/perro. */
+  /** Combos de promoción (reglas.promo): lo que eligió para cada hamburguesa/perro. */
   unidades?: UnidadCombo[];
   /** Las mismas unidades ya en texto para la cocina ("Hamburguesa 1 · Salsas: … · Bebida: …"). */
   unidadesTexto?: string[];

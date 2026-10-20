@@ -1,3 +1,4 @@
+import type { ReglasProducto } from "@/lib/reglas";
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
 export interface Category {
@@ -24,6 +25,8 @@ export interface Product {
   image_url2?: string;
   disponible?: boolean;
   presentations?: ProductPresentation[];
+  /** Reglas del menú calculadas por el servidor (lib/reglas.ts). */
+  reglas?: ReglasProducto;
 }
 
 export interface Addon {
