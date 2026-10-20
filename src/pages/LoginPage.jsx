@@ -2,14 +2,17 @@ import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/common/Logo'
 import AccesoCuenta from '../components/common/AccesoCuenta'
-import { Globe, Star, UserX, ShoppingBag, UserRound } from 'lucide-react'
+import { LogoGoogle } from '../components/common/LogosMarca'
+import { Star, ShoppingBag, UserRound } from 'lucide-react'
 
+// Sin "continuar sin cuenta": para pedir hay que tener cuenta (decisión C6,
+// Fase 4). El invitado antiguo con un pedido en curso lo sigue viendo y puede
+// crear la cuenta ahí mismo sin perderlo (P-15).
 export default function LoginPage() {
-  const { login, loginGuest } = useAuth()
-  const [loading,      setLoading]      = useState(false)
-  const [loadingGuest, setLoadingGuest] = useState(false)
-  const [error, setError]               = useState('')
-  const [acceso, setAcceso]             = useState(false)
+  const { login } = useAuth()
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState('')
+  const [acceso, setAcceso]   = useState(false)
 
   const handleLogin = async () => {
     setLoading(true)
@@ -25,19 +28,7 @@ export default function LoginPage() {
     }
   }
 
-  const handleGuest = async () => {
-    setLoadingGuest(true)
-    setError('')
-    try {
-      await loginGuest()
-    } catch {
-      setError('No se pudo continuar como invitado. Intenta de nuevo.')
-    } finally {
-      setLoadingGuest(false)
-    }
-  }
-
-  const busy = loading || loadingGuest
+  const busy = loading
 
   return (
     <div className="min-h-screen-safe flex flex-col items-center justify-center bg-gradient-to-br from-cherry via-tangelo to-mustard relative overflow-hidden px-4 py-8">
@@ -96,20 +87,10 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={busy}
-            className="btn-secondary btn-lg w-full"
+            className="w-full inline-flex items-center justify-center gap-3 bg-white text-coal font-body font-semibold text-sm px-5 py-3 rounded-full border border-coal/20 shadow-sm hover:bg-smoked/40 active:scale-[0.98] transition disabled:opacity-60"
           >
-            <Globe size={20} />
+            <LogoGoogle />
             {loading ? 'Conectando…' : 'Soy del equipo · Entrar con Google'}
-          </button>
-
-          {/* Guest button */}
-          <button
-            onClick={handleGuest}
-            disabled={busy}
-            className="font-body text-xs text-coal/50 underline underline-offset-2 hover:text-coal"
-          >
-            <UserX size={13} className="inline mr-1" />
-            {loadingGuest ? 'Entrando…' : 'Continuar sin cuenta'}
           </button>
 
           {error && (

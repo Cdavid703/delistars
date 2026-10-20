@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Eye, EyeOff, Mail } from 'lucide-react'
 import {
   loginGoogle, loginMicrosoft, crearCuentaCorreo, entrarConCorreo, recuperarContrasena,
 } from '../../services/firebase'
 import { mensajeAuth, esCancelacion, erroresRegistro } from '../../utils/erroresAuth'
+import { LogoGoogle, LogoMicrosoft } from './LogosMarca'
 
 // Entrar o crear cuenta (especificación §6.1): Google, Microsoft y correo con
 // contraseña. Si la persona estaba como invitada, Google, Microsoft y "Crear
@@ -48,9 +50,13 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
     setAviso(`Te enviamos a ${form.email.trim()} un enlace para crear una contraseña nueva. Revisa también el correo no deseado.`)
   })
 
+  // Botón blanco con el logo a la izquierda (guías de marca de Google y Microsoft).
+  const botonMarca = 'w-full inline-flex items-center justify-center gap-3 bg-white text-coal font-body font-semibold text-sm px-5 py-3 rounded-full border border-coal/20 shadow-sm hover:bg-smoked/40 active:scale-[0.98] transition disabled:opacity-60'
   const campo = 'w-full bg-white border border-coal/15 rounded-xl px-3 py-2.5 font-body text-sm text-coal focus:outline-none focus:border-cherry'
 
-  return (
+  // Se dibuja en <body>: dentro de una tarjeta con animación (transform) el
+  // "fixed" quedaría encerrado en la tarjeta y la ventana saldría detrás.
+  return createPortal(
     <div className="fixed inset-0 z-[150] bg-coal/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-3 animate-fade-in">
       <div className="bg-cream w-full max-w-sm rounded-3xl shadow-2xl p-5 flex flex-col gap-3 max-h-[92dvh] overflow-y-auto">
         <div className="flex items-center justify-between">
@@ -60,10 +66,12 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
           )}
         </div>
 
-        <button onClick={() => social('google', loginGoogle)} disabled={!!busy} className="btn-secondary w-full">
+        <button onClick={() => social('google', loginGoogle)} disabled={!!busy} className={botonMarca}>
+          <LogoGoogle />
           {busy === 'google' ? 'Conectando…' : 'Continuar con Google'}
         </button>
-        <button onClick={() => social('microsoft', loginMicrosoft)} disabled={!!busy} className="btn-secondary w-full">
+        <button onClick={() => social('microsoft', loginMicrosoft)} disabled={!!busy} className={botonMarca}>
+          <LogoMicrosoft />
           {busy === 'microsoft' ? 'Conectando…' : 'Continuar con Microsoft'}
         </button>
 
@@ -122,6 +130,7 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
         {errores.map((e) => <p key={e} className="font-body text-xs text-pepper">{e}</p>)}
         {aviso && <p className="font-body text-xs text-mint font-semibold">{aviso}</p>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
