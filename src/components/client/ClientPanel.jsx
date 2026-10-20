@@ -555,7 +555,7 @@ export default function ClientPanel() {
           <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
         </div>
         <div className="p-5 max-w-lg mx-auto pb-16">
-          <ClientOrderForm user={user} sede={sede} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} onCambiarSede={selectSede} />
+          <ClientOrderForm user={user} sede={sede} perfil={perfil} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} onCambiarSede={selectSede} />
         </div>
       </div>
     )
@@ -1146,7 +1146,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
   )
 }
 
-function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
+function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
   // Sube cuando confirma el correo (Firebase actualiza la cuenta sin avisar a React).
   const [, setCorreoListo] = useState(0)
   const [redeemCount, setRedeemCount] = useState(0)
@@ -1339,6 +1339,13 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
     }).catch(() => {})
   }, [user?.uid])
 
+  // Lo que el cliente acaba de completar en "Completa tus datos" llena los
+  // campos vacíos (sin pisar lo que ya escribió aquí).
+  useEffect(() => {
+    if (!perfil) return
+    setForm(f => ({ ...f, name: f.name || perfil.name || '', phone: f.phone || perfil.phone || '' }))
+  }, [perfil?.name, perfil?.phone]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   // Código promocional (ver utils/codigos.js). "Una vez por cuenta" se revisa
@@ -1401,6 +1408,7 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
         clave: claveEnvio.current,
         cuerpo: {
           sedeId:       sede?.id,
+          origen:       'web',
           deliveryMode: form.deliveryMode,
           nombre:       form.name.trim(),
           telefono:     form.phone.trim(),
@@ -2912,9 +2920,13 @@ function ClientOrderDetail({ order, onClose }) {
           <div className="card">
             <div className="flex items-center gap-2 mb-1">
               <MapPin size={16} className="text-cherry" />
-              <p className="font-display text-base tracking-wide">Entrega en</p>
+              <p className="font-display text-base tracking-wide">{order.deliveryMode === 'pickup' ? 'Recoges en' : 'Entrega en'}</p>
             </div>
-            <p className="font-body text-sm text-coal">{order.fullAddress}</p>
+            <p className="font-body text-sm text-coal">
+              {order.deliveryMode === 'pickup'
+                ? `${order.sedeName || SEDES[order.sedeId]?.name || 'la sede'}${SEDES[order.sedeId]?.address ? ` — ${SEDES[order.sedeId].address}` : ''}`
+                : order.fullAddress}
+            </p>
             {order.barrio && <p className="font-body text-xs text-coal/50 mt-0.5">Barrio: {order.barrio}</p>}
           </div>
 

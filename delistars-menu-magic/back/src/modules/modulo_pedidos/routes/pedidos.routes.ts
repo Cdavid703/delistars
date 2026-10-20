@@ -56,7 +56,8 @@ router.get('/datos-transferencia', (req: Request, res: Response) => {
  *     description: >
  *       Precios del catálogo del servidor; domicilio por recorrido si llega `coords`.
  *       Opcionales: `revisarDomicilio: true` (la caja cotiza el domicilio a mano),
- *       `pinFuente` (mapa | google | photon | app), `codigo`, `premios` (cantidad), `usarSaldo`.
+ *       `pinFuente` (mapa | google | photon | app), `codigo`, `premios` (cantidad), `usarSaldo`,
+ *       `origen` ('web' | 'app'; por defecto 'app').
  *       Encabezados: Authorization: Bearer <idToken>, Idempotency-Key: <uuid>.
  *     requestBody:
  *       content:

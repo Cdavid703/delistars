@@ -133,7 +133,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     etapa: 'enviado',
     excepcion: null,
     excepcionMotivo: null,
-    origen: 'app',
+    // De dónde llegó: la web de domicilios manda 'web'; la app móvil, 'app' (o nada).
+    origen: b?.origen === 'web' ? 'web' : 'app',
     version: 1,
     createdAt: ahora,
     updatedAt: ahora,
