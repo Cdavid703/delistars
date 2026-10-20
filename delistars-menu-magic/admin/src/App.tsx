@@ -17,6 +17,7 @@ import Mercadeo from '@/pages/Mercadeo'
 import IndicadoresMercadeo from '@/pages/IndicadoresMercadeo'
 import Layout from '@/components/Layout'
 import NotFound from '@/pages/NotFound'
+import AvisoVersion from './components/AvisoVersion'
 
 const queryClient = new QueryClient()
 
@@ -37,6 +38,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router basename="/admin">
         <Toaster position="top-right" />
+        <AvisoVersion />
         {!user ? (
           <Routes>
             <Route path="*" element={<Login />} />
