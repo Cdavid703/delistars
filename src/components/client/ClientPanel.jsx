@@ -1185,6 +1185,8 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
 }
 
 function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
+  // Sube cuando confirma el correo (Firebase actualiza la cuenta sin avisar a React).
+  const [, setCorreoListo] = useState(0)
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
     (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
@@ -1552,6 +1554,11 @@ function ClientOrderForm({ user, sede, onSubmit, onCancel, availableRewards = []
       )}
 
       {user?.isAnonymous && <AvisoInvitado compacto />}
+      {/* Cuenta de correo sin confirmar: el aviso va aquí también (el formulario
+          ocupa toda la pantalla y tapa el del panel) */}
+      {faltaVerificarCorreo(user) && (
+        <AvisoVerificarCorreo email={user.email} onVerificado={() => { setCorreoListo(n => n + 1); setErrors([]) }} />
+      )}
 
       {errors.length > 0 && (
         <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
