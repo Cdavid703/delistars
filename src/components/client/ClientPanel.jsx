@@ -580,9 +580,13 @@ export default function ClientPanel() {
     if (orders.length > 0) setShowForm(false)
     else window.location.href = '/'
   }
+  // Nombre o teléfono faltantes: se piden una vez, también encima del checkout.
+  const completarPerfil = user && !user.isAnonymous && perfil !== undefined
+    ? <CompletarPerfil user={user} perfil={perfil} /> : null
   if (showForm) {
     return (
       <div className="min-h-screen-safe bg-gradient-soft">
+        {completarPerfil}
         <div className="sticky top-0 z-20 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
           <p className="font-display text-xl text-coal tracking-wide">Completa tu pedido</p>
           <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
@@ -677,7 +681,7 @@ export default function ClientPanel() {
       {faltaVerificarCorreo(user) && (
         <AvisoVerificarCorreo email={user.email} className="mx-4 mt-3" onVerificado={() => setCorreoConfirmado(n => n + 1)} />
       )}
-      {user && !user.isAnonymous && perfil !== undefined && <CompletarPerfil user={user} perfil={perfil} />}
+      {completarPerfil}
       {user?.isAnonymous && (
         <div className="mx-4 mt-3">
           <RecuperarPedido uid={user?.uid} compacto />
