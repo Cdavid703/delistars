@@ -133,4 +133,37 @@ router.post('/solicitudes/:uid/rechazar', requireUser, async (req: Request, res:
   } catch (err) { responder(res, err); }
 });
 
+/**
+ * @swagger
+ * /api/v1/equipo/domiciliarios:
+ *   get:
+ *     tags: [Equipo]
+ *     summary: Domiciliarios activos (para asignar). Caja o admin. `?sedeId=` opcional.
+ *     responses:
+ *       200: { description: "[{ email, nombre, telefono, sedes }]" }
+ */
+// Espejo de DEFAULT_DRIVERS / DEFAULT_DRIVER_NAMES (src/services/roles.js).
+const DOMICILIARIOS_FIJOS: Record<string, string> = { 'cdavid.jaramillo@gmail.com': 'Carlos David Jaramillo' };
+router.get('/domiciliarios', requireUser, async (req: Request, res: Response) => {
+  try {
+    const u = req.usuario!;
+    if (!u.esCaja && !u.esAdmin) throw new ErrorPedido('sin_permiso', 'Solo la caja puede ver los domiciliarios', 403);
+    const sedeId = typeof req.query.sedeId === 'string' ? req.query.sedeId : '';
+    if (sedeId && !TODAS_LAS_SEDES.includes(sedeId)) throw new ErrorPedido('sede', 'Sede no válida');
+    const db = firestore();
+    const [dinamicos, bajas] = await Promise.all([db.collection('roles_drivers').get(), db.collection('roles_disabled').get()]);
+    const baja = new Set(bajas.docs.map((d) => d.id.toLowerCase()));
+    const porEmail = new Map<string, { email: string; nombre: string; telefono: string | null; sedes: string[] }>();
+    for (const [email, nombre] of Object.entries(DOMICILIARIOS_FIJOS)) porEmail.set(email, { email, nombre, telefono: null, sedes: TODAS_LAS_SEDES });
+    for (const d of dinamicos.docs) {
+      const x = d.data();
+      const sedes = Array.isArray(x.sedes) && x.sedes.length ? x.sedes : TODAS_LAS_SEDES;
+      porEmail.set(d.id.toLowerCase(), { email: d.id.toLowerCase(), nombre: x.name || d.id, telefono: x.phone || null, sedes });
+    }
+    res.json([...porEmail.values()]
+      .filter((x) => !baja.has(x.email) && (!sedeId || x.sedes.includes(sedeId)))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre)));
+  } catch (err) { responder(res, err); }
+});
+
 export default router;
