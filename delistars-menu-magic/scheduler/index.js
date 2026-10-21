@@ -707,9 +707,12 @@ function watchOrdersForPush() {
 // Por eso va aparte, consultando directo los pedidos con devolución pendiente.
 function mensajeDevolucion(o, tipo) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
-  const monto = `$${Number(o.devolucion?.monto || o.saldoAplicado?.usado || 0).toLocaleString('es-CO')}`
+  const monto = `$${Number(o.devolucion?.monto || o.saldoAplicado?.usado || o.monto || 0).toLocaleString('es-CO')}`
   if (tipo === 'transferencia_solicitada') {
     return { rol: 'cashier', title: '💸 Devolución por transferencia', body: `${o.name || 'El cliente'} (pedido${n}) pidió que le transfieran ${monto}. Ábrelo para ver sus datos.` }
+  }
+  if (tipo === 'saldo_cuenta') {
+    return { rol: 'cashier', title: '💸 Transferir saldo a favor', body: `${o.nombre || 'Un cliente'} eliminó su cuenta: hay que transferirle ${monto}. Ábrelo en la caja para ver sus datos.` }
   }
   if (tipo === 'cancelacion_solicitada') {
     return { rol: 'cashier', title: '⚠️ El cliente pidió cancelar', body: `${o.name || 'El cliente'} (pedido${n}) pidió cancelar${o.excepcionMotivo ? `: «${o.excepcionMotivo}»` : ''}. Ábrelo para aprobar o seguir.` }
@@ -745,6 +748,11 @@ function watchDevoluciones() {
   vigilar(
     adminDb.collection('orders').where('saldoAplicado.porDevolver', '==', true),
     () => 'saldo_por_devolver',
+  )
+  // Saldo de quien eliminó su cuenta (Fase 4, P-25): la caja se lo transfiere.
+  vigilar(
+    adminDb.collection('devoluciones_saldo').where('estado', '==', 'por_transferir'),
+    () => 'saldo_cuenta',
   )
   // Solicitud de cancelación (Fase 4): no cambia el status viejo, así que el
   // vigía de pedidos tampoco la ve.

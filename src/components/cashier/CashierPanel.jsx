@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
+import DevolucionesSaldo from './DevolucionesSaldo'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -628,6 +629,9 @@ export default function CashierPanel() {
           ))}
         </div>
       )}
+
+      {/* Saldo a favor de quien eliminó su cuenta: transferirlo */}
+      <DevolucionesSaldo sedeId={sede?.id} />
 
       {ordersConMensajes.length > 0 && (
         <div className="mx-4 mt-2 flex flex-col gap-1.5">

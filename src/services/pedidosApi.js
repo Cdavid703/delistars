@@ -32,6 +32,21 @@ export async function llamarPedidos(ruta, cuerpo = {}, clave = nuevaClave()) {
   return datos
 }
 
+/** Cualquier ruta de /api/v1 con el token de la cuenta (GET, POST, DELETE). */
+export async function llamarApi(metodo, ruta, cuerpo) {
+  const token = await auth.currentUser?.getIdToken()
+  if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
+  const res = await fetch(`/api/v1/${ruta}`, {
+    method: metodo,
+    headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}) },
+    ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
+  })
+  let datos = {}
+  try { datos = await res.json() } catch { /* respuesta sin cuerpo */ }
+  if (!res.ok) throw new ErrorApi(datos.error || `Error ${res.status}`, datos.codigo || 'http', res.status)
+  return datos
+}
+
 /** ¿Este error justifica usar el camino viejo? (servidor caído, no "regla de negocio"). */
 export const usarRespaldo = (err) =>
   !(err instanceof ErrorApi) || err.status >= 500 || err.codigo === 'inactiva' || err.status === 401

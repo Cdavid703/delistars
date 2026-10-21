@@ -7,7 +7,7 @@ const MENSAJES = {
   'auth/missing-password': 'Escribe tu contraseña.',
   'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
   'auth/email-already-in-use': 'Ese correo ya tiene cuenta. Entra con tu contraseña o usa «Olvidé mi contraseña».',
-  'auth/credential-already-in-use': 'Esa cuenta ya existe. Entra con ella.',
+  'auth/credential-already-in-use': 'Esa cuenta ya es otra cuenta de DeliStars: no se pueden unir. Entra con ella si es la tuya.',
   'auth/invalid-credential': 'El correo o la contraseña no coinciden.',
   'auth/wrong-password': 'El correo o la contraseña no coinciden.',
   'auth/user-not-found': 'El correo o la contraseña no coinciden.',
@@ -17,6 +17,11 @@ const MENSAJES = {
   'auth/account-exists-with-different-credential':
     'Ese correo ya tiene cuenta con otro método (Google, Microsoft o contraseña). Entra con ese método.',
   'auth/popup-blocked': 'El navegador bloqueó la ventana. Permite las ventanas emergentes e intenta de nuevo.',
+  'auth/provider-already-linked': 'Esa forma de entrar ya está en tu cuenta.',
+  'auth/ultimo-metodo': 'Necesitas al menos una forma de entrar: agrega otra antes de quitar esta.',
+  'auth/requires-recent-login': 'Por seguridad, confirma que eres tú otra vez.',
+  'auth/user-mismatch': 'Entraste con otra cuenta. Usa la misma con la que estás ahora.',
+  'auth/no-such-provider': 'Esa forma de entrar ya no estaba en tu cuenta.',
 }
 
 /** Errores que no hay que mostrar (la persona cerró la ventana a propósito). */

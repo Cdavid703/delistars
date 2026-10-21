@@ -3,6 +3,7 @@ import {
   getAuth, GoogleAuthProvider, OAuthProvider, signInAnonymously, signInWithPopup, linkWithPopup,
   EmailAuthProvider, linkWithCredential, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   sendEmailVerification, sendPasswordResetEmail, updateProfile,
+  unlink, reauthenticateWithPopup, reauthenticateWithCredential,
 } from 'firebase/auth'
 import {
   getFirestore, runTransaction, doc,
@@ -111,6 +112,56 @@ export async function correoVerificado() {
   return auth.currentUser.emailVerified
 }
 
+
+// ─── Mi cuenta: formas de entrar (especificación §6.1 punto 8, Fase 4) ──────
+// Se vincula estando ya dentro de la cuenta: el método nuevo se prueba en su
+// propia ventana (Google, Microsoft) o con la contraseña nueva. Nunca se
+// fusionan dos cuentas por tener el mismo correo.
+export const PROVEEDORES = {
+  'google.com':    { nombre: 'Google' },
+  'microsoft.com': { nombre: 'Microsoft' },
+  password:        { nombre: 'Correo y contraseña' },
+}
+export const metodosDe = (user) => (user?.providerData || []).map(p => p.providerId).filter(id => PROVEEDORES[id])
+
+export async function vincularMetodo(providerId) {
+  const actual = auth.currentUser
+  if (!actual) throw Object.assign(new Error('sin sesión'), { code: 'auth/no-current-user' })
+  await linkWithPopup(actual, providerId === 'microsoft.com' ? microsoftProvider : provider)
+  await actual.reload()
+}
+
+/** Agrega correo y contraseña a una cuenta de Google o Microsoft (con su mismo correo). */
+export async function agregarContrasena(password) {
+  const actual = auth.currentUser
+  await linkWithCredential(actual, EmailAuthProvider.credential(actual.email, password))
+  await actual.reload()
+}
+
+/** Quita una forma de entrar (siempre debe quedar al menos una). */
+export async function quitarMetodo(providerId) {
+  const actual = auth.currentUser
+  if (metodosDe(actual).length < 2) throw Object.assign(new Error('última'), { code: 'auth/ultimo-metodo' })
+  await unlink(actual, providerId)
+  await actual.reload()
+}
+
+/**
+ * Confirmar la identidad otra vez antes de algo delicado (eliminar la cuenta).
+ * Con contraseña si la tiene y la escribió; si no, con la ventana de Google o
+ * Microsoft. Después renueva el token para que el servidor vea la hora nueva.
+ */
+export async function confirmarIdentidad({ password, providerId } = {}) {
+  const actual = auth.currentUser
+  const metodos = metodosDe(actual)
+  if (password && metodos.includes('password')) {
+    await reauthenticateWithCredential(actual, EmailAuthProvider.credential(actual.email, password))
+  } else {
+    const id = providerId || metodos.find(m => m !== 'password')
+    await reauthenticateWithPopup(actual, id === 'microsoft.com' ? microsoftProvider : provider)
+  }
+  await actual.getIdToken(true)
+}
 
 provider.setCustomParameters({ prompt: 'select_account' })
 

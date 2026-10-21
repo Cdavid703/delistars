@@ -12,6 +12,7 @@ import { planCotizar, planAsignar, planAceptar, planCuadre, PlanCaja } from '../
 import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, Premio, Credito } from '../reglas/beneficios';
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
+import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -56,6 +57,10 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   // Cuenta de correo y contraseña: primero confirmar el correo (especificación §6.1).
   if (u.proveedor === 'password' && !u.correoVerificado) {
     throw new ErrorPedido('correo_sin_verificar', 'Confirma tu correo para enviar el pedido: abre el enlace que te enviamos', 403);
+  }
+  // Pidió eliminar su cuenta: mientras corre el plazo no puede pedir (puede arrepentirse en Mi cuenta).
+  if (await eliminacionPendiente(u.uid)) {
+    throw new ErrorPedido('cuenta_en_eliminacion', 'Pediste eliminar tu cuenta. Para pedir, cancela la eliminación en «Mi cuenta»', 409);
   }
   const sede = SEDES[b?.sedeId];
   if (!sede) throw new ErrorPedido('sede', 'Sede no válida');

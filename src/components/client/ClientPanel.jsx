@@ -39,13 +39,14 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation, Search,
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed
+  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, UserRound
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 import AccesoCuenta from '../common/AccesoCuenta'
 import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
+import MiCuenta from './MiCuenta'
 import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
@@ -240,9 +241,20 @@ export default function ClientPanel() {
     return onSnapshot(doc(db, 'customers', user.uid), snap => {
       setLoyaltyProgress(snap.exists() ? (snap.data().loyalty || {}) : {})
       setPromociones(snap.exists() ? (snap.data().promociones ?? null) : null)
-      setPerfil(snap.exists() ? { name: snap.data().name || '', phone: snap.data().phone || '' } : { name: '', phone: '' })
+      setPerfil(snap.exists()
+        ? { name: snap.data().name || '', phone: snap.data().phone || '', promociones: snap.data().promociones ?? null }
+        : { name: '', phone: '', promociones: null })
     }, () => {})
   }, [user?.uid, user?.email])
+  // Mi cuenta (Fase 4, paso 4) y la eliminación pedida: mientras corren los 30
+  // días se le recuerda y no puede pedir.
+  const [miCuenta, setMiCuenta] = useState(false)
+  const [eliminacion, setEliminacion] = useState(null)
+  useEffect(() => {
+    if (!user?.uid || user.isAnonymous) return
+    return onSnapshot(doc(db, 'eliminaciones', user.uid),
+      snap => setEliminacion(snap.exists() && snap.data().estado === 'pendiente' ? snap.data() : null), () => {})
+  }, [user?.uid, user?.isAnonymous])
   // Sube cuando el cliente confirma su correo (Firebase actualiza la cuenta sin avisar).
   const [, setCorreoConfirmado] = useState(0)
 
@@ -578,6 +590,11 @@ export default function ClientPanel() {
             <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
               <HelpCircle size={20} />
             </button>
+            {user && !user.isAnonymous && (
+              <button onClick={() => setMiCuenta(true)} className="btn-icon text-cream hover:bg-cream/10" title="Mi cuenta" aria-label="Mi cuenta">
+                <UserRound size={20} />
+              </button>
+            )}
             <button onClick={() => selectSede(null)} className="btn-icon text-cream hover:bg-cream/10">
               <MapPin size={20} />
             </button>
@@ -637,6 +654,17 @@ export default function ClientPanel() {
           </p>
         </div>
       )}
+
+      {/* Pidió eliminar su cuenta: se borra al cumplirse el plazo */}
+      {eliminacion && (
+        <div className="mx-4 mt-3">
+          <button onClick={() => setMiCuenta(true)} className="w-full text-left bg-pepper/10 border-2 border-pepper/40 rounded-2xl p-4">
+            <p className="font-display text-base tracking-wide text-coal">🗑️ Tu cuenta se eliminará el {eliminacion.ejecutarDesde?.toDate?.().toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</p>
+            <p className="font-body text-xs text-coal/70 mt-1">Mientras tanto no puedes pedir. ¿Cambiaste de opinión? Toca aquí para cancelarla.</p>
+          </button>
+        </div>
+      )}
+      {miCuenta && <MiCuenta user={user} perfil={perfil} onCerrar={() => setMiCuenta(false)} />}
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
       {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" siguiendo />}

@@ -28,6 +28,8 @@ export interface Usuario {
   correoVerificado: boolean;
   /** Sedes autorizadas por rol (vacío = no tiene ese rol). */
   sedes: { caja: string[]; domiciliario: string[] };
+  /** Cuándo inició sesión por última vez (ms): acciones delicadas piden que sea reciente. */
+  autenticadoAt: number;
 }
 
 declare global {
@@ -82,6 +84,7 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
       proveedor: d.firebase?.sign_in_provider || '',
       correoVerificado: d.email_verified === true,
       sedes: { caja, domiciliario: dom },
+      autenticadoAt: Number(d.auth_time || 0) * 1000,
     };
     next();
   } catch {

@@ -187,6 +187,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Eliminar la cuenta (Fase 4, paso 4; P-25) ──────────────────────────
+    // La solicitud la crea y la ejecuta el servidor (/api/v1/cuenta). El
+    // cliente lee la suya para ver el aviso de "tu cuenta se elimina el…".
+    match /eliminaciones/{uid} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+    // Saldo a favor que la caja le transfiere a quien eliminó su cuenta. La
+    // caja lo lee para hacer la transferencia y lo marca hecho por la API.
+    match /devoluciones_saldo/{id} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if false;
+    }
+
     // ── Historial (auditoría) del pedido — Fase 2 ──────────────────────────
     // Una línea por cada cambio de etapa o excepción. Se escribe junto con el
     // pedido (services/firebase.js → actualizarPedido / createOrderWithNumber)
