@@ -3,8 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Curvas con intención: salida rápida para lo que entra o responde; las
+       del navegador son demasiado tibias. */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  ::selection { background: rgba(234, 51, 41, 0.18); color: #262626; }
+  :focus-visible { outline: 2px solid rgba(234, 51, 41, 0.6); outline-offset: 2px; }
+  button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
   body {
     margin: 0;
     @apply bg-cream text-coal font-body antialiased;
@@ -25,42 +34,49 @@
 }
 
 @layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-body font-semibold px-6 py-3 rounded-full
+           select-none disabled:opacity-50 disabled:cursor-not-allowed
+           transition-[transform,box-shadow,background-color,opacity] duration-150
+           active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-cherry/50 focus-visible:ring-offset-2;
+    transition-timing-function: var(--ease-out);
+    min-height: 44px;
+  }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 bg-gradient-to-r from-cherry to-tangelo
-           text-cream font-body font-semibold px-6 py-3 rounded-full shadow-soft
-           transition-all duration-300 hover:-translate-y-0.5 hover:shadow-glow
-           active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 select-none;
+    @apply btn bg-gradient-to-r from-cherry to-tangelo text-cream shadow-soft
+           [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-glow
+           disabled:hover:translate-y-0;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 bg-smoked text-coal font-body font-semibold
-           px-6 py-3 rounded-full border border-coal/10 transition-all duration-300
-           hover:bg-cream hover:-translate-y-0.5 active:scale-95 select-none;
+    @apply btn bg-smoked text-coal border border-coal/10 [@media(hover:hover)]:hover:bg-cream;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 bg-transparent text-cherry font-body font-semibold
-           px-6 py-3 rounded-full border border-cherry/30 transition-all duration-300
-           hover:bg-cherry/10 active:scale-95 select-none;
+    @apply btn bg-transparent text-cherry border border-cherry/30 [@media(hover:hover)]:hover:bg-cherry/10;
   }
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 bg-pepper text-cream font-body font-semibold
-           px-6 py-3 rounded-full shadow-card transition-all duration-300
-           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
-  }
-  .btn-mint {
-    @apply inline-flex items-center justify-center gap-2 bg-mint text-cream font-body font-semibold
-           px-6 py-3 rounded-full shadow-card transition-all duration-300
-           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
-  }
-  .btn-mustard {
-    @apply inline-flex items-center justify-center gap-2 bg-mustard text-coal font-body font-semibold
-           px-6 py-3 rounded-full shadow-card transition-all duration-300
-           hover:opacity-90 hover:-translate-y-0.5 active:scale-95 select-none;
-  }
-  .btn-sm { @apply px-4 py-2 text-sm rounded-full; }
+  .btn-danger { @apply btn bg-pepper text-cream shadow-card [@media(hover:hover)]:hover:opacity-90; }
+  .btn-mint   { @apply btn bg-mint text-cream shadow-card [@media(hover:hover)]:hover:opacity-90; }
+  .btn-mustard{ @apply btn bg-mustard text-coal shadow-card [@media(hover:hover)]:hover:opacity-90; }
+  .btn-sm { @apply px-4 py-2 text-sm rounded-full; min-height: 40px; }
   .btn-lg { @apply px-8 py-4 text-lg rounded-full; }
 
+  /* Botón de icono: área táctil de 44 px aunque el icono mida 20. Varias
+     pantallas lo usaban sin que existiera, así que los iconos quedaban sin
+     margen para el dedo. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-11 h-11 rounded-full text-coal/60
+           transition-[background-color,color,transform] duration-150
+           [@media(hover:hover)]:hover:bg-coal/5 [@media(hover:hover)]:hover:text-coal
+           active:scale-[0.94] focus-visible:ring-2 focus-visible:ring-cherry/50;
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* Una sola elevación por tarjeta: sombra suave, sin borde fantasma ni vidrio. */
   .card {
-    @apply bg-white/70 backdrop-blur-sm rounded-2xl shadow-card border border-white/60 p-4;
+    @apply bg-white rounded-2xl shadow-card p-4;
+  }
+  /* Tarjeta silenciosa para información que no pide acción: una línea, sin sombra. */
+  .card-quiet {
+    @apply bg-white rounded-2xl border border-coal/10 p-4;
   }
   .card-dark { @apply bg-coal text-cream rounded-2xl shadow-card p-4; }
 
@@ -93,12 +109,18 @@
     @apply sticky top-0 z-40 bg-cream/95 backdrop-blur-md border-b border-coal/10
            px-4 py-3 flex items-center justify-between;
   }
-  .section-title { @apply font-display text-2xl text-coal tracking-widest uppercase; }
-  .hover-lift { @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-card; }
+  .section-title { @apply font-display text-xl text-coal tracking-wider uppercase; }
+  .hover-lift {
+    @apply transition-[transform,box-shadow] duration-200 [@media(hover:hover)]:hover:-translate-y-0.5;
+    transition-timing-function: var(--ease-out);
+  }
+  /* Números que cambian (contadores, totales) con cifras de ancho fijo. */
+  .tabular { font-variant-numeric: tabular-nums; }
 
+  /* Contador de la campana: quieto (lo que parpadea todo el día deja de verse). */
   .notif-badge {
-    @apply absolute -top-1 -right-1 w-5 h-5 bg-cherry rounded-full
-           flex items-center justify-center text-white text-[10px] font-bold animate-pulse;
+    @apply absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 bg-cherry rounded-full
+           flex items-center justify-center text-white text-[11px] font-bold tabular;
   }
 
   .scroll-custom { scrollbar-width: thin; scrollbar-color: rgba(234,51,41,0.3) transparent; }
@@ -113,6 +135,6 @@
   .tab-btn-inactive { @apply tab-btn border-transparent text-coal/50 hover:text-coal/80; }
 
   .order-card {
-    @apply card hover-lift cursor-pointer border-l-4 animate-fade-in;
+    @apply card hover-lift cursor-pointer;
   }
 }

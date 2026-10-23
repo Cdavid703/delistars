@@ -39,7 +39,9 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, ShoppingBag, Navigation, Search,
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
-  HelpCircle, ChevronDown, ChevronUp, Send, LocateFixed, UserRound
+  HelpCircle, ChevronDown, ChevronUp, Send, UserRound,
+  ClipboardList, Wallet, Bike, ChefHat, CircleCheck, CircleX, Ban, Mail, Gift, Trash2, Banknote, MessageCircle,
+  CreditCard, Paperclip, Lightbulb, Store
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
@@ -51,22 +53,38 @@ import CampanaAvisos from '../common/CampanaAvisos'
 import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
-  { key: 'pending',       label: 'Pedido enviado',        emoji: '📋' },
-  { key: 'quoted',        label: 'Cotización recibida',   emoji: '💰' },
-  { key: 'assigned',      label: 'Domiciliario asignado', emoji: '🛵' },
+  { key: 'pending',       label: 'Pedido enviado' },
+  { key: 'quoted',        label: 'Cotización recibida' },
+  { key: 'assigned',      label: 'Domiciliario asignado' },
   // 'accepted' y 'preparing' son UN SOLO paso para el cliente: apenas el
   // domiciliario toma el pedido, la cocina ya lo está haciendo. Fundirlos evita
   // dos pasos casi iguales y, sobre todo, que la barra retroceda si la caja
   // marca preparación antes de que el domiciliario acepte (o al revés).
-  { key: 'preparing',     label: 'Aceptado y en preparación', emoji: '🍳' },
-  { key: 'in_transit',    label: 'En camino',             emoji: '🏃' },
-  { key: 'arrived',       label: 'Llegó al destino',      emoji: '📍' },
-  { key: 'delivered_paid',label: '¡Entregado!',           emoji: '🎉' },
-  { key: 'pending_cuadre',label: '¡Entregado!',           emoji: '🎉' },
-  { key: 'completed',     label: '¡Entregado!',           emoji: '🎉' },
-  { key: 'rejected',      label: 'Pedido rechazado',      emoji: '❌' },
-  { key: 'cancelled',     label: 'Pedido cancelado',      emoji: '🚫' },
+  { key: 'preparing',     label: 'Aceptado y en preparación' },
+  { key: 'in_transit',    label: 'En camino' },
+  { key: 'arrived',       label: 'Llegó al destino' },
+  { key: 'delivered_paid',label: '¡Entregado!' },
+  { key: 'pending_cuadre',label: '¡Entregado!' },
+  { key: 'completed',     label: '¡Entregado!' },
+  { key: 'rejected',      label: 'Pedido rechazado' },
+  { key: 'cancelled',     label: 'Pedido cancelado' },
 ]
+
+const STEP_ICON = {
+  pending: ClipboardList, quoted: Wallet, assigned: Bike, preparing: ChefHat, in_transit: Navigation,
+  arrived: MapPin, delivered_paid: CircleCheck, pending_cuadre: CircleCheck, completed: CircleCheck,
+  rejected: CircleX, cancelled: Ban,
+}
+/** Icono del paso actual del pedido, en un disco discreto (tarjetas) o suelto (encabezados). */
+function StepIcon({ step, size = 18, className = '', disco = true }) {
+  const Icon = STEP_ICON[step?.key] || ClipboardList
+  if (!disco) return <Icon size={size} className={className} aria-hidden="true" />
+  return (
+    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full bg-smoked text-coal/70 flex-shrink-0 ${className}`} aria-hidden="true">
+      <Icon size={size} />
+    </span>
+  )
+}
 
 const DELIVERED_STATUSES = ['delivered_paid', 'pending_cuadre', 'completed']
 const CLOSED_STATUSES    = ['rejected', 'cancelled']
@@ -217,7 +235,8 @@ export default function ClientPanel() {
 
   const cashierMsgCountRef = useRef(null)  // null = primera carga, no reproducir
   const prevEstadoRef      = useRef(null)  // ídem, para los cambios de estado
-  const today = format(new Date(), "EEEE dd 'de' MMMM yyyy", { locale: es })
+  const hoyTexto = format(new Date(), "EEEE d 'de' MMMM 'de' yyyy", { locale: es })
+  const today = hoyTexto.charAt(0).toUpperCase() + hoyTexto.slice(1)
 
   // ─── Fidelización ──────────────────────────────────────────────────────────
   // Solo aplica a clientes con cuenta de Google real (no invitados/anónimos).
@@ -588,7 +607,7 @@ export default function ClientPanel() {
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
       {/* Hero header */}
-      <div className="bg-gradient-to-br from-cherry to-tangelo px-5 pt-10 pb-16 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-cherry to-tangelo px-5 pt-4 pb-14 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           {[...Array(4)].map((_,i) => (
             <Star key={i} className="absolute text-cream" style={{ width: 60+i*20, height: 60+i*20, top: `${i*25}%`, right: `${i*20}%`, transform: `rotate(${i*45}deg)` }} />
@@ -597,7 +616,7 @@ export default function ClientPanel() {
         <div className="relative z-10 flex items-center justify-between mb-4">
           <Logo variant="dark" size="sm" />
           <div className="flex items-center gap-1">
-            <BotonSilencio />
+            <BotonSilencio oscuro />
             <RoleSwitcher variant="dark" />
             {user && !user.isAnonymous && (
               <CampanaAvisos oscuro destinos={[user.uid]} onAbrirPedido={(id) => openOrderDetail(id)} />
@@ -610,21 +629,31 @@ export default function ClientPanel() {
                 <UserRound size={20} />
               </button>
             )}
-            <button onClick={() => selectSede(null)} className="btn-icon text-cream hover:bg-cream/10">
+            <button onClick={() => selectSede(null)} className="btn-icon text-cream hover:bg-cream/10" title="Cambiar de sede" aria-label="Cambiar de sede">
               <MapPin size={20} />
             </button>
-            <button onClick={logout} className="btn-icon text-cream hover:bg-cream/10">
-              <LogOut size={20} />
-            </button>
+            {/* Quien tiene cuenta cierra sesión desde "Mi cuenta": en el
+                encabezado de un celular no caben seis iconos. */}
+            {(!user || user.isAnonymous) && (
+              <button onClick={logout} className="btn-icon text-cream hover:bg-cream/10" title="Salir" aria-label="Salir">
+                <LogOut size={20} />
+              </button>
+            )}
           </div>
         </div>
         <div className="relative z-10">
-          <p className="font-script text-cream/80 text-lg">Bienvenido/a</p>
-          <h1 className="font-display text-4xl text-cream tracking-widest leading-tight">
-            {user?.displayName?.split(' ')[0] || 'Cliente'}
-          </h1>
+          {user?.displayName ? (
+            <>
+              <p className="font-script text-cream/85 text-lg leading-none">Bienvenido/a</p>
+              <h1 className="font-display text-3xl text-cream tracking-wider leading-tight mt-1 truncate">
+                {user.displayName.split(' ')[0]}
+              </h1>
+            </>
+          ) : (
+            <h1 className="font-display text-3xl text-cream tracking-wider leading-tight">¡Hola!</h1>
+          )}
           <div className="flex items-center gap-2 mt-1.5">
-            <p className="font-body text-cream/60 text-sm capitalize">{today}</p>
+            <p className="font-body text-cream/75 text-sm">{today}</p>
             {role !== effectiveRole && (
               <span className="font-body text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream/20 text-cream">
                 Vista cliente
@@ -645,9 +674,7 @@ export default function ClientPanel() {
               <p className="font-display text-base text-coal tracking-wide">Sede {sede?.name}</p>
               <p className="font-body text-xs text-coal/50">{sede?.address}</p>
             </div>
-            <button onClick={() => selectSede(null)} className="flex-shrink-0 text-xs font-semibold font-body text-cherry underline underline-offset-2">
-              Cambiar
-            </button>
+            <button onClick={() => selectSede(null)} className="btn-ghost btn-sm flex-shrink-0">Cambiar</button>
           </div>
         </div>
       </div>
@@ -661,9 +688,10 @@ export default function ClientPanel() {
       )}
       {/* Premios ganados en la OTRA sede: solo se usan pidiendo allá */}
       {user?.email && premiosOtraSede.length > 0 && (
-        <div className="mx-4 mt-3 bg-mint/10 border border-mint/40 rounded-2xl px-4 py-3">
+        <div className="mx-4 mt-3 card-quiet flex items-start gap-3">
+          <Gift size={18} className="text-mint flex-shrink-0 mt-0.5" aria-hidden="true" />
           <p className="font-body text-xs text-coal/75 leading-relaxed">
-            🎁 También tienes {premiosOtraSede.length > 1 ? `${premiosOtraSede.length} premios` : 'un premio'} en{' '}
+            También tienes {premiosOtraSede.length > 1 ? `${premiosOtraSede.length} premios` : 'un premio'} en{' '}
             <strong>{[...new Set(premiosOtraSede.map(r => SEDES[r.sedeId]?.name).filter(Boolean))].join(' y ')}</strong>.
             Solo se puede usar pidiendo en esa sede: cámbiala arriba para usarlo.
           </p>
@@ -673,9 +701,12 @@ export default function ClientPanel() {
       {/* Pidió eliminar su cuenta: se borra al cumplirse el plazo */}
       {eliminacion && (
         <div className="mx-4 mt-3">
-          <button onClick={() => setMiCuenta(true)} className="w-full text-left bg-pepper/10 border-2 border-pepper/40 rounded-2xl p-4">
-            <p className="font-display text-base tracking-wide text-coal">🗑️ Tu cuenta se eliminará el {eliminacion.ejecutarDesde?.toDate?.().toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</p>
+          <button onClick={() => setMiCuenta(true)} className="w-full text-left bg-pepper/10 border border-pepper/40 rounded-2xl p-4 flex items-start gap-3">
+            <Trash2 size={18} className="text-pepper flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>
+            <p className="font-display text-base tracking-wide text-coal">Tu cuenta se eliminará el {eliminacion.ejecutarDesde?.toDate?.().toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</p>
             <p className="font-body text-xs text-coal/70 mt-1">Mientras tanto no puedes pedir. ¿Cambiaste de opinión? Toca aquí para cancelarla.</p>
+            </span>
           </button>
         </div>
       )}
@@ -693,8 +724,8 @@ export default function ClientPanel() {
       {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
         <div key={`dev-${o.id}`} className="mx-4 mt-3">
           <button onClick={() => openOrderDetail(o.id)}
-            className="w-full text-left rounded-3xl p-5 bg-cherry text-cream shadow-lg">
-            <p className="font-display text-xl tracking-wide">💸 Te debemos {fmt(o.devolucion.monto)}</p>
+            className="w-full text-left rounded-2xl p-5 bg-cherry text-cream shadow-card">
+            <p className="font-display text-xl tracking-wide flex items-center gap-2"><Banknote size={20} aria-hidden="true" /> Te debemos {fmt(o.devolucion.monto)}</p>
             <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
               Tu pedido{o.orderNumber ? ` #${o.orderNumber}` : ''} no siguió y ya lo habías pagado. Toca aquí y
               elige cómo quieres la devolución.
@@ -710,21 +741,24 @@ export default function ClientPanel() {
 
       {/* Saldo a favor disponible en esta sede */}
       {user?.email && saldoSede > 0 && (
-        <div className="mx-4 mt-3 rounded-2xl p-4 bg-mint/15 border-2 border-mint">
-          <p className="font-display text-lg tracking-wide text-mint">💚 Tienes {fmt(saldoSede)} a favor</p>
+        <div className="mx-4 mt-3 rounded-2xl p-4 bg-mint/10 border border-mint/40 flex items-start gap-3">
+          <Wallet size={20} className="text-mint flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div>
+          <p className="font-display text-lg tracking-wide text-mint">Tienes {fmt(saldoSede)} a favor</p>
           <p className="font-body text-xs text-coal/75 mt-1 leading-relaxed">
             Se descuenta de tu próximo pedido en <strong>{sede?.name}</strong>. No vence.
           </p>
+          </div>
         </div>
       )}
 
       {/* Fidelización — solo clientes con cuenta de Google (no invitados) */}
       {user?.email && (
         <div className="mx-4 mt-3">
-          <div className="card bg-white shadow-soft border border-mustard/30">
+          <div className="card-quiet">
             <div className="flex items-center justify-between mb-2">
-              <p className="font-display text-sm tracking-wide text-coal flex items-center gap-1.5">
-                🍔🌭 Fidelización {sede?.name}
+              <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+                <Gift size={16} className="text-cherry" aria-hidden="true" /> Fidelización {sede?.name}
               </p>
               {availableForSede.length > 0 && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-mint/20 text-mint">
@@ -738,7 +772,7 @@ export default function ClientPanel() {
                 style={{ width: `${sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 0 ? 100 : ((sedeLoyalty.count % 10) / 10) * 100}%` }}
               />
             </div>
-            <p className="font-body text-xs text-coal/60 mt-1.5">
+            <p className="font-body text-xs text-coal/65 mt-1.5 tabular">
               {sedeLoyalty.count}/10 domicilios entregados
               {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial y un Perro Grande con tocineta gratis! 🎉'}
             </p>
@@ -774,8 +808,8 @@ export default function ClientPanel() {
 
       {/* Info banner */}
       <div className="mx-4 mt-3">
-        <div className="bg-mustard/10 border border-mustard/20 rounded-2xl px-4 py-3 flex items-start gap-2">
-          <Info size={16} className="text-mustard flex-shrink-0 mt-0.5" />
+        <div className="card-quiet flex items-start gap-3">
+          <MessageCircle size={18} className="text-coal/50 flex-shrink-0 mt-0.5" aria-hidden="true" />
           <div className="flex-1">
             <p className="font-body text-xs text-coal/70 leading-relaxed">
               ¿Algo falla o tienes un problema con la plataforma? Escríbenos por WhatsApp y te ayudamos.
@@ -785,9 +819,9 @@ export default function ClientPanel() {
                 href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! 👋 Tengo un problema con la plataforma.`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 mt-2 bg-[#25D366] text-white rounded-xl px-3 py-1.5 text-xs font-semibold font-body"
+                className="btn btn-sm mt-2 border border-[#25D366]/50 text-[#128C7E] bg-transparent [@media(hover:hover)]:hover:bg-[#25D366]/10"
               >
-                <MessageSquare size={13} /> Soporte por WhatsApp
+                <MessageSquare size={14} /> Soporte por WhatsApp
               </a>
             )}
           </div>
@@ -808,15 +842,18 @@ export default function ClientPanel() {
       <div className="px-4 mt-4">
         <div className="flex items-center justify-between mb-3">
           <p className="section-title">Mis pedidos activos</p>
-          <button onClick={() => setShowHistory(true)}
-            className="text-xs font-body font-semibold text-cherry underline underline-offset-2">
-            Ver historial
-          </button>
+          <button onClick={() => setShowHistory(true)} className="btn-ghost btn-sm">Ver historial</button>
         </div>
         {activeOrders.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <p className="text-4xl">🍔</p>
-            <p className="font-body text-coal/40 text-center text-sm">No tienes pedidos activos. ¡Haz uno!</p>
+          <div className="card-quiet flex flex-col items-center text-center gap-3 py-8 border-dashed">
+            <span className="w-12 h-12 rounded-full bg-smoked flex items-center justify-center text-coal/50" aria-hidden="true">
+              <ShoppingBag size={22} />
+            </span>
+            <div>
+              <p className="font-body text-sm font-semibold text-coal">No tienes pedidos en curso</p>
+              <p className="font-body text-xs text-coal/60 mt-0.5">Cuando pidas, aquí lo sigues paso a paso.</p>
+            </div>
+            <a href="/" className="btn-secondary btn-sm">Ver el menú</a>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -833,12 +870,12 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Entregados hoy</p>
           <div className="flex flex-col gap-2">
             {deliveredOrders.slice(0, 5).map(o => (
-              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card flex items-center justify-between gap-3 opacity-70 w-full text-left">
-                <div>
-                  {o.orderNumber && <span className="font-display text-base text-cherry mr-2">#{o.orderNumber}</span>}
-                  <span className="font-body text-sm">{(o.items || '—').slice(0, 40)}…</span>
+              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card-quiet flex items-center justify-between gap-3 w-full text-left">
+                <div className="min-w-0">
+                  {o.orderNumber && <span className="font-display text-base text-coal mr-2 tabular">#{o.orderNumber}</span>}
+                  <span className="font-body text-sm text-coal/70">{(o.items || '—').slice(0, 40)}{(o.items || '').length > 40 ? '…' : ''}</span>
                 </div>
-                <span className="text-lg">✅</span>
+                <CircleCheck size={20} className="text-mint flex-shrink-0" aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -851,9 +888,9 @@ export default function ClientPanel() {
           <p className="section-title mb-3">Rechazados</p>
           <div className="flex flex-col gap-2">
             {rejectedOrders.map(o => (
-              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card w-full text-left border-l-4 border-pepper/50">
-                <div className="flex items-start gap-2">
-                  <span className="text-xl">❌</span>
+              <button key={o.id} onClick={() => openOrderDetail(o.id)} className="card-quiet w-full text-left">
+                <div className="flex items-start gap-3">
+                  <CircleX size={20} className="text-pepper flex-shrink-0 mt-0.5" aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <p className="font-body text-sm font-semibold text-pepper">Pedido rechazado</p>
                     {o.rejectionReason && <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{o.rejectionReason}</p>}
@@ -868,16 +905,13 @@ export default function ClientPanel() {
 
       {/* Botón al menú interactivo (la raíz) — el PDF quedaba desactualizado */}
       <div className="px-4 mt-4">
-        <a
-          href="/"
-          className="flex items-center justify-center gap-3 w-full bg-gradient-to-r from-cherry to-tangelo text-cream font-display tracking-wide text-lg py-4 rounded-2xl shadow-glow hover:opacity-90 transition-opacity"
-        >
-          🍔 Ver menú DeliStars
+        <a href="/" className="btn-secondary w-full">
+          <ShoppingBag size={18} aria-hidden="true" /> Ver el menú DeliStars
         </a>
       </div>
 
       {/* Sedes info */}
-      <div className="px-4 mt-2 mb-24">
+      <div className="px-4 mt-2 mb-28">
         <p className="section-title mb-3">Nuestras sedes</p>
         <div className="flex flex-col gap-3">
           {Object.values(SEDES).map(s => (
@@ -898,12 +932,13 @@ export default function ClientPanel() {
         </div>
       </div>
 
-      {/* FAB — pedir se hace SIEMPRE desde el menú de la raíz: aquí ya no se
-          arma un pedido a mano (texto libre); este panel solo rastrea pedidos. */}
-      <div className="fixed bottom-6 right-4 z-30">
-        <a href="/" className="btn-primary shadow-glow gap-2 pr-5">
-          <Plus size={20} />
-          Hacer pedido
+      {/* Acción principal fija abajo — pedir se hace SIEMPRE desde el menú de la
+          raíz: este panel solo rastrea pedidos. Barra completa (no flotante) para
+          que no tape los títulos ni el botón de historial al desplazarse. */}
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-cream/90 backdrop-blur-md border-t border-coal/10 px-4 pt-3"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+        <a href="/" className="btn-primary w-full max-w-lg mx-auto">
+          <Plus size={20} aria-hidden="true" /> Hacer pedido
         </a>
       </div>
 
@@ -1877,7 +1912,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         <button onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
         <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
           {subiendo !== null ? `Subiendo comprobante ${subiendo}%…`
-            : loading ? 'Enviando…' : '🚀 Enviar pedido'}
+            : loading ? 'Enviando…' : 'Enviar pedido'}
         </button>
       </div>
     </div>
@@ -1899,8 +1934,10 @@ function PromosOptIn({ uid, email, className = '' }) {
     } catch { setGuardando(false) }
   }
   return (
-    <div className={`rounded-2xl p-4 bg-white border-2 border-tangelo/40 shadow-soft ${className}`}>
-      <p className="font-display text-base tracking-wide text-coal">📬 ¿Te avisamos de las promociones?</p>
+    <div className={`card-quiet ${className}`}>
+      <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+        <Mail size={16} className="text-cherry" aria-hidden="true" /> ¿Te avisamos de las promociones?
+      </p>
       <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
         Te mandamos a <strong>{email}</strong> los descuentos y novedades de DeliStars. Nada de spam, y te
         das de baja con un clic cuando quieras.
@@ -1924,33 +1961,34 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   const hasQuote = order.totalPrice > 0 || !!order.quotedAt || order.payment === 'Saldo a favor'
 
   return (
-    <button onClick={onClick} className={`order-card w-full text-left border-l-4 ${unreadCount > 0 ? 'border-tangelo' : 'border-cherry'}`}>
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div>
-          {order.orderNumber && <p className="font-display text-xl text-cherry">#{order.orderNumber}</p>}
-          <p className="font-body text-sm text-coal/60 line-clamp-1">{order.items}</p>
+    <button onClick={onClick} className="order-card w-full text-left">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          {order.orderNumber && <p className="font-display text-xl text-cherry tabular">#{order.orderNumber}</p>}
+          <p className="font-body text-sm text-coal/65 line-clamp-1">{order.items}</p>
         </div>
-        <span className="text-2xl">{step.emoji}</span>
+        <StepIcon step={step} />
       </div>
 
       {/* Quote highlight */}
       {hasQuote ? (
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
-          <span className="font-body text-xs font-semibold text-tangelo">
-            {order.pagoAdelantado ? `💰 Total · ${order.payment}` : order.payment ? '💰 Total cotizado' : '💰 Elige cómo pagar'}
+          <span className="font-body text-xs font-semibold text-tangelo inline-flex items-center gap-1.5">
+            <Wallet size={13} aria-hidden="true" />
+            {order.pagoAdelantado ? `Total · ${order.payment}` : order.payment ? 'Total cotizado' : 'Elige cómo pagar'}
           </span>
-          <span className="font-display text-base text-tangelo">{fmt(order.totalPrice)}</span>
+          <span className="font-display text-base text-tangelo tabular">{fmt(order.totalPrice)}</span>
         </div>
       ) : !CLOSED_STATUSES.includes(order.status) && (
         <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center gap-1.5">
-          <span className="text-sm">⏳</span>
+          <Clock size={13} className="text-tangelo" aria-hidden="true" />
           <span className="font-body text-xs font-semibold text-tangelo">Domicilio por cotizar — aún no pagues</span>
         </div>
       )}
 
       {/* Unread cashier message badge */}
       {unreadCount > 0 && (
-        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2 animate-pulse">
+        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2">
           <MessageSquare size={13} className="text-tangelo flex-shrink-0" />
           <span className="font-body text-xs font-semibold text-tangelo">
             {unreadCount === 1 ? '1 mensaje nuevo del cajero' : `${unreadCount} mensajes nuevos del cajero`}
@@ -2517,9 +2555,9 @@ function ClientOrderDetail({ order, onClose }) {
             <p className="font-display text-2xl text-cream tracking-wide">
               {order.orderNumber ? `Pedido #${order.orderNumber}` : 'Mi pedido'}
             </p>
-            <button onClick={onClose} className="text-cream/70 hover:text-cream">✕</button>
+            <button onClick={onClose} className="btn-icon text-cream/80 [@media(hover:hover)]:hover:bg-cream/10 [@media(hover:hover)]:hover:text-cream -mr-2" aria-label="Cerrar"><X size={20} /></button>
           </div>
-          <p className="font-body text-sm font-semibold text-cream mb-2">{step.emoji} {labelPaso(step, order)}</p>
+          <p className="font-body text-sm font-semibold text-cream mb-2 flex items-center gap-2"><StepIcon step={step} size={16} disco={false} /> {labelPaso(step, order)}</p>
           <div className="w-full bg-cream/20 rounded-full h-2">
             <div className="bg-cream h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
@@ -3458,7 +3496,7 @@ function RatingModal({ order, onClose }) {
 // ─── Client help sections ─────────────────────────────────────────────────────
 const CLIENT_HELP_SECTIONS = [
   {
-    id: 'pedido', emoji: '🍔', title: '¿Cómo hago un pedido?', color: 'text-cherry',
+    id: 'pedido', icon: ShoppingBag, title: '¿Cómo hago un pedido?',
     content: [
       { type: 'steps', items: [
         'Toca el botón rojo "Hacer pedido" en la parte inferior de la pantalla.',
@@ -3467,68 +3505,68 @@ const CLIENT_HELP_SECTIONS = [
         'Agrega indicaciones adicionales si las tienes (sin cebolla, timbre 2B, etc.).',
         'Selecciona cómo vas a pagar: Efectivo, Transferencia o Nequi.',
         'Si pagas por Transferencia o Nequi, escanea el código QR que aparece en pantalla para hacer el pago.',
-        'Toca "🚀 Enviar pedido" y espera la cotización del cajero.',
+        'Toca "Enviar pedido" y espera la cotización del cajero.',
       ]},
     ],
   },
   {
-    id: 'cotizacion', emoji: '💰', title: '¿Qué es la cotización?', color: 'text-tangelo',
+    id: 'cotizacion', icon: Wallet, title: '¿Qué es la cotización?',
     content: [
       { type: 'p', text: 'Después de enviar tu pedido, un cajero revisa la disponibilidad y te envía el precio del pedido más el valor del domicilio. Verás el total directamente en tu pedido activo.' },
       { type: 'tip', text: 'No pagues hasta recibir la cotización. El cajero puede dejarte una nota con información adicional (disponibilidad, tiempo estimado, datos de pago, etc.).' },
     ],
   },
   {
-    id: 'seguimiento', emoji: '📍', title: '¿Cómo sigo mi pedido?', color: 'text-mint',
+    id: 'seguimiento', icon: MapPin, title: '¿Cómo sigo mi pedido?',
     content: [
       { type: 'p', text: 'Toca tu pedido activo para ver el estado en tiempo real:' },
       { type: 'table', rows: [
-        ['📋 Pedido enviado',        'Esperando cotización del cajero'],
-        ['💰 Cotización recibida',   'Revisa el precio en el detalle del pedido'],
-        ['🛵 Domiciliario asignado', 'Ya tienen un repartidor para ti'],
-        ['✅ Domiciliario aceptó',   'El repartidor confirmó que va'],
-        ['🏃 En camino',             'El repartidor está en ruta — puedes ver su ubicación'],
-        ['📍 Llegó al destino',      'El domiciliario ya está en tu puerta'],
-        ['🎉 ¡Entregado!',           'Pedido completado, ¡buen provecho!'],
+        ['Pedido enviado',        'Esperando cotización del cajero'],
+        ['Cotización recibida',   'Revisa el precio en el detalle del pedido'],
+        ['Domiciliario asignado', 'Ya tienen un repartidor para ti'],
+        ['Domiciliario aceptó',   'El repartidor confirmó que va'],
+        ['En camino',             'El repartidor está en ruta — puedes ver su ubicación'],
+        ['Llegó al destino',      'El domiciliario ya está en tu puerta'],
+        ['¡Entregado!',           'Pedido completado, ¡buen provecho!'],
       ]},
       { type: 'tip', text: 'Cuando el domiciliario está "En camino", aparece un botón para ver su ubicación en Google Maps en tiempo real.' },
     ],
   },
   {
-    id: 'pago', emoji: '💳', title: 'Formas de pago', color: 'text-coal',
+    id: 'pago', icon: CreditCard, title: 'Formas de pago',
     content: [
       { type: 'table', rows: [
-        ['💵 Efectivo',      'Pagas directamente al domiciliario cuando llega a tu puerta'],
-        ['🏦 Transferencia', 'Transferencia bancaria a la cuenta de DeliStars antes de la entrega'],
-        ['📱 Nequi',         'Pago por Nequi a la cuenta de DeliStars antes de la entrega'],
+        ['Efectivo',      'Pagas directamente al domiciliario cuando llega a tu puerta'],
+        ['Transferencia', 'Transferencia bancaria a la cuenta de DeliStars antes de la entrega'],
+        ['Nequi',         'Pago por Nequi a la cuenta de DeliStars antes de la entrega'],
       ]},
       { type: 'tip', text: 'Para Transferencia y Nequi: al seleccionar ese método de pago en el formulario, aparece un código QR de Bancolombia (DELISTARS · Ahorros *3891) para escanear y pagar de inmediato.' },
     ],
   },
   {
-    id: 'comprobante', emoji: '📎', title: 'Subir comprobante de pago', color: 'text-tangelo',
+    id: 'comprobante', icon: Paperclip, title: 'Subir comprobante de pago',
     content: [
       { type: 'p', text: 'Si pagas por Transferencia o Nequi, debes subir el comprobante para que el cajero confirme el pago:' },
       { type: 'steps', items: [
         'Abre el detalle de tu pedido activo.',
         'En la sección "Comprobante de Transferencia / Nequi", toca "Subir comprobante".',
         'Selecciona la foto o PDF del comprobante desde tu celular.',
-        'Espera a que el cajero valide el pago — verás "✅ Pago validado" cuando esté confirmado.',
+        'Espera a que el cajero valide el pago — verás "Pago validado" cuando esté confirmado.',
       ]},
       { type: 'tip', text: 'Puedes subir la foto del comprobante incluso antes de recibir la cotización para agilizar el proceso.' },
     ],
   },
   {
-    id: 'cancelar', emoji: '❌', title: '¿Puedo cancelar un pedido?', color: 'text-coal',
+    id: 'cancelar', icon: CircleX, title: '¿Puedo cancelar un pedido?',
     content: [
       { type: 'p', text: 'Para cancelar un pedido escríbenos por WhatsApp y con gusto te ayudamos.' },
       { type: 'tip', text: 'Encuentra el número de WhatsApp de tu sede en la pantalla principal.' },
     ],
   },
   {
-    id: 'sede', emoji: '🏠', title: 'Sedes y zonas de cobertura', color: 'text-coal',
+    id: 'sede', icon: Store, title: 'Sedes y zonas de cobertura',
     content: [
-      { type: 'p', text: 'Selecciona la sede más cercana a tu dirección de entrega. Puedes cambiarla tocando el ícono de ubicación 📍 en la parte superior o el botón "Cambiar" en la tarjeta de sede.' },
+      { type: 'p', text: 'Selecciona la sede más cercana a tu dirección de entrega. Puedes cambiarla tocando el ícono de ubicación en la parte superior o el botón "Cambiar" en la tarjeta de sede.' },
       { type: 'table', rows: [
         ['Santa Lucía',    'Cra. 87 #48e-3, Santa Rosa De Lima'],
         ['Santa Teresita', 'Cl 35B #87A-165, La América'],
@@ -3536,7 +3574,7 @@ const CLIENT_HELP_SECTIONS = [
     ],
   },
   {
-    id: 'horario', emoji: '🕕', title: 'Horario de atención', color: 'text-mustard',
+    id: 'horario', icon: Clock, title: 'Horario de atención',
     content: [
       { type: 'p', text: 'Cada sede tiene su propio horario de domicilios. Si tu sede aparece como "cerrada", la app te dice cuándo abre y si la otra sede está abierta. También puedes escribirnos por WhatsApp.' },
       { type: 'tip', text: 'Cada sede tiene su propio número de WhatsApp. Lo encuentras en la tarjeta de sede del panel principal.' },
@@ -3546,13 +3584,14 @@ const CLIENT_HELP_SECTIONS = [
 
 function ClientHelpSection({ section }) {
   const [open, setOpen] = useState(false)
+  const Icon = section.icon
   return (
     <div className="card overflow-hidden p-0">
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{section.emoji}</span>
-          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+          <Icon size={18} className="text-cherry flex-shrink-0" aria-hidden="true" />
+          <span className="font-display text-base tracking-wide text-coal">{section.title}</span>
         </div>
         {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
       </button>
@@ -3562,7 +3601,7 @@ function ClientHelpSection({ section }) {
             if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
             if (block.type === 'tip') return (
               <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
-                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <Lightbulb size={14} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <p className="font-body text-xs text-coal/70">{block.text}</p>
               </div>
             )

@@ -18,10 +18,10 @@ export default function SedeSelectionPage() {
   }
 
   const roleLabel = {
-    admin:   '👑 Administrador',
-    cashier: '🧾 Cajero',
-    driver:  '🚴 Domiciliario',
-    client:  '🛍️ Cliente',
+    admin:   'Administrador',
+    cashier: 'Cajero',
+    driver:  'Domiciliario',
+    client:  'Cliente',
   }[role] || 'Cliente'
 
   return (

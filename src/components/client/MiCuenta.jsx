@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { updateProfile } from 'firebase/auth'
-import { X, Mail, Trash2, Check, ShieldCheck } from 'lucide-react'
+import { X, Mail, Trash2, Check, ShieldCheck, LogOut } from 'lucide-react'
 import {
   db, auth, PROVEEDORES, metodosDe, vincularMetodo, agregarContrasena, quitarMetodo, confirmarIdentidad,
 } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 import { mensajeAuth, esCancelacion } from '../../utils/erroresAuth'
 import { LogoGoogle, LogoMicrosoft } from '../common/LogosMarca'
+import { useAuth } from '../../contexts/AuthContext'
 
 // Mi cuenta (especificación §6.1 puntos 8, 10 y 11; Fase 4, paso 4): datos,
 // formas de entrar, promociones y eliminar la cuenta. Eliminar deja una
@@ -30,6 +31,9 @@ function Seccion({ titulo, children }) {
 }
 
 export default function MiCuenta({ user, perfil, onCerrar }) {
+  // Cerrar sesión vive aquí, y no entre los iconos del encabezado: en un
+  // celular no caben todos, y este es el sitio donde uno lo busca.
+  const { logout } = useAuth()
   return createPortal(
     <div className="fixed inset-0 z-[140] bg-gradient-soft overflow-y-auto">
       <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
@@ -40,6 +44,9 @@ export default function MiCuenta({ user, perfil, onCerrar }) {
         <Datos user={user} perfil={perfil} />
         <FormasDeEntrar user={user} />
         {user?.email && <Promociones user={user} perfil={perfil} />}
+        <button onClick={logout} className="btn-secondary w-full">
+          <LogOut size={18} aria-hidden="true" /> Cerrar sesión
+        </button>
         <EliminarCuenta user={user} />
       </div>
     </div>,

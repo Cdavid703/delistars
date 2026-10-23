@@ -10,7 +10,7 @@ import { estaSilenciado, setSilenciado, audioListo, despertarAudio, sonar } from
 //     desbloquear. Es el que hizo que la caja se perdiera pedidos.
 //   · Silenciado por la persona  → lo apagó a propósito.
 //   · Sonando                    → todo bien; al tocarlo suena de prueba.
-export default function BotonSilencio({ className = '' }) {
+export default function BotonSilencio({ className = '', oscuro = false }) {
   const [silenciado, setSil] = useState(estaSilenciado)
   const [listo, setListo]    = useState(audioListo)
 
@@ -38,24 +38,33 @@ export default function BotonSilencio({ className = '' }) {
 
   const bloqueado = !silenciado && !listo
 
+  // Bloqueado es un aviso, no un interruptor: se muestra con palabras para que
+  // nadie tenga que adivinar qué significa el icono. Los otros dos estados son
+  // un botón de icono más, del mismo tamaño que los vecinos del encabezado.
+  if (bloqueado) {
+    return (
+      <button
+        onClick={alternar}
+        title="El navegador tiene el sonido bloqueado — toca para activarlo"
+        className={`btn btn-sm gap-1.5 rounded-full bg-pepper text-cream font-semibold ${className}`}
+      >
+        <VolumeX size={14} aria-hidden="true" />
+        Activar sonido
+      </button>
+    )
+  }
+
   return (
     <button
       onClick={alternar}
-      title={
-        bloqueado ? 'El navegador tiene el sonido bloqueado — toca para activarlo'
-        : silenciado ? 'Los avisos están en silencio — toca para activarlos'
-        : 'Avisos activos — toca para probar o silenciar'
-      }
-      className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold font-body transition-colors ${
-        bloqueado ? 'bg-pepper/15 text-pepper animate-pulse'
-        : silenciado ? 'bg-coal/10 text-coal/50'
-        : 'bg-mint/15 text-mint'
+      title={silenciado ? 'Los avisos están en silencio — toca para activarlos' : 'Avisos activos — toca para probar o silenciar'}
+      aria-label={silenciado ? 'Activar los avisos' : 'Silenciar los avisos'}
+      className={`btn-icon ${
+        oscuro ? `text-cream hover:bg-cream/10 ${silenciado ? 'opacity-60' : ''}`
+        : silenciado ? 'text-coal/40 hover:bg-coal/5' : 'text-mint hover:bg-mint/10'
       } ${className}`}
     >
-      {bloqueado || silenciado ? <VolumeX size={13} /> : <Volume2 size={13} />}
-      <span className="hidden sm:inline">
-        {bloqueado ? 'Activar sonido' : silenciado ? 'Silenciado' : 'Sonido'}
-      </span>
+      {silenciado ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
     </button>
   )
 }
