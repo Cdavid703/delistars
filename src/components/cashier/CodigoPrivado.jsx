@@ -7,7 +7,8 @@ import { llamarPedidos, ErrorApi } from '../../services/pedidosApi'
 // guarda en su cuenta. Sirve mientras el pedido esté en curso y 30 días
 // después. Generar uno nuevo anula el anterior.
 
-export const enlaceCodigo = (codigo) => `${window.location.origin}/domicilios/?codigo=${encodeURIComponent(codigo)}`
+// Enlace corto (Fase 6): /c/<código> abre el pedido en la web o, más adelante, en la app.
+export const enlaceCodigo = (codigo) => `${window.location.origin}/c/${encodeURIComponent(codigo)}`
 
 export function mensajeCodigo(order, codigo) {
   const nombre = (order.name || '').split(' ')[0]

@@ -5,7 +5,7 @@
 // firestore.rules) y lee con una cuenta de servicio de solo lectura.
 const { initializeApp } = require('firebase/app')
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
-const { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
+const { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
 const { calcularAudiencia, destinatarios } = require('./audiencia')
@@ -15,6 +15,7 @@ const MailComposer = require('nodemailer/lib/mail-composer')
 const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 const { mensajeSolicitud, claveSolicitud } = require('./solicitudAviso')
+const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
 const { calcularDias } = require('./indicadores')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -336,7 +337,7 @@ async function avisarMercadeoDelDia() {
     const msg = mensajeDelDia(snap.docs.map((d) => d.data()), hoyColombia())
     if (!msg) { console.log('[scheduler] mercadeo: nada programado hoy'); return }
     for (const email of ADMIN_EMAILS) {
-      await sendPushForStaff('mercadeo', {}, { ...msg, soloA: email })
+      await sendPushForStaff('mercadeo', {}, { ...msg, soloA: email, clave: `mercadeo-${hoyColombia()}`, tipo: 'mercadeo', url: 'https://delistars.com/admin/' })
     }
   } catch (err) {
     console.error('[scheduler] Error en el aviso de mercadeo:', err?.message || err)
@@ -361,7 +362,7 @@ function watchSolicitudesAcceso() {
         avisadas.add(clave)
         const msg = mensajeSolicitud(s)
         for (const email of ADMIN_EMAILS) {
-          sendPushForStaff(`solicitud-${chg.doc.id}`, {}, { ...msg, soloA: email })
+          sendPushForStaff(`solicitud-${chg.doc.id}`, {}, { ...msg, soloA: email, clave, tipo: 'solicitud', url: 'https://delistars.com/admin/' })
             .catch((e) => console.error('[scheduler] aviso de solicitud error:', e?.message || e))
         }
       }
@@ -467,6 +468,16 @@ async function checkStuckOrders() {
     const now = Date.now()
     for (const d of snap.docs) {
       const o = d.data()
+      // Fase 6: domicilio confirmado que lleva 10 min sin domiciliario → administración.
+      if (sinDomiciliarioDemasiado(o, now)) {
+        for (const email of ADMIN_EMAILS) {
+          await sendPushForStaff(d.id, o, {
+            rol: 'admin', soloA: email, clave: 'sin-domiciliario-admin', tipo: 'sin_domiciliario',
+            title: '🛵 Pedido sin domiciliario', url: 'https://delistars.com/admin/',
+            body: `El pedido${o.orderNumber ? ` #${o.orderNumber}` : ''} de ${o.sedeName || 'una sede'} lleva más de 10 min confirmado y sin domiciliario.`,
+          }).catch(() => {})
+        }
+      }
       if (o.status !== 'pending' || stuckAlerted.has(d.id)) continue
       const created = o.createdAt?.toMillis ? o.createdAt.toMillis() : 0
       if (!created || now - created < STUCK_AFTER_MS) continue
@@ -539,18 +550,85 @@ function notifyFor(o, soloEtapa = false) {
   }
 }
 
+// ─── Centro de avisos (Fase 6) ───────────────────────────────────────────────
+// Cada aviso queda en avisos/{destino}/items/{evento} (lo escribe el bot: las
+// reglas solo le dejan crear). Si ya existía, el evento es un reintento: no se
+// vuelve a avisar. Devuelve true si el aviso es nuevo.
+async function guardarAviso(destino, evento, aviso) {
+  if (!destino) return true
+  try {
+    await setDoc(doc(db, 'avisos', destino, 'items', evento), {
+      tipo: aviso.tipo || 'pedido', titulo: aviso.title, cuerpo: aviso.body,
+      pedidoId: aviso.pedidoId || null, enlace: aviso.url || null,
+      leido: false, creadoAt: serverTimestamp(),
+    })
+    return true
+  } catch (err) {
+    // Ya existía (el bot no puede reescribirlo): es el mismo evento otra vez.
+    if (err?.code === 'permission-denied') return false
+    console.error('[scheduler] aviso no guardado:', err?.message || err)
+    return true // sin poder guardarlo, mejor avisar que callar
+  }
+}
+
+// Push a la app (aparatos registrados en dispositivos/{destino}/tokens):
+// Expo para la app; FCM nativo si algún día se usa. No se mezclan con los
+// tokens de la web.
+async function pushApp(destino, msg, url) {
+  if (!destino || !adminDb) return
+  const snap = await adminDb.collection(`dispositivos/${destino}/tokens`).get().catch(() => null)
+  if (!snap || snap.empty) return
+  const expo = snap.docs.filter((d) => d.data().proveedor === 'expo')
+  const fcm = snap.docs.filter((d) => d.data().proveedor === 'fcm')
+  if (expo.length) {
+    const tokens = expo.map((d) => d.data().token)
+    try {
+      const r = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(mensajesExpo(tokens, msg, url)),
+      })
+      const muertos = expoMuertos(tokens, await r.json().catch(() => null))
+      for (const d of expo.filter((x) => muertos.includes(x.data().token))) await deleteDoc(doc(db, 'dispositivos', destino, 'tokens', d.id)).catch(() => {})
+    } catch (err) { console.error('[scheduler] push Expo:', err?.message || err) }
+  }
+  if (fcm.length) {
+    const res = await getMessaging().sendEachForMulticast({
+      tokens: fcm.map((d) => d.data().token), notification: { title: msg.title, body: msg.body }, data: { url },
+    }).catch(() => null)
+    res?.responses.forEach((x, i) => {
+      if (!x.success && (x.error?.code || '').includes('registration-token-not-registered')) deleteDoc(doc(db, 'dispositivos', destino, 'tokens', fcm[i].id)).catch(() => {})
+    })
+  }
+}
+
+/** Aviso a una persona del equipo o a la caja de una sede: centro de avisos + app. */
+async function avisoEquipo(destino, evento, msg, pedidoId) {
+  const nuevo = await guardarAviso(destino, evento, { ...msg, pedidoId, url: msg.url || 'https://delistars.com/domicilios/' })
+  if (nuevo) await pushApp(destino, msg, msg.url || 'https://delistars.com/domicilios/')
+  return nuevo
+}
+
 async function sendPushForOrder(orderId, o, soloEtapa = false) {
   if (!o.clientUid) return
   const msg = notifyFor(o, soloEtapa)
   if (!msg) return
-  const cust = await adminDb.doc(`customers/${o.clientUid}`).get()
+  const url = enlacePedido(orderId)
+  const nuevo = await guardarAviso(o.clientUid, idEvento('pedido', orderId, soloEtapa ? `etapa-${o.etapa}` : `estado-${o.status}`), { ...msg, pedidoId: orderId, url })
+  if (!nuevo) return
+  await pushApp(o.clientUid, msg, url)
+  await pushWebCliente(o.clientUid, msg, orderId, soloEtapa ? `etapa ${o.etapa}` : o.status)
+}
+
+// Push a la web del cliente (tokens del navegador en customers/{uid}.fcmTokens).
+async function pushWebCliente(uid, msg, orderId, etiqueta) {
+  const cust = await adminDb.doc(`customers/${uid}`).get()
   const tokens = cust.exists ? (cust.data().fcmTokens || []) : []
   if (!tokens.length) return
   const res = await getMessaging().sendEachForMulticast({
     tokens,
     notification: { title: msg.title, body: msg.body },
-    data:    { orderId: String(orderId), url: 'https://delistars.com/domicilios/' },
-    webpush: { fcmOptions: { link: 'https://delistars.com/domicilios/' } },
+    data:    { orderId: String(orderId), url: enlacePedido(orderId) },
+    webpush: { fcmOptions: { link: enlacePedido(orderId) } },
   })
   // Limpia tokens que ya no sirven (dispositivo desinstaló, permiso revocado…).
   const bad = []
@@ -561,10 +639,10 @@ async function sendPushForOrder(orderId, o, soloEtapa = false) {
     }
   })
   if (bad.length) {
-    await adminDb.doc(`customers/${o.clientUid}`)
+    await adminDb.doc(`customers/${uid}`)
       .update({ fcmTokens: FieldValue.arrayRemove(...bad) }).catch(() => {})
   }
-  console.log(`[scheduler] push enviado (${soloEtapa ? `etapa ${o.etapa}` : o.status}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
+  console.log(`[scheduler] push enviado (${etiqueta}) pedido ${orderId} → ${res.successCount}/${tokens.length}`)
 }
 
 // ─── Notificaciones push al EQUIPO (caja y domiciliarios) ────────────────────
@@ -622,6 +700,12 @@ async function destinatariosEquipo(msg, sedeId) {
 async function sendPushForStaff(orderId, o, msgFijo = null) {
   const msg = msgFijo || notifyStaffFor(o)
   if (!msg) return
+  // Centro de avisos: a la persona (soloA) o a la caja de la sede, compartido.
+  const destino = msg.soloA ? String(msg.soloA).toLowerCase() : msg.rol === 'cashier' ? destinoCaja(o.sedeId) : null
+  if (destino) {
+    const nuevo = await avisoEquipo(destino, idEvento(msg.clave || msg.tipo || o.status || 'aviso', orderId, msg.soloA ? '' : o.sedeId), msg, orderId)
+    if (!nuevo) return
+  }
   const docs = await destinatariosEquipo(msg, o.sedeId)
   if (!docs.length) return
 
@@ -675,18 +759,37 @@ async function revisarDomicilioNuevo(id, o) {
     return
   }
   console.warn(`[scheduler] domicilio NO CUADRA pedido ${id}: trae ${r.precioPedido}, ${r.km} km → ${r.precioCorrecto}`)
-  await sendPushForStaff(id, o, mensajeDescuadre(o, r))
+  await sendPushForStaff(id, o, { ...mensajeDescuadre(o, r), clave: 'descuadre-domicilio' })
+}
+
+// Mensaje del chat: si lo escribió la caja, le llega al cliente; si lo escribió
+// el cliente, a la caja de la sede.
+async function avisarMensaje(id, o, m) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  if (m.de === 'caja' && o.clientUid) {
+    const msg = { title: `💬 Mensaje de ${o.sedeName || 'la sede'}`, body: m.texto || `Te escribieron sobre tu pedido${n}.`, tipo: 'mensaje' }
+    const url = enlacePedido(id)
+    if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'msg', m.n), { ...msg, pedidoId: id, url })) {
+      await pushApp(o.clientUid, msg, url)
+      await pushWebCliente(o.clientUid, msg, id, `mensaje ${m.n}`)
+    }
+  } else if (m.de === 'cliente') {
+    await sendPushForStaff(id, o, {
+      rol: 'cashier', clave: `msg-${m.n}`, tipo: 'mensaje', title: `💬 Mensaje del cliente${n}`,
+      body: m.texto || `${o.name || 'El cliente'} escribió en el chat.`,
+    })
+  }
 }
 
 async function avisarAsignacion(id, o, anterior) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
   await sendPushForStaff(id, o, {
-    rol: 'driver', soloA: o.driverEmail, title: '🛵 Nuevo domicilio para ti',
+    rol: 'driver', soloA: o.driverEmail, clave: `asignado-${o.driverEmail}`, title: '🛵 Nuevo domicilio para ti',
     body: `Pedido${n}${o.barrio ? ' — ' + o.barrio : ''}. Ya es tuyo: recógelo cuando esté listo.`,
   })
   if (anterior && anterior !== o.driverEmail) {
     await sendPushForStaff(id, o, {
-      rol: 'driver', soloA: anterior, title: '↪️ Te quitaron un pedido',
+      rol: 'driver', soloA: anterior, clave: `quitado-${anterior}-${o.driverEmail}`, title: '↪️ Te quitaron un pedido',
       body: `La caja le pasó el pedido${n} a otro domiciliario${o.reasignacionMotivo ? `: ${o.reasignacionMotivo}` : ''}.`,
     })
   }
@@ -704,18 +807,30 @@ function watchOrdersForPush() {
         const id = chg.doc.id
         const o  = chg.doc.data()
         const prev = seen.get(id)
-        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null })
+        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null, msgs: (o.clientMessages || []).length })
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
         if (baseline) continue
+        // Mensaje nuevo en el chat del pedido (Fase 6): al cliente o a la caja.
+        const msgNuevo = mensajeNuevo(prev ? prev.msgs : null, o)
+        if (msgNuevo) avisarMensaje(id, o, msgNuevo).catch((e) => console.error('[scheduler] aviso de mensaje error:', e?.message || e))
         // Asignación sin aceptación (Fase 5): avisarle a quien recibe el pedido
         // y, si fue una reasignación, a quien se lo quitaron.
         if (o.asignacion && o.driverEmail && (prev?.driver || null) !== o.driverEmail) {
           avisarAsignacion(id, o, prev?.driver || null).catch((e) => console.error('[scheduler] push asignación error:', e?.message || e))
         }
         if (prev && prev.status === o.status) {
-          if (prev.etapa !== o.etapa) sendPushForOrder(id, o, true).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+          if (prev.etapa !== o.etapa) {
+            sendPushForOrder(id, o, true).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+            // Listo en la sede: al domiciliario que lo tiene (Fase 6).
+            if (o.etapa === 'listo' && o.driverEmail && o.deliveryMode !== 'pickup') {
+              sendPushForStaff(id, o, {
+                rol: 'driver', soloA: o.driverEmail, clave: 'listo', tipo: 'listo', title: '✅ Pedido listo para recoger',
+                body: `El pedido${o.orderNumber ? ` #${o.orderNumber}` : ''} está listo en ${o.sedeName || 'la sede'}.`,
+              }).catch((e) => console.error('[scheduler] aviso listo error:', e?.message || e))
+            }
+          }
           continue
         }
         // Fase 5: al confirmar, el domicilio se asigna solo y pasa de "pendiente"
@@ -765,7 +880,7 @@ function watchDevoluciones() {
         if (avisados.has(clave)) continue
         avisados.add(clave)
         if (baseline) continue
-        sendPushForStaff(d.id, o, mensajeDevolucion(o, tipo))
+        sendPushForStaff(d.id, o, { ...mensajeDevolucion(o, tipo), clave: `devolucion-${tipo}`, tipo: 'devolucion' })
           .catch((e) => console.error('[scheduler] push devolución error:', e?.message || e))
       }
       baseline = false

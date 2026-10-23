@@ -5,6 +5,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-COPY index.js verificarDomicilio.js audiencia.js mercadeoAviso.js correoCampana.js horarios.mjs indicadores.js solicitudAviso.js ./
+COPY index.js verificarDomicilio.js audiencia.js mercadeoAviso.js correoCampana.js horarios.mjs indicadores.js solicitudAviso.js avisos.js ./
 
 CMD ["node", "index.js"]

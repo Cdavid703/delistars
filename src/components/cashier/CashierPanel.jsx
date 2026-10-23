@@ -7,6 +7,9 @@ import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
 import DevolucionesSaldo from './DevolucionesSaldo'
 import EstadoDomiciliarios from './EstadoDomiciliarios'
+import CampanaAvisos from '../common/CampanaAvisos'
+import PuestoCaja from './PuestoCaja'
+import usePuestoCaja from '../../hooks/usePuestoCaja'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -172,9 +175,25 @@ export default function CashierPanel() {
     })
   }, [orders])
 
+  // Caja con varios aparatos (Fase 6): solo suena el principal; "Visto" queda
+  // en el pedido y calla la alarma en todos. Visto no es aceptar.
+  const puesto = usePuestoCaja(sede?.id, user?.email)
+  const suenaRef = useRef(true)
+  const alarmaMaxRef = useRef(180000)
+  const ordersRef = useRef([])
+  useEffect(() => { suenaRef.current = puesto.suena; if (!puesto.suena) alarm.stop() }, [puesto.suena])
+  useEffect(() => onSnapshot(doc(db, 'config', 'caja'), (s) => {
+    const seg = Number(s.data()?.alarmaMaxSeg)
+    alarmaMaxRef.current = seg >= 15 && seg <= 1800 ? seg * 1000 : 180000
+  }, () => {}), [])
+
   const dismissAlert = useCallback(() => {
     alarm.stop(); setAlarmActive(false); setNewOrderAlert(null)
-  }, [])
+    // Visto para todos los aparatos: los pedidos nuevos que aún nadie había visto.
+    ordersRef.current.filter(o => o.status === 'pending' && !o.vistoPorCaja).forEach(o => {
+      updateDoc(doc(db, 'orders', o.id), { vistoPorCaja: { at: serverTimestamp(), por: user?.email || '' } }).catch(() => {})
+    })
+  }, [user?.email])
 
   // Marca los mensajes del cliente como vistos. Se usa al abrir el pedido por
   // cualquier vía (detalle o pantalla de asignación), porque en ambas se puede
@@ -252,24 +271,27 @@ export default function CashierPanel() {
         pendingDocs.forEach(o => {
           if (!prevPendingIdsRef.current.has(o.id)) {
             prevPendingIdsRef.current.add(o.id)
-            alarm.play(); setAlarmActive(true); setNewOrderAlert(o)
+            if (!o.vistoPorCaja) {
+              // Solo suena el aparato principal (o todos si no hay uno conectado).
+              if (suenaRef.current) alarm.play(alarmaMaxRef.current)
+              setAlarmActive(true); setNewOrderAlert(o)
+            }
           }
         })
       }
 
-      // Si ya no queda NINGÚN pedido por cotizar, la alarma y el aviso se
-      // apagan solos. Antes dependían de que alguien pulsara el aviso: si la
-      // cajera cotizaba el pedido desde la lista, el aviso quedaba abierto y la
-      // alarma seguía timbrando sin nada que atender.
-      if (pendingDocs.length === 0) {
+      // Si ya no queda ningún pedido nuevo SIN VER (o por cotizar), la alarma
+      // y el aviso se apagan solos en todos los aparatos: alguien tocó "Visto"
+      // en otro aparato o ya lo cotizaron desde la lista.
+      const sinVer = pendingDocs.filter(o => !o.vistoPorCaja)
+      if (sinVer.length === 0) {
         alarm.stop()
         setAlarmActive(false)
         setNewOrderAlert(null)
       } else {
-        // El aviso apuntaba a un pedido que ya se cotizó: se pasa al siguiente
-        // que sí esté pendiente, o se cierra.
+        // El aviso apuntaba a un pedido que ya se vio o se cotizó: se cierra.
         setNewOrderAlert(prev =>
-          prev && !pendingDocs.some(o => o.id === prev.id) ? null : prev)
+          prev && !sinVer.some(o => o.id === prev.id) ? null : prev)
       }
 
       // Cliente canceló un pedido que estaba en curso → avisar a la caja.
@@ -293,6 +315,7 @@ export default function CashierPanel() {
         prevStatusRef.current.set(o.id, o.status)
       })
 
+      ordersRef.current = docs
       setOrders(docs)
     })
   }, [sede])
@@ -470,6 +493,10 @@ export default function CashierPanel() {
       <div className="mx-4 mt-2 flex items-center gap-2 flex-wrap">
         <BotonSilencio />
         <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
+        {/* Avisos de la caja de la sede (compartidos: lo que uno marca, lo ven todos) y los propios */}
+        <CampanaAvisos
+          destinos={[...(sede?.id === 'all' ? ['caja_santa_lucia', 'caja_santa_teresita'] : [sede?.id && `caja_${sede.id}`]), user?.email?.toLowerCase()]}
+          onAbrirPedido={(id) => openOrderDetail(id)} />
       </div>
 
       {/* Estado de la sede para clientes y apertura/cierre a mano (hasta el final del día) */}
@@ -630,6 +657,9 @@ export default function CashierPanel() {
           ))}
         </div>
       )}
+
+      {/* Aparato principal de la caja (Fase 6): solo ese suena */}
+      <PuestoCaja puesto={puesto} />
 
       {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
       <EstadoDomiciliarios sedeId={sede?.id} />
@@ -837,6 +867,7 @@ export default function CashierPanel() {
             <div className="text-6xl animate-bounce">🔔</div>
             <p className="font-display text-3xl text-cherry tracking-widest text-center">¡NUEVO PEDIDO!</p>
             <p className="font-body text-sm text-coal/70 text-center">Pedido recibido de un cliente. Atender de inmediato.</p>
+            {!puesto.suena && <p className="font-body text-[11px] text-coal/45 text-center -mt-2">Suena en el aparato principal. «Visto» lo calla en todos.</p>}
             <div className="w-full bg-smoked/60 rounded-2xl p-4">
               <p className="font-body text-sm font-semibold text-coal">{newOrderAlert.name || newOrderAlert.clientName || 'Cliente'}</p>
               <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{newOrderAlert.items}</p>
@@ -845,7 +876,7 @@ export default function CashierPanel() {
             <div className="flex gap-3 w-full">
               <button onClick={dismissAlert}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-coal/20 text-coal/60 font-semibold text-sm hover:bg-smoked transition-colors">
-                Silenciar
+                Visto
               </button>
               <button onClick={() => { dismissAlert(); openOrderDetail(newOrderAlert?.id ?? null) }} className="flex-1 btn-primary">
                 <BellRing size={16} /> Ver pedido

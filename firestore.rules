@@ -187,6 +187,46 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Centro de avisos (Fase 6, especificación §18) ──────────────────────
+    // avisos/{destino}/items/{evento}: destino = uid del cliente, correo del
+    // equipo o caja_<sede> (compartido por la caja de esa sede: el "visto" es
+    // de todos). Los crea el scheduler (id = evento: un reintento no duplica);
+    // cada quien solo marca los suyos como leídos.
+    function esDestino(destino) {
+      return isSignedIn() && (
+        request.auth.uid == destino
+        || userEmail().lower() == destino
+        || (destino in ['caja_santa_lucia', 'caja_santa_teresita'] && isCashier())
+      );
+    }
+    match /avisos/{destino}/items/{evento} {
+      allow read: if isAdmin() || esDestino(destino);
+      allow create: if isAutoOpenBot();
+      allow update: if esDestino(destino)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leido', 'leidoAt', 'leidoPor']);
+      allow delete: if isAutoOpenBot();
+    }
+    // Aparatos que reciben push nativos (app). Los registra el servidor
+    // (/api/v1/avisos/dispositivo); el scheduler borra los que ya no sirven.
+    match /dispositivos/{destino}/tokens/{id} {
+      allow read: if false;
+      allow write: if false;
+      allow delete: if isAutoOpenBot();
+    }
+    // Caja con varios aparatos por sede: uno principal suena, los demás solo
+    // muestran el aviso. Lo elige la caja (nunca automático); cada aparato
+    // reporta que sigue conectado.
+    match /caja_puestos/{sedeId} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if (isAdmin() || isCashier())
+                   && request.resource.data.keys().hasOnly(['principal', 'principalNombre', 'principalPor', 'principalDesde', 'latidoPrincipal']);
+    }
+    match /caja_puestos/{sedeId}/aparatos/{aparatoId} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if isCashier()
+                   && request.resource.data.keys().hasOnly(['nombre', 'email', 'latido']);
+    }
+
     // ── Turno del domiciliario (Fase 5) ────────────────────────────────────
     // Lo escribe el servidor (/api/v1/equipo/turno y la asignación automática).
     // La caja y el admin lo leen para saber quién está disponible; el

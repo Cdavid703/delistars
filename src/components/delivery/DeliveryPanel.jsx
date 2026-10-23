@@ -28,6 +28,7 @@ import { optimizarRuta, ubicarDireccion, medirRuta } from '../../services/recorr
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 import TurnoDomiciliario from './TurnoDomiciliario'
+import CampanaAvisos from '../common/CampanaAvisos'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -425,12 +426,8 @@ export default function DeliveryPanel() {
             <Calculator size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
-          <div className="relative">
-            <button className="btn-icon" onClick={() => setTab(pendingOrders.length ? 'pending' : 'active')}>
-              <Bell size={20} />
-              {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
-            </button>
-          </div>
+          <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
+            onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) setSelected(o) }} />
           <RoleSwitcher />
           <button onClick={() => selectSede(null)} className="btn-icon"><MapPin size={20} /></button>
           <button onClick={logout} className="btn-icon"><LogOut size={20} /></button>

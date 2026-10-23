@@ -130,11 +130,12 @@ export function crearAlarma() {
     clearTimeout(topeId); topeId = null
   }
   return {
-    play() {
+    // `maxMs`: hasta cuándo repite si nadie toca "Visto" (Fase 6: configurable).
+    play(maxMs = ALARMA_MAX_MS) {
       parar()
       patron()
       intervalId = setInterval(patron, 2000)
-      topeId = setTimeout(parar, ALARMA_MAX_MS)
+      topeId = setTimeout(parar, maxMs)
     },
     stop: parar,
     test: patron,

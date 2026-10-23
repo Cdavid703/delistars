@@ -47,6 +47,7 @@ import { usePWAInstall } from '../../hooks/usePWAInstall'
 import AccesoCuenta from '../common/AccesoCuenta'
 import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
 import MiCuenta from './MiCuenta'
+import CampanaAvisos from '../common/CampanaAvisos'
 import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
@@ -246,6 +247,17 @@ export default function ClientPanel() {
         : { name: '', phone: '', promociones: null })
     }, () => {})
   }, [user?.uid, user?.email])
+  // Enlace de un pedido (/p/<id> → ?pedido=<id>, Fase 6): se abre su detalle
+  // apenas llegan los pedidos de la cuenta.
+  const pedidoDelEnlace = useRef(new URLSearchParams(window.location.search).get('pedido'))
+  useEffect(() => {
+    const id = pedidoDelEnlace.current
+    if (!id || !orders.some(o => o.id === id)) return
+    pedidoDelEnlace.current = null
+    setSelectedId(id)
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [orders])
+
   // Mi cuenta (Fase 4, paso 4) y la eliminación pedida: mientras corren los 30
   // días se le recuerda y no puede pedir.
   const [miCuenta, setMiCuenta] = useState(false)
@@ -587,6 +599,9 @@ export default function ClientPanel() {
           <div className="flex items-center gap-1">
             <BotonSilencio />
             <RoleSwitcher variant="dark" />
+            {user && !user.isAnonymous && (
+              <CampanaAvisos oscuro destinos={[user.uid]} onAbrirPedido={(id) => openOrderDetail(id)} />
+            )}
             <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
               <HelpCircle size={20} />
             </button>
