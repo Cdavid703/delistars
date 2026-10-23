@@ -258,8 +258,14 @@ describe('acciones de caja y domiciliario', () => {
   it('asignar: solo domicilio, a un domiciliario que existe; recotizar no retrocede', () => {
     const q = { ...pend, status: 'quoted', etapa: 'confirmado' };
     const r = planAsignar(q, caja, { driverEmail: 'Dom@X.com ', driverName: 'Dom' }, true);
-    expect(r.campos).toMatchObject({ status: 'assigned', driverEmail: 'dom@x.com', driverName: 'Dom' });
+    // Fase 5 (C8): queda asignado sin que el domiciliario tenga que aceptar.
+    expect(r.campos).toMatchObject({ status: 'accepted', driverEmail: 'dom@x.com', driverName: 'Dom', asignacion: 'manual' });
     expect(r.cambiaEtapa).toBe(false);
+    // Pasárselo a otro antes de que salga exige motivo.
+    const asignado = { ...q, status: 'accepted', driverEmail: 'dom@x.com' };
+    falla(() => planAsignar(asignado, caja, { driverEmail: 'otro@x.com' }, true), 'motivo');
+    expect(planAsignar(asignado, caja, { driverEmail: 'otro@x.com', motivo: 'Juan se varó' }, true).campos)
+      .toMatchObject({ driverEmail: 'otro@x.com', reasignadoDe: 'dom@x.com', reasignacionMotivo: 'Juan se varó' });
     falla(() => planAsignar(q, caja, { driverEmail: 'nadie@x.com' }, false), 'domiciliario');
     falla(() => planAsignar({ ...q, deliveryMode: 'pickup' }, caja, { driverEmail: 'd@x.com' }, true), 'recoger');
   });

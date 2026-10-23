@@ -11,12 +11,14 @@ import StatusBadge from '../common/StatusBadge'
 import ClientChat from './ClientChat'
 import { SEDES } from '../../services/roles'
 import { pedidosMismoLado } from '../../utils/cercania'
+import useTurnosDomiciliarios, { TEXTO_TURNO } from '../../hooks/useTurnosDomiciliarios'
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 // Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
 export default function AssignDeliveryDetail({ order, drivers, onClose, unreadClientMsgs = 0, pedidos = [] }) {
+  const turnos = useTurnosDomiciliarios(order.sedeId)
   const [quotedPrice,   setQuotedPrice]   = useState(String(order.quotedPrice   ?? ''))
   const [deliveryPrice, setDeliveryPrice] = useState(String(order.deliveryPrice ?? ''))
   const [orderNumber,   setOrderNumber]   = useState(order.orderNumber || '')
@@ -50,6 +52,13 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
     if (errs.length) { setErrors(errs); return }
 
     const driver = drivers.find(d => d.id === driverId)
+    // Pasárselo a otro domiciliario antes de que salga: con motivo (se les avisa a los dos).
+    const anterior = (order.driverEmail || '').toLowerCase()
+    let motivo = ''
+    if (anterior && anterior !== String(driver?.id || driverId).toLowerCase().trim()) {
+      motivo = (window.prompt(`¿Por qué le quitas el pedido a ${order.driverName || anterior}? (se le avisa)`) || '').trim()
+      if (motivo.length < 3) { setErrors(['Para pasarle el pedido a otro domiciliario escribe el motivo']); return }
+    }
     setLoading(true)
     try {
       const resolvedEmail = (driver?.id || driverId).toLowerCase().trim()
@@ -66,6 +75,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
         driverName:    driver?.name || driver?.id || driverId,
         driverPhone:   driver?.phone || null,
         driverNotes:   driverNotes.trim(),
+        ...(motivo ? { motivo } : {}),
       }
       // Por la API (valida que el domiciliario exista); si no responde, directo.
       await conApi(`${order.id}/asignar`, { ...datos, version: order.version ?? 0 },
@@ -259,9 +269,16 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
             <select className="input-field" value={driverId} onChange={e => setDriverId(e.target.value)}>
               <option value="">— Selecciona domiciliario —</option>
               {drivers.map(d => (
-                <option key={d.id} value={d.id}>{d.name || d.id}</option>
+                <option key={d.id} value={d.id}>
+                  {d.name || d.id} · {TEXTO_TURNO[turnos[String(d.id).toLowerCase()]?.estado] || 'Fuera de turno'}
+                </option>
               ))}
             </select>
+            {driverId && turnos[String(driverId).toLowerCase()]?.estado !== 'activo' && (
+              <p className="font-body text-xs text-tangelo mt-1.5">
+                ⚠️ No está en turno: le llega el aviso igual. Confírmale por WhatsApp que puede tomarlo.
+              </p>
+            )}
           </div>
 
           {/* Driver notes */}

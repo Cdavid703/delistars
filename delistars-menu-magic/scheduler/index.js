@@ -582,7 +582,14 @@ function notifyStaffFor(o) {
         : { rol: 'cashier', title: '🔔 Entró un pedido', body: `Pedido${n} sin cotizar. Ábrelo para cotizarlo.` }
     case 'assigned':
       return { rol: 'driver', soloA: o.driverEmail, title: '🛵 Te asignaron un domicilio', body: `Pedido${n}${o.barrio ? ' — ' + o.barrio : ''}. Ábrelo para aceptarlo.` }
+    case 'quoted':
+      // Domicilio confirmado sin nadie en turno (Fase 5): la caja decide.
+      return o.sinDomiciliario && !o.driverEmail && o.deliveryMode !== 'pickup'
+        ? { rol: 'cashier', title: '🛵 Pedido sin domiciliario', body: `El pedido${n} no tiene domiciliario en turno. Ábrelo y asígnalo a mano o espera.` }
+        : null
     case 'accepted':
+      // Asignado sin aceptación (Fase 5): el aviso al domiciliario sale por el cambio de domiciliario.
+      if (o.asignacion) return null
       return { rol: 'cashier', title: '✅ El domiciliario aceptó', body: `${o.driverName || 'El domiciliario'} tomó el pedido${n}.` }
     case 'rejected':
       return { rol: 'cashier', title: '⚠️ Rechazaron un pedido', body: `El pedido${n} fue rechazado. Hay que reasignarlo.` }
@@ -671,6 +678,20 @@ async function revisarDomicilioNuevo(id, o) {
   await sendPushForStaff(id, o, mensajeDescuadre(o, r))
 }
 
+async function avisarAsignacion(id, o, anterior) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  await sendPushForStaff(id, o, {
+    rol: 'driver', soloA: o.driverEmail, title: '🛵 Nuevo domicilio para ti',
+    body: `Pedido${n}${o.barrio ? ' — ' + o.barrio : ''}. Ya es tuyo: recógelo cuando esté listo.`,
+  })
+  if (anterior && anterior !== o.driverEmail) {
+    await sendPushForStaff(id, o, {
+      rol: 'driver', soloA: anterior, title: '↪️ Te quitaron un pedido',
+      body: `La caja le pasó el pedido${n} a otro domiciliario${o.reasignacionMotivo ? `: ${o.reasignacionMotivo}` : ''}.`,
+    })
+  }
+}
+
 // Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
 // un estado relevante (cotizado / en camino / llegó / entregado / rechazado).
 function watchOrdersForPush() {
@@ -683,11 +704,16 @@ function watchOrdersForPush() {
         const id = chg.doc.id
         const o  = chg.doc.data()
         const prev = seen.get(id)
-        seen.set(id, { status: o.status, etapa: o.etapa })
+        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null })
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
         if (baseline) continue
+        // Asignación sin aceptación (Fase 5): avisarle a quien recibe el pedido
+        // y, si fue una reasignación, a quien se lo quitaron.
+        if (o.asignacion && o.driverEmail && (prev?.driver || null) !== o.driverEmail) {
+          avisarAsignacion(id, o, prev?.driver || null).catch((e) => console.error('[scheduler] push asignación error:', e?.message || e))
+        }
         if (prev && prev.status === o.status) {
           if (prev.etapa !== o.etapa) sendPushForOrder(id, o, true).catch((e) => console.error('[scheduler] push error:', e?.message || e))
           continue

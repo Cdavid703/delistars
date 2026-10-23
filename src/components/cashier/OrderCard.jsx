@@ -86,6 +86,15 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         </div>
       )}
 
+      {/* Domicilio confirmado sin nadie en turno (Fase 5): asignarlo a mano */}
+      {order.sinDomiciliario && !order.driverEmail && order.deliveryMode !== 'pickup' && order.status === 'quoted' && (
+        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-semibold text-coal">
+            🛵 Nadie en turno — asígnalo a mano
+          </span>
+        </div>
+      )}
+
       {/* El cliente pidió cancelar: la caja lo resuelve en el detalle */}
       {order.excepcion === 'cancelacion_solicitada' && (
         <div className="mb-2 flex items-center gap-1.5 bg-pepper/15 border border-pepper/50 rounded-xl px-3 py-2">

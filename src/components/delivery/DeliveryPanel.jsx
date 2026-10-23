@@ -27,6 +27,7 @@ import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
 import { optimizarRuta, ubicarDireccion, medirRuta } from '../../services/recorrido'
 import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
+import TurnoDomiciliario from './TurnoDomiciliario'
 
 const TABS = [
   { id: 'pending',   label: 'Pedidos' },
@@ -133,6 +134,20 @@ export default function DeliveryPanel() {
         // callados: que le cancelen un pedido que ya tenía asignado.
         if (prevEstadoRef.current) {
           let sonó = false
+          // Fase 5: el pedido llega ya asignado (sin "Aceptar"). Suena y avisa.
+          const nuevos = all.filter(o => prevEstadoRef.current[o.id] === undefined && o.asignacion &&
+            ['accepted', 'preparing'].includes(o.status))
+          if (nuevos.length) {
+            sonar('asignado'); sonó = true
+            try {
+              if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                new Notification('🛵 DeliStars — Nuevo domicilio', {
+                  body: nuevos.length === 1 ? `Pedido${nuevos[0].orderNumber ? ` #${nuevos[0].orderNumber}` : ''}: ya es tuyo` : `${nuevos.length} pedidos nuevos: ya son tuyos`,
+                  icon: '/logo_sello.png',
+                })
+              }
+            } catch (_) {}
+          }
           for (const o of all) {
             const prev = prevEstadoRef.current[o.id]
             if (prev !== undefined && prev !== o.status && !sonó && o.status !== 'assigned') {
@@ -419,6 +434,12 @@ export default function DeliveryPanel() {
         </div>
       </header>
 
+      <TurnoDomiciliario email={user?.email} pendientes={activeOrders.length + pendingOrders.length}
+        onEstado={(estado) => {
+          // En turno se comparte la ubicación con la caja; al terminar sin pedidos, se apaga.
+          if (estado === 'activo' && !locationSharing) toggleLocationSharing()
+          if (estado === 'fuera' && locationSharing && activeOrders.length === 0) toggleLocationSharing()
+        }} />
 
       {notifCount > 0 && (
         <div className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 animate-bounce-soft">

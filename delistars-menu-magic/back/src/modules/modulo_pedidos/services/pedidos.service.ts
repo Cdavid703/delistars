@@ -13,6 +13,8 @@ import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, ap
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
 import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
+import { candidatoPara, cargaDe } from './domiciliarios.service';
+import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -229,6 +231,11 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
 export async function transicionar(u: Usuario, id: string, b: any) {
   const db = firestore();
   const ref = db.doc(`orders/${id}`);
+  // Salir a entregar: máximo 5 pedidos a la vez en reparto (Fase 5).
+  if (b?.a === 'en_camino' && u.esDomiciliario && u.email) {
+    const carga = await cargaDe(u.email);
+    revisarCapacidad(carga.idsEnReparto.filter((x) => x !== id).length);
+  }
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
@@ -362,6 +369,12 @@ export async function accionCaja(u: Usuario, id: string, accion: Accion, b: any)
   const ref = db.doc(`orders/${id}`);
   // Datos que se leen fuera de la transacción (no cambian con el pedido).
   const esDomiciliario = accion === 'asignar' ? await domiciliarioExiste(b?.driverEmail) : false;
+  // Al confirmar un domicilio sin domiciliario: a quién se le asigna solo (Fase 5).
+  let candidato: Candidato | null = null;
+  if (accion === 'cotizar') {
+    const previo = (await ref.get()).data();
+    if (previo && previo.deliveryMode !== 'pickup' && !previo.driverEmail && previo.sedeId) candidato = await candidatoPara(previo.sedeId);
+  }
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
@@ -381,6 +394,18 @@ export async function accionCaja(u: Usuario, id: string, accion: Accion, b: any)
       : accion === 'aceptar' ? planAceptar(p, u)
       : planCuadre(p, u);
     const ahora = FieldValue.serverTimestamp();
+    if (accion === 'cotizar' && p.deliveryMode !== 'pickup' && !p.driverEmail) {
+      if (candidato) {
+        Object.assign(plan.campos, camposAsignacion(candidato, 'automatica'));
+        tx.set(db.doc(`turnos_domiciliario/${candidato.email}`), { ultimaAsignacionAt: ahora }, { merge: true });
+      } else {
+        // Nadie en turno: la caja lo ve y decide (puede asignarlo igual a mano).
+        plan.campos.sinDomiciliario = true;
+      }
+    }
+    if (accion === 'asignar' && plan.campos.driverEmail) {
+      tx.set(db.doc(`turnos_domiciliario/${plan.campos.driverEmail}`), { ultimaAsignacionAt: ahora }, { merge: true });
+    }
     const e = etapaDe(p);
     const version = plan.cambiaEtapa ? versionActual + 1 : versionActual;
     tx.update(ref, {

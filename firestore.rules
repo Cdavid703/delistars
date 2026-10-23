@@ -187,6 +187,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Turno del domiciliario (Fase 5) ────────────────────────────────────
+    // Lo escribe el servidor (/api/v1/equipo/turno y la asignación automática).
+    // La caja y el admin lo leen para saber quién está disponible; el
+    // domiciliario lee el suyo.
+    match /turnos_domiciliario/{email} {
+      allow read: if isAdmin() || isCashier() || (isSignedIn() && email == userEmail().lower());
+      allow write: if false;
+    }
+
     // ── Eliminar la cuenta (Fase 4, paso 4; P-25) ──────────────────────────
     // La solicitud la crea y la ejecuta el servidor (/api/v1/cuenta). El
     // cliente lee la suya para ver el aviso de "tu cuenta se elimina el…".

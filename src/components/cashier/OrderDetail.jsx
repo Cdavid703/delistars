@@ -1392,13 +1392,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </Section>
           )}
 
-          {/* Reasignar domiciliario — solo cuando está asignado pero el driver no ha aceptado.
-              Nunca en "recoger en sede": ahí no hay domiciliario. */}
-          {!pickup && order.status === 'assigned' && onReassign && (
+          {/* Reasignar domiciliario — mientras no haya salido (Fase 5: ya no hay
+              "aceptar"). Nunca en "recoger en sede": ahí no hay domiciliario. */}
+          {!pickup && ['assigned', 'accepted', 'preparing'].includes(order.status) && order.driverEmail && onReassign && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-3">
               <p className="font-display text-base tracking-wide text-tangelo">🔄 Reasignar domiciliario</p>
               <p className="font-body text-xs text-coal/60">
-                El domiciliario aún no ha aceptado. Avísale por WhatsApp o cámbialo.
+                {order.status === 'assigned'
+                  ? 'El domiciliario aún no ha aceptado. Avísale por WhatsApp o cámbialo.'
+                  : `Lo tiene ${order.driverName || order.driverEmail}. Antes de que salga puedes pasárselo a otro (con motivo; se les avisa a los dos).`}
               </p>
               {/* WhatsApp notify */}
               {(() => {
@@ -1407,7 +1409,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 const digits   = rawPhone.replace(/\D/g, '')
                 const waPhone  = digits.length >= 10 ? `57${digits.slice(-10)}` : ''
                 const msg = encodeURIComponent(
-                  `Hola ${order.driverName || 'domiciliario'} 👋 Tienes un pedido${order.orderNumber ? ` #${order.orderNumber}` : ''} asignado en DeliStars. Por favor abre la app y acéptalo. ¡Gracias! 🛵`
+                  `Hola ${order.driverName || 'domiciliario'} 👋 Tienes un pedido${order.orderNumber ? ` #${order.orderNumber}` : ''} asignado en DeliStars. Ábrelo en la app. ¡Gracias! 🛵`
                 )
                 const waUrl = waPhone
                   ? `https://wa.me/${waPhone}?text=${msg}`

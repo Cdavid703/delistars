@@ -6,6 +6,7 @@ import {
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
 import DevolucionesSaldo from './DevolucionesSaldo'
+import EstadoDomiciliarios from './EstadoDomiciliarios'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -629,6 +630,9 @@ export default function CashierPanel() {
           ))}
         </div>
       )}
+
+      {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
+      <EstadoDomiciliarios sedeId={sede?.id} />
 
       {/* Saldo a favor de quien eliminó su cuenta: transferirlo */}
       <DevolucionesSaldo sedeId={sede?.id} />

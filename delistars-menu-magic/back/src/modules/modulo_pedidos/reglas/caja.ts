@@ -9,6 +9,7 @@ import { aplicarSaldo } from '../../../shared/devolucion';
 import { ErrorPedido } from './armado';
 import type { PedidoDoc } from './transiciones';
 import type { Usuario } from '../../../middlewares/require-user';
+import { camposAsignacion } from './domiciliarios';
 
 const AHORA = '__ahora__';
 const precio = (v: unknown, nombre: string) => {
@@ -77,13 +78,20 @@ export function planAsignar(p: PedidoDoc, u: Usuario, b: any, esDomiciliario: bo
   if (['en_camino', 'llego', 'entregado'].includes(actual.etapa)) throw new ErrorPedido('tarde', 'El pedido ya salió', 409);
   const email = typeof b?.driverEmail === 'string' ? b.driverEmail.toLowerCase().trim() : '';
   if (!email || !esDomiciliario) throw new ErrorPedido('domiciliario', 'Ese domiciliario no existe');
+  // Reasignar antes de que salga: con motivo (se le avisa a los dos).
+  const anterior = (p.driverEmail || '').toLowerCase();
+  const reasigna = !!anterior && anterior !== email;
+  const motivo = typeof b?.motivo === 'string' ? b.motivo.trim().slice(0, 300) : '';
+  if (reasigna && motivo.length < 3) throw new ErrorPedido('motivo', 'Para pasarle el pedido a otro domiciliario escribe el motivo');
   const campos: Record<string, unknown> = {
-    status: 'assigned',
-    driverEmail: email,
-    driverName: typeof b?.driverName === 'string' ? b.driverName.slice(0, 80) : email,
-    driverPhone: typeof b?.driverPhone === 'string' ? b.driverPhone.slice(0, 20) : null,
+    // Sin aceptación (decisión C8, Fase 5): queda asignado y se le avisa.
+    ...camposAsignacion({
+      email,
+      nombre: typeof b?.driverName === 'string' ? b.driverName.slice(0, 80) : email,
+      telefono: typeof b?.driverPhone === 'string' ? b.driverPhone.slice(0, 20) : null,
+    }, 'manual'),
     driverNotes: typeof b?.driverNotes === 'string' ? b.driverNotes.trim().slice(0, 300) : '',
-    assignedAt: AHORA,
+    ...(reasigna ? { reasignadoDe: anterior, reasignacionMotivo: motivo, reasignadoAt: AHORA } : {}),
   };
   // La pantalla de asignar también cotiza y define el cobro en efectivo.
   if (b?.quotedPrice != null) {
@@ -103,7 +111,7 @@ export function planAsignar(p: PedidoDoc, u: Usuario, b: any, esDomiciliario: bo
   return { campos, etapa, cambiaEtapa: etapa !== actual.etapa, sobrante: 0 };
 }
 
-/** El domiciliario acepta el pedido asignado (hasta la Fase 5, que asigna sin aceptar). */
+/** El domiciliario acepta un pedido asignado a la antigua (antes de la Fase 5, que asigna sin aceptar). */
 export function planAceptar(p: PedidoDoc, u: Usuario): PlanCaja {
   exigeActivo(p);
   if (!u.esDomiciliario || (p.driverEmail || '').toLowerCase() !== u.email) throw new ErrorPedido('sin_permiso', 'Este pedido no está asignado a ti', 403);

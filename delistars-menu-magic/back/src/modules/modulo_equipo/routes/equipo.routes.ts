@@ -4,6 +4,7 @@ import { requireUser, TODAS_LAS_SEDES } from '../../../middlewares/require-user'
 import { firestore } from '../../../config/firestore';
 import { ErrorPedido } from '../../modulo_pedidos/reglas/armado';
 import { rolesDeUsuario, validarSolicitud, sedesAlAprobar, ROLES_SOLICITABLES, RolSolicitable } from '../reglas';
+import { cambiarTurno } from '../../modulo_pedidos/services/domiciliarios.service';
 
 /**
  * Equipo: quién soy, solicitudes de acceso y su aprobación.
@@ -164,6 +165,26 @@ router.get('/domiciliarios', requireUser, async (req: Request, res: Response) =>
       .filter((x) => !baja.has(x.email) && (!sedeId || x.sedes.includes(sedeId)))
       .sort((a, b) => a.nombre.localeCompare(b.nombre)));
   } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/turno:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: El domiciliario inicia, pausa, reanuda o termina su turno (Fase 5)
+ *     description: >
+ *       Solo en turno (y sin pausa) recibe pedidos automáticamente al confirmarse.
+ *       Al terminar con pedidos encima, esos siguen siendo suyos (`aviso`).
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "accion": "iniciar" }
+ *     responses:
+ *       200: { description: "{ estado: activo | pausa | fuera, enReparto, porRecoger, aviso }" }
+ */
+router.post('/turno', requireUser, async (req: Request, res: Response) => {
+  try { res.json(await cambiarTurno(req.usuario!, req.body?.accion)); } catch (err) { responder(res, err); }
 });
 
 export default router;
