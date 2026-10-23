@@ -40,6 +40,13 @@ function sinDomiciliarioDemasiado(o, ahora = Date.now(), esperaMin = 10) {
   return desde != null && ahora - desde >= esperaMin * 60000
 }
 
+/** ¿Un cambio propuesto lleva más de `esperaMin` sin respuesta del cliente? (aviso a la caja, §9.2) */
+function sinRespuestaDemasiado(o, ahora = Date.now(), esperaMin = 10) {
+  if (!o || o.excepcion !== 'cambio_pendiente' || o.cambioPropuesto?.estado !== 'pendiente') return false
+  const desde = o.cambioPropuesto.propuestoAt?.toMillis?.() ?? (typeof o.cambioPropuesto.propuestoAt === 'number' ? o.cambioPropuesto.propuestoAt : null)
+  return desde != null && ahora - desde >= esperaMin * 60000
+}
+
 /** Mensajes para el servicio de push de Expo (la app). */
 function mensajesExpo(tokens, msg, url) {
   return tokens.map((to) => ({ to, title: msg.title, body: msg.body, sound: 'default', data: { url } }))
@@ -51,4 +58,4 @@ function expoMuertos(tokens, respuesta) {
   return tokens.filter((_, i) => datos[i]?.status === 'error' && datos[i]?.details?.error === 'DeviceNotRegistered')
 }
 
-module.exports = { URL_WEB, enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, mensajesExpo, expoMuertos }
+module.exports = { URL_WEB, enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos }

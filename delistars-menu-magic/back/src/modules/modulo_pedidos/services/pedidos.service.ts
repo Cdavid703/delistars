@@ -15,6 +15,7 @@ import type { Usuario } from '../../../middlewares/require-user';
 import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
 import { candidatoPara, cargaDe } from './domiciliarios.service';
 import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
+import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar } from '../reglas/cambios';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -290,6 +291,93 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     if (r.entregaDomicilio) await registrarFidelizacion(r.entregaDomicilio).catch((err) => console.error('[pedidos] fidelización:', err?.message || err));
     const { entregaDomicilio: _e, ...resto } = r;
     return resto;
+  });
+}
+
+// ─── Cambios al pedido (Fase 7, §9.2) ───────────────────────────────────────
+
+/** La caja propone un cambio: queda «cambio pendiente» y la propuesta aparte; el original no se toca. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function proponerCambio(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    const versionActual = Number(p.version) || 0;
+    if (b?.version != null && Number(b.version) !== versionActual) {
+      throw new ErrorPedido('version', `El pedido cambió mientras tanto (versión ${versionActual}). Recárgalo e intenta de nuevo`, 409);
+    }
+    // Quién puede y desde qué etapa lo decide el modelo de etapas (caja, antes de preparar).
+    const plan = planTransicion(p, 'excepcion:cambio_pendiente', u, b?.motivo);
+    const c = validarPropuesta(p, b);
+    const ahora = FieldValue.serverTimestamp();
+    const version = versionActual + 1;
+    const e = etapaDe(p);
+    tx.update(ref, {
+      etapa: plan.etapa, excepcion: 'cambio_pendiente', excepcionMotivo: c.motivo, version, updatedAt: ahora,
+      cambioPropuesto: {
+        ...c, estado: 'pendiente', propuestoPor: u.email || u.uid, propuestoAt: ahora,
+        anterior: { items: p.items ?? '', quotedPrice: p.quotedPrice ?? null, deliveryPrice: p.deliveryPrice ?? null, totalPrice: p.totalPrice ?? null },
+      },
+    });
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: 'caja', accion: 'proponer_cambio',
+      de: { etapa: e.etapa, excepcion: e.excepcion }, a: { etapa: plan.etapa, excepcion: 'cambio_pendiente' },
+      motivo: c.motivo, status: p.status ?? null, version,
+    });
+    return { id, etapa: plan.etapa, excepcion: 'cambio_pendiente', version, totalPropuesto: c.totalPrice };
+  });
+}
+
+/** El cliente acepta (se aplica) o rechaza (queda el original) el cambio propuesto. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function responderCambio(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    if (!p.clientUid || p.clientUid !== u.uid) throw new ErrorPedido('sin_permiso', 'Solo el cliente del pedido responde al cambio', 403);
+    const e = etapaDe(p);
+    if (e.excepcion !== 'cambio_pendiente' || p.cambioPropuesto?.estado !== 'pendiente') {
+      throw new ErrorPedido('sin_propuesta', 'No hay un cambio pendiente por responder', 409);
+    }
+    const acepta = b?.acepta === true;
+    const ahora = FieldValue.serverTimestamp();
+    const version = (Number(p.version) || 0) + 1;
+    const campos = acepta ? camposAlAceptar(p, p.cambioPropuesto) : camposAlRechazar();
+    tx.update(ref, { ...valoresFirestore(campos, ahora), excepcion: null, excepcionMotivo: null, version, updatedAt: ahora });
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: 'cliente', accion: acepta ? 'aceptar_cambio' : 'rechazar_cambio',
+      de: { etapa: e.etapa, excepcion: 'cambio_pendiente' }, a: { etapa: e.etapa, excepcion: null },
+      motivo: null, status: p.status ?? null, version,
+    });
+    return { id, aceptado: acepta, etapa: e.etapa, version };
+  });
+}
+
+/** El cliente agrega algo a su pedido mientras está en Enviado (la caja lo cotiza con eso). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function agregarProducto(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    if (!p.clientUid || p.clientUid !== u.uid) throw new ErrorPedido('sin_permiso', 'Solo el cliente del pedido agrega productos', 403);
+    const t = validarAgregado(p, b?.texto);
+    const ahora = FieldValue.serverTimestamp();
+    tx.update(ref, { ...valoresFirestore(camposAlAgregar(p, t, u.nombre), ahora), updatedAt: ahora });
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: 'cliente', accion: 'agregar',
+      de: { etapa: 'enviado', excepcion: null }, a: { etapa: 'enviado', excepcion: null },
+      motivo: t, status: p.status ?? null, version: Number(p.version) || 0,
+    });
+    return { id, agregado: t };
   });
 }
 

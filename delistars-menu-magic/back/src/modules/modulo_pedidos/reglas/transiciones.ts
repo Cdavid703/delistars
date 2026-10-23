@@ -63,7 +63,9 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
   const extras: Record<string, unknown> = {};
 
   // Seguir: la caja quita la excepción temporal y el pedido sigue donde estaba.
+  // Si era un cambio propuesto, queda como retirado.
   if (a === 'seguir') {
+    if (actual.excepcion === 'cambio_pendiente') extras['cambioPropuesto.estado'] = 'retirado';
     return { rol, etapa: actual.etapa, excepcion: null, motivo: null, extras };
   }
 

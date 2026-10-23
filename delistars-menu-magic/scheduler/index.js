@@ -15,7 +15,7 @@ const MailComposer = require('nodemailer/lib/mail-composer')
 const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 const { mensajeSolicitud, claveSolicitud } = require('./solicitudAviso')
-const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
+const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
 const { calcularDias } = require('./indicadores')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -466,8 +466,18 @@ async function checkStuckOrders() {
     const snap = await adminDb.collection('orders')
       .where('createdAt', '>=', start).get()
     const now = Date.now()
+    // Cuánto esperar la respuesta del cliente a un cambio propuesto (§9.2, configurable).
+    const esperaCambioMin = Number((await adminDb.doc('config/caja').get()).data()?.cambioEsperaMin) || 10
     for (const d of snap.docs) {
       const o = d.data()
+      // Fase 7: cambio propuesto sin respuesta → la caja lo contacta (no se cancela ni se aplica solo).
+      if (sinRespuestaDemasiado(o, now, esperaCambioMin)) {
+        await sendPushForStaff(d.id, o, {
+          rol: 'cashier', clave: `cambio-sin-respuesta-${o.cambioPropuesto?.propuestoAt?.toMillis?.() || 0}`, tipo: 'cambio',
+          title: `⏳ El cliente no responde al cambio${o.orderNumber ? ` #${o.orderNumber}` : ''}`,
+          body: `Lleva más de ${esperaCambioMin} min sin aceptar ni rechazar. Llámalo o escríbele por el chat.`,
+        }).catch(() => {})
+      }
       // Fase 6: domicilio confirmado que lleva 10 min sin domiciliario → administración.
       if (sinDomiciliarioDemasiado(o, now)) {
         for (const email of ADMIN_EMAILS) {
@@ -781,6 +791,46 @@ async function avisarMensaje(id, o, m) {
   }
 }
 
+// Excepciones del pedido (§9): la caja propone un cambio → al cliente; el
+// cliente responde → a la caja; pide cancelar en reparto → a administración.
+async function avisarExcepcion(id, o, anterior) {
+  const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+  const pesos = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
+  if (o.excepcion === 'cambio_pendiente' && o.clientUid) {
+    const c = o.cambioPropuesto || {}
+    const msg = {
+      title: '✏️ La sede propone un cambio en tu pedido', tipo: 'cambio',
+      body: `${c.motivo ? `${c.motivo}. ` : ''}Nuevo total: ${pesos(c.totalPrice)}. Entra y acéptalo o recházalo.`,
+    }
+    const url = enlacePedido(id)
+    const evento = idEvento('pedido', id, 'cambio', c.propuestoAt?.toMillis?.() || Date.now())
+    if (await guardarAviso(o.clientUid, evento, { ...msg, pedidoId: id, url })) {
+      await pushApp(o.clientUid, msg, url)
+      await pushWebCliente(o.clientUid, msg, id, 'cambio propuesto')
+    }
+    return
+  }
+  if (anterior === 'cambio_pendiente' && !o.excepcion) {
+    const estado = o.cambioPropuesto?.estado
+    const resp = o.cambioPropuesto?.respondidoAt?.toMillis?.() || Date.now()
+    if (estado === 'aceptado') {
+      await sendPushForStaff(id, o, { rol: 'cashier', clave: `cambio-aceptado-${resp}`, tipo: 'cambio', title: `✅ El cliente aceptó el cambio${n}`, body: `Ya puedes preparar el pedido${n} con lo nuevo (${pesos(o.totalPrice ?? o.cambioPropuesto?.totalPrice)}).` })
+    } else if (estado === 'rechazado') {
+      await sendPushForStaff(id, o, { rol: 'cashier', clave: `cambio-rechazado-${resp}`, tipo: 'cambio', title: `❌ El cliente rechazó el cambio${n}`, body: 'Queda el pedido original. Revisa si lo puedes preparar así o cancélalo con motivo.' })
+    }
+    return
+  }
+  if (o.excepcion === 'cancelacion_solicitada' && ['en_camino', 'llego'].includes(o.etapa)) {
+    for (const email of ADMIN_EMAILS) {
+      await sendPushForStaff(id, o, {
+        rol: 'admin', soloA: email, clave: 'cancelacion-en-reparto', tipo: 'cancelacion', url: 'https://delistars.com/domicilios/',
+        title: `🚫 Cancelación en reparto${n}`,
+        body: `${o.name || 'El cliente'} pidió cancelar un pedido que ya va en camino${o.excepcionMotivo ? `: ${o.excepcionMotivo}` : ''}. Lo decide administración desde el panel de caja.`,
+      }).catch(() => {})
+    }
+  }
+}
+
 async function avisarAsignacion(id, o, anterior) {
   const n = o.orderNumber ? ` #${o.orderNumber}` : ''
   await sendPushForStaff(id, o, {
@@ -807,11 +857,14 @@ function watchOrdersForPush() {
         const id = chg.doc.id
         const o  = chg.doc.data()
         const prev = seen.get(id)
-        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null, msgs: (o.clientMessages || []).length })
+        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null, msgs: (o.clientMessages || []).length, exc: o.excepcion || null })
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
         if (baseline) continue
+        // Cambió la excepción (Fase 7): cambio propuesto, respuesta del cliente,
+        // cancelación pedida en reparto.
+        if (prev && (prev.exc || null) !== (o.excepcion || null)) avisarExcepcion(id, o, prev.exc || null).catch((e) => console.error('[scheduler] aviso de excepción error:', e?.message || e))
         // Mensaje nuevo en el chat del pedido (Fase 6): al cliente o a la caja.
         const msgNuevo = mensajeNuevo(prev ? prev.msgs : null, o)
         if (msgNuevo) avisarMensaje(id, o, msgNuevo).catch((e) => console.error('[scheduler] aviso de mensaje error:', e?.message || e))

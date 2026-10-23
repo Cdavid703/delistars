@@ -122,27 +122,10 @@ service cloud.firestore {
     function clientePuedeActualizar() {
       let d = request.resource.data;
       let antes = resource.data;
-      return cambiados().hasOnly([
-          // agregar algo al pedido (la caja vuelve a cotizar): vuelve a "pendiente"
-          // y se borra el billete elegido, que puede no alcanzar con el nuevo total
-          'items', 'needsRequote', 'status', 'cashBillAmount', 'cashChange',
-          // chat con la caja y calificación
-          'clientMessages', 'rating', 'ratingComment', 'ratedAt',
-          // cómo quiere la devolución (la crea el servidor al cancelar o rechazar)
-          'devolucion',
-          // modelo de etapas (agregar productos devuelve a Enviado)
-          'etapa', 'excepcion', 'excepcionMotivo', 'version', 'updatedAt'
-        ])
-        // Solo puede escribir la excepción vacía donde no había (pedidos viejos
-        // sin el campo): nunca quitar ni poner una.
-        && (!('excepcion' in cambiados()) || (antes.get('excepcion', null) == null && d.excepcion == null))
-        && (!('excepcionMotivo' in cambiados()) || (antes.get('excepcion', null) == null && d.excepcionMotivo == null))
-        // Cancelar, pagar, el saldo y los premios van por la API del servidor.
-        && (!('status' in cambiados()) || (d.status == 'pending' && antes.status == 'quoted' && d.needsRequote == true))
-        && (!('cashBillAmount' in cambiados()) || d.cashBillAmount == null)
-        && (!('cashChange' in cambiados()) || d.cashChange == null)
-        && etapaValida(['enviado'], [null])
-        && (!('items' in cambiados()) || (d.needsRequote == true && antes.status in ['pending', 'quoted']))
+      // Lo que aún no tiene API: chat con la caja, calificación y cómo quiere
+      // la devolución. Crear, pagar, cancelar, agregar productos y responder
+      // a un cambio van por /api/v1/pedidos (Fases 4 y 7).
+      return cambiados().hasOnly(['clientMessages', 'rating', 'ratingComment', 'ratedAt', 'devolucion', 'updatedAt'])
         && (!('devolucion' in cambiados())
             || ('devolucion' in antes
                 && d.devolucion.diff(antes.devolucion).affectedKeys().hasOnly(['estado', 'datos', 'elegidaAt'])

@@ -140,13 +140,14 @@ export const TRANSICIONES = [
   { a: 'entregado',      desde: ['confirmado', 'en_preparacion', 'listo'], roles: ['caja'], tipos: ['recoger'] },
   { a: 'excepcion:rechazado',              desde: ['enviado'],                                   roles: ['caja'], motivo: true },
   { a: 'excepcion:cancelado',              desde: ['enviado'],                                   roles: ['cliente'] },
-  // La caja cancela con motivo; en camino o llegó solo si el cliente lo pidió
-  // (aprueba la solicitud de cancelación).
+  // La caja cancela con motivo hasta Listo (también para aprobar la solicitud
+  // del cliente). En reparto (en camino o llegó) decide administración (§9.1).
   { a: 'excepcion:cancelado',              desde: ['enviado', 'confirmado', 'en_preparacion', 'listo'], roles: ['caja'], motivo: true },
-  { a: 'excepcion:cancelado',              desde: ['en_camino', 'llego'], roles: ['caja'], motivo: true, solo: ['cancelacion_solicitada'] },
   { a: 'excepcion:cancelado',              desde: [],                                            roles: ['admin'], motivo: true },
   { a: 'excepcion:cancelacion_solicitada', desde: ['confirmado', 'en_preparacion', 'listo', 'en_camino', 'llego'], roles: ['cliente'], motivo: true },
-  { a: 'excepcion:cambio_pendiente',       desde: ['confirmado'],                                roles: ['caja'] },
+  // La caja propone un cambio (productos o total) antes de preparar; el cliente
+  // lo acepta o lo rechaza (§9.2). Mientras tanto no se puede preparar.
+  { a: 'excepcion:cambio_pendiente',       desde: ['enviado', 'confirmado'],                     roles: ['caja'], motivo: true },
   { a: 'excepcion:no_entregado',           desde: ['llego'],                                     roles: ['domiciliario'], motivo: true },
   { a: 'excepcion:devuelto',               desde: ['llego'],                                     roles: ['caja'] },
   // Quitar una excepción temporal sin mover la etapa: la caja niega la

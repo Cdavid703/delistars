@@ -95,6 +95,18 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
         </div>
       )}
 
+      {/* Cambio propuesto (Fase 7): esperando al cliente o rechazado */}
+      {order.excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
+        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-semibold text-coal">⏳ Cambio propuesto — esperando al cliente</span>
+        </div>
+      )}
+      {!order.excepcion && order.cambioPropuesto?.estado === 'rechazado' && (
+        <div className="mb-2 flex items-center gap-1.5 bg-pepper/10 border border-pepper/40 rounded-xl px-3 py-2">
+          <span className="font-body text-xs font-semibold text-pepper">❌ El cliente rechazó el cambio — queda el original</span>
+        </div>
+      )}
+
       {/* El cliente pidió cancelar: la caja lo resuelve en el detalle */}
       {order.excepcion === 'cancelacion_solicitada' && (
         <div className="mb-2 flex items-center gap-1.5 bg-pepper/15 border border-pepper/50 rounded-xl px-3 py-2">

@@ -130,17 +130,31 @@ describe('planTransicion', () => {
     expect(e.extras.status).toBe('pending_cuadre');
     falla(() => planTransicion({ etapa: 'llego', driverEmail: 'otro@x.com' }, 'entregado', dom), 'sin_permiso');
   });
-  it('la caja resuelve la solicitud de cancelación: aprueba (aun en camino) o sigue', () => {
+  it('solicitud de cancelación: la caja la aprueba hasta Listo; en reparto decide el admin (§9.1)', () => {
+    const admin = usuario({ uid: 'a1', email: 'admin@x.com', esAdmin: true, esCaja: true });
     const sol = { clientUid: 'u1', status: 'in_transit', etapa: 'en_camino', excepcion: 'cancelacion_solicitada', excepcionMotivo: 'me equivoqué' };
-    const ok = planTransicion(sol, 'excepcion:cancelado', caja, 'Lo pidió el cliente');
+    falla(() => planTransicion(sol, 'excepcion:cancelado', caja, 'Lo pidió el cliente'), 'sin_permiso');
+    const ok = planTransicion(sol, 'excepcion:cancelado', admin, 'Lo pidió el cliente');
     expect(ok.excepcion).toBe('cancelado');
     expect(ok.extras.status).toBe('cancelled');
+    const antes = { ...sol, status: 'preparing', etapa: 'en_preparacion' };
+    expect(planTransicion(antes, 'excepcion:cancelado', caja, 'Lo pidió el cliente').extras.status).toBe('cancelled');
     const sigue = planTransicion(sol, 'seguir', caja);
     expect(sigue).toMatchObject({ etapa: 'en_camino', excepcion: null });
-    // Sin solicitud, la caja no cancela en camino ni hay nada que "seguir".
-    falla(() => planTransicion({ ...sol, excepcion: null }, 'excepcion:cancelado', caja, 'x'), 'sin_permiso'); // solo el admin
+    // Sin solicitud no hay nada que "seguir"; el cliente no resuelve.
     falla(() => planTransicion({ ...sol, excepcion: null }, 'seguir', caja), 'transicion_invalida');
     falla(() => planTransicion(sol, 'seguir', usuario()), 'sin_permiso');
+  });
+  it('cambio propuesto: la caja lo pone antes de preparar y «seguir» lo retira', () => {
+    const q = { clientUid: 'u1', status: 'quoted', etapa: 'confirmado' };
+    const prop = planTransicion(q, 'excepcion:cambio_pendiente', caja, 'Se acabó la tocineta');
+    expect(prop).toMatchObject({ etapa: 'confirmado', excepcion: 'cambio_pendiente', motivo: 'Se acabó la tocineta' });
+    expect(planTransicion({ ...q, status: 'pending', etapa: 'enviado' }, 'excepcion:cambio_pendiente', caja, 'motivo').excepcion).toBe('cambio_pendiente');
+    falla(() => planTransicion({ ...q, status: 'preparing', etapa: 'en_preparacion' }, 'excepcion:cambio_pendiente', caja, 'motivo'), 'transicion_invalida');
+    falla(() => planTransicion(q, 'excepcion:cambio_pendiente', caja), 'motivo');
+    // Con el cambio pendiente no se prepara; retirarlo lo deja marcado.
+    falla(() => planTransicion({ ...q, excepcion: 'cambio_pendiente' }, 'en_preparacion', caja), 'bloqueado');
+    expect(planTransicion({ ...q, excepcion: 'cambio_pendiente' }, 'seguir', caja).extras['cambioPropuesto.estado']).toBe('retirado');
   });
   it('un pedido terminado no se mueve', () => {
     falla(() => planTransicion({ status: 'cancelled' }, 'confirmado', caja), 'terminado');

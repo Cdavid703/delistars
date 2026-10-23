@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
+const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
 
 test('enlace del pedido, destino de caja e id de evento estable', () => {
   assert.equal(enlacePedido('abc123'), 'https://delistars.com/p/abc123')
@@ -31,4 +31,12 @@ test('push de Expo: mensajes y tokens muertos', () => {
   const m = mensajesExpo(['ExponentPushToken[a]'], { title: 'T', body: 'B' }, 'https://delistars.com/p/1')
   assert.deepEqual(m[0], { to: 'ExponentPushToken[a]', title: 'T', body: 'B', sound: 'default', data: { url: 'https://delistars.com/p/1' } })
   assert.deepEqual(expoMuertos(['a', 'b'], { data: [{ status: 'ok' }, { status: 'error', details: { error: 'DeviceNotRegistered' } }] }), ['b'])
+})
+
+test('cambio propuesto sin respuesta: aviso a la caja a los 10 minutos', () => {
+  const ahora = 1_000_000_000
+  const o = { excepcion: 'cambio_pendiente', cambioPropuesto: { estado: 'pendiente', propuestoAt: ahora - 11 * 60000 } }
+  assert.equal(sinRespuestaDemasiado(o, ahora), true)
+  assert.equal(sinRespuestaDemasiado(o, ahora, 15), false)
+  assert.equal(sinRespuestaDemasiado({ ...o, excepcion: null, cambioPropuesto: { ...o.cambioPropuesto, estado: 'aceptado' } }, ahora), false)
 })

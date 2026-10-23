@@ -3,7 +3,7 @@ import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
-import { crearPedido, transicionar, registrarPago, accionCaja } from '../services/pedidos.service';
+import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
@@ -186,6 +186,57 @@ router.post('/:id/pago', activa, requireUser, async (req: Request, res: Response
     }));
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/cambio:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: La caja propone un cambio al cliente (antes de preparar)
+ *     description: >
+ *       { items, quotedPrice, deliveryPrice?, motivo, version? }. El pedido queda con la excepción
+ *       `cambio_pendiente` y la propuesta en `cambioPropuesto`; el original no se toca hasta que el
+ *       cliente acepte. Con pago adelantado o saldo aplicado el total no puede cambiar (409 `pagado` / `saldo`).
+ *     responses:
+ *       200: { description: "{ id, etapa, excepcion, version, totalPropuesto }" }
+ */
+router.post('/:id/cambio', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const cuerpo = { id: req.params.id, cambio: true, ...req.body };
+    const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+      status: 200, body: await proponerCambio(req.usuario!, req.params.id, req.body),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/cambio/responder:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: El cliente acepta o rechaza el cambio propuesto
+ *     description: "{ acepta: true | false }. Aceptar aplica lo propuesto; rechazar conserva el original."
+ *     responses:
+ *       200: { description: "{ id, aceptado, etapa, version }" }
+ */
+router.post('/:id/cambio/responder', activa, requireUser, async (req: Request, res: Response) => {
+  try { res.json(await responderCambio(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/agregar:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: El cliente agrega algo a su pedido mientras está en Enviado
+ *     description: "{ texto }. Suma la línea «+ texto», marca `needsRequote` y deja el mensaje en el chat."
+ *     responses:
+ *       200: { description: "{ id, agregado }" }
+ */
+router.post('/:id/agregar', activa, requireUser, async (req: Request, res: Response) => {
+  try { res.json(await agregarProducto(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
 });
 
 /**

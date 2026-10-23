@@ -9,14 +9,14 @@ import ClientChat from './ClientChat'
 import CodigoPrivado from './CodigoPrivado'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
-import { SEDES } from '../../services/roles'
+import { SEDES, ROLES } from '../../services/roles'
 import { precioDomicilio, maxKm, RECORRIDO, LINEA_RECTA } from '../../utils/tarifaDomicilio'
 import { medirRecorrido, ubicarDireccion } from '../../services/recorrido'
 import { cambioParaTotal } from '../../utils/payments'
 import StatusBadge from '../common/StatusBadge'
 import { etapaDe } from '../../utils/etapas'
 import { conApi, llamarPedidos, ErrorApi } from '../../services/pedidosApi'
-import { format } from 'date-fns'
+import { format, formatDistanceToNowStrict } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   X, MapPin, Phone, User,
@@ -47,7 +47,8 @@ const fmtTime = (ts) => {
 }
 
 export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign, unreadClientMsgs = 0 }) {
-  const { user } = useAuth()
+  const { user, role } = useAuth()
+  const esAdmin = role === ROLES.ADMIN
   const [loading,          setLoading]          = useState(false)
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
@@ -446,6 +447,38 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     } finally { setLoading(false) }
   }
 
+  // Cambio propuesto al cliente (Fase 7, §9.2): solo antes de preparar y sin
+  // otro trámite pendiente. El servidor calcula el total y guarda la propuesta.
+  const etapaActualDetalle = etapaDe(order)
+  const enReparto = ['en_camino', 'llego'].includes(etapaActualDetalle.etapa)
+  const puedeProponer = ['enviado', 'confirmado'].includes(etapaActualDetalle.etapa) && !etapaActualDetalle.excepcion
+  const [proponiendo, setProponiendo] = useState(false)
+  const [propItems, setPropItems] = useState(order.items || '')
+  const [propQp, setPropQp] = useState(String(order.quotedPrice ?? ''))
+  const [propDp, setPropDp] = useState(String(order.deliveryPrice ?? ''))
+  const [propMotivo, setPropMotivo] = useState('')
+  const [propError, setPropError] = useState('')
+  const enviarPropuesta = async () => {
+    setPropError(''); setLoading(true)
+    try {
+      await llamarPedidos(`${order.id}/cambio`, {
+        items: propItems, quotedPrice: Number(propQp) || 0,
+        ...(order.deliveryMode !== 'pickup' ? { deliveryPrice: Number(propDp) || 0 } : {}),
+        motivo: propMotivo, version: order.version ?? 0,
+      })
+      setProponiendo(false); setPropMotivo('')
+    } catch (err) {
+      setPropError(err instanceof ErrorApi ? err.message : 'No se pudo enviar. Revisa la conexión e intenta de nuevo.')
+    } finally { setLoading(false) }
+  }
+  const retirarCambio = async () => {
+    if (!window.confirm('¿Retirar la propuesta? El pedido sigue como estaba.')) return
+    setLoading(true)
+    try { await llamarPedidos(`${order.id}/transiciones`, { a: 'seguir', version: order.version ?? 0 }) }
+    catch (err) { alert(err instanceof ErrorApi ? err.message : 'No se pudo retirar. Revisa la conexión.') }
+    finally { setLoading(false) }
+  }
+
   const markPreparing = () => moverEtapa('en_preparacion', () => actualizarPedido(order, {
     status:      'preparing',
     preparingAt: serverTimestamp(),
@@ -695,9 +728,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   {order.excepcionMotivo ? <>Motivo: «{order.excepcionMotivo}»</> : 'No dejó motivo.'}
                 </p>
                 <p className="font-body text-[11px] text-coal/55 mt-1">
-                  No se puede pasar a preparación hasta resolverlo.
+                  {enReparto
+                    ? 'El pedido ya va en camino: lo decide administración (§9.1). Ya le avisamos; mientras tanto, coordina con el domiciliario.'
+                    : 'No se puede pasar a preparación hasta resolverlo.'}
                 </p>
               </div>
+              {(!enReparto || esAdmin) && (
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => resolverCancelacion(true)} disabled={loading}
                   className="py-2.5 rounded-xl bg-pepper text-cream font-body text-sm font-bold disabled:opacity-50">
@@ -708,6 +744,31 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   Seguir con el pedido
                 </button>
               </div>
+              )}
+            </div>
+          )}
+
+          {/* Cambio propuesto al cliente (Fase 7, §9.2): esperando o rechazado */}
+          {etapaDe(order).excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
+            <div className="bg-tangelo/10 border-2 border-tangelo rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-lg tracking-wide text-tangelo">⏳ Cambio propuesto, esperando al cliente</p>
+              <p className="font-body text-sm text-coal/80">«{order.cambioPropuesto.motivo}» · nuevo total {fmt(order.cambioPropuesto.totalPrice)}</p>
+              <p className="font-body text-[11px] text-coal/55">
+                Propuesto {order.cambioPropuesto.propuestoAt?.toDate ? formatDistanceToNowStrict(order.cambioPropuesto.propuestoAt.toDate(), { addSuffix: true, locale: es }) : 'ahora'}.
+                No se puede preparar hasta que responda. Si no responde, llámalo o escríbele.
+              </p>
+              <button onClick={retirarCambio} disabled={loading}
+                className="py-2 rounded-xl border-2 border-coal/20 bg-white text-coal font-body text-sm font-semibold disabled:opacity-50">
+                Retirar la propuesta (queda el pedido original)
+              </button>
+            </div>
+          )}
+          {!etapaDe(order).excepcion && order.cambioPropuesto?.estado === 'rechazado' && (
+            <div className="bg-pepper/10 border border-pepper/40 rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-base tracking-wide text-pepper">❌ El cliente rechazó el cambio</p>
+              <p className="font-body text-xs text-coal/70">Queda el pedido original. Revisa si lo puedes preparar así; si no, cancélalo con motivo.</p>
+              <button onClick={() => updateDoc(doc(db, 'orders', order.id), { 'cambioPropuesto.estado': 'rechazado_visto' }).catch(() => {})}
+                className="font-body text-xs text-coal/60 underline underline-offset-2 self-start">Entendido</button>
             </div>
           )}
 
@@ -886,6 +947,57 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               </div>
             )}
           </Section>
+          )}
+
+          {/* Proponer un cambio al cliente (Fase 7, §9.2): solo antes de preparar */}
+          {puedeProponer && (
+            <div className="bg-white border-2 border-coal/10 rounded-2xl p-4 flex flex-col gap-3">
+              {!proponiendo ? (
+                <button onClick={() => setProponiendo(true)} className="w-full py-2.5 rounded-xl border border-tangelo/50 text-tangelo font-body text-sm font-semibold hover:bg-tangelo/5 flex items-center justify-center gap-1.5">
+                  <Pencil size={15} /> Proponer un cambio al cliente
+                </button>
+              ) : (
+                <>
+                  <p className="font-display text-base tracking-wide text-coal">✏️ Proponer un cambio</p>
+                  <p className="font-body text-xs text-coal/60">
+                    El cliente ve su pedido original y cómo quedaría, y acepta o rechaza. Hasta que responda no se puede preparar.
+                  </p>
+                  <div>
+                    <label className="label-field">Productos como quedarían</label>
+                    <textarea className="textarea-field h-28 scroll-custom text-sm" value={propItems} onChange={e => setPropItems(e.target.value)} />
+                  </div>
+                  <div className={`grid gap-2 ${pickup ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    <div>
+                      <label className="label-field">Precio productos</label>
+                      <input className="input-field" inputMode="numeric" value={propQp} onChange={e => setPropQp(e.target.value.replace(/[^\d]/g, ''))} />
+                    </div>
+                    {!pickup && (
+                      <div>
+                        <label className="label-field">Domicilio</label>
+                        <input className="input-field" inputMode="numeric" value={propDp} onChange={e => setPropDp(e.target.value.replace(/[^\d]/g, ''))} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label-field">Motivo (lo ve el cliente) *</label>
+                    <input className="input-field" placeholder="Ej: Se nos acabó la tocineta; va con queso" value={propMotivo} onChange={e => setPropMotivo(e.target.value)} />
+                  </div>
+                  <p className="font-body text-sm text-coal">
+                    Nuevo total: <strong className="text-cherry">{fmt((Number(propQp) || 0) + (pickup ? 0 : Number(propDp) || 0))}</strong>
+                  </p>
+                  {(order.pagoAdelantado || Number(order.saldoAplicado?.monto) > 0) && (
+                    <p className="font-body text-xs text-tangelo">
+                      {order.pagoAdelantado ? 'Este pedido ya está pagado' : 'Este pedido usa saldo a favor'}: el total no puede cambiar. Si no lo puedes preparar igual, cancélalo con motivo.
+                    </p>
+                  )}
+                  {propError && <p className="font-body text-xs text-pepper">{propError}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={() => { setProponiendo(false); setPropError('') }} className="btn-secondary flex-1">Cancelar</button>
+                    <button onClick={enviarPropuesta} disabled={loading} className="btn-primary flex-1">{loading ? 'Enviando…' : 'Enviar propuesta'}</button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {/* Order items */}

@@ -4,7 +4,7 @@ import {
   doc, getDoc, setDoc, updateDoc, addDoc, arrayUnion
 } from 'firebase/firestore'
 import {
-  db, storage, actualizarPedido,
+  db, storage,
   availableRewardsForSede, markRewardNotified,
   enablePush, pushPermission,
 } from '../../services/firebase'
@@ -2120,6 +2120,54 @@ function SinPedidos({ anonimo, onSalir }) {
   )
 }
 
+// ─── Cambio propuesto por la sede (Fase 7, §9.2) ─────────────────────────────
+// El original no se toca hasta que el cliente acepte. Rechazar lo conserva.
+function CambioPropuesto({ order }) {
+  const c = order.cambioPropuesto
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState('')
+  const responder = async (acepta) => {
+    if (!acepta && !window.confirm('¿Rechazar el cambio? Tu pedido queda como lo enviaste y la sede revisa si puede prepararlo así.')) return
+    setBusy(acepta ? 'si' : 'no'); setError('')
+    try { await llamarPedidos(`${order.id}/cambio/responder`, { acepta }) }
+    catch (err) { setError(err instanceof ErrorApi && err.status < 500 ? err.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.') }
+    finally { setBusy(null) }
+  }
+  const totalAntes = c.anterior?.totalPrice ?? ((Number(c.anterior?.quotedPrice) || 0) + (Number(c.anterior?.deliveryPrice) || 0) || null)
+  return (
+    <div className="bg-tangelo/10 border-2 border-tangelo rounded-2xl p-4 flex flex-col gap-3">
+      <div>
+        <p className="font-display text-xl tracking-wide text-tangelo">✏️ La sede propone un cambio</p>
+        {c.motivo && <p className="font-body text-sm text-coal/80 mt-1 leading-relaxed">«{c.motivo}»</p>}
+      </div>
+      <div className="grid grid-cols-1 gap-2">
+        <div className="bg-white/70 rounded-xl p-3">
+          <p className="font-body text-[11px] uppercase tracking-wider text-coal/50 mb-1">Tu pedido original</p>
+          <p className="font-body text-sm text-coal/70 whitespace-pre-line line-through decoration-coal/30">{c.anterior?.items || order.items}</p>
+          {totalAntes != null && <p className="font-body text-xs text-coal/50 mt-1">Total: {fmt(totalAntes)}</p>}
+        </div>
+        <div className="bg-white rounded-xl p-3 border border-tangelo/40">
+          <p className="font-body text-[11px] uppercase tracking-wider text-tangelo mb-1">Como quedaría</p>
+          <p className="font-body text-sm text-coal whitespace-pre-line">{c.items}</p>
+          <p className="font-body text-sm font-bold text-coal mt-1">
+            Total: <span className="text-cherry">{fmt(c.totalPrice)}</span>
+            {order.deliveryMode !== 'pickup' && c.deliveryPrice > 0 && <span className="font-normal text-coal/60 text-xs"> (incluye domicilio {fmt(c.deliveryPrice)})</span>}
+          </p>
+        </div>
+      </div>
+      <p className="font-body text-xs text-coal/65">Mientras no respondas, la sede no empieza a prepararlo.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => responder(true)} disabled={!!busy} className="btn-primary">{busy === 'si' ? 'Enviando…' : 'Aceptar el cambio'}</button>
+        <button onClick={() => responder(false)} disabled={!!busy}
+          className="py-2.5 rounded-xl border-2 border-coal/20 bg-white text-coal font-body text-sm font-bold disabled:opacity-50">
+          {busy === 'no' ? 'Enviando…' : 'Rechazar'}
+        </button>
+      </div>
+      {error && <p className="font-body text-xs text-pepper">{error}</p>}
+    </div>
+  )
+}
+
 // ─── Devolución (lado cliente) ────────────────────────────────────────────────
 // El pedido no siguió y ya lo había pagado por transferencia: elige si quiere
 // la plata de vuelta por transferencia o como saldo a favor (solo con cuenta
@@ -2262,40 +2310,22 @@ function ClientOrderDetail({ order, onClose }) {
   const [extraError,  setExtraError]  = useState('')
   const [savingExtra, setSavingExtra] = useState(false)
 
-  // Mientras la caja no lo haya despachado, el cliente puede sumar algo más al
-  // pedido —pasa seguido: ya cotizado, se antojan de una bebida o un adicional—.
-  // Si ya estaba cotizado vuelve a 'pending': el total cambió y la caja tiene
-  // que recotizar antes de seguir.
-  // Con pago adelantado no: el total ya está pagado (o el cambio ya está
-  // calculado) y sumar productos lo descuadraría. Para eso está el chat.
-  // Con una solicitud de cancelación (u otra excepción) en curso, tampoco.
-  const canAddItems = ['pending', 'quoted'].includes(order.status) && !order.pagoAdelantado && !etapaDe(order).excepcion
+  // Mientras la sede no haya confirmado (Enviado), el cliente puede sumar algo
+  // —pasa seguido: se antojan de una bebida o un adicional— y la caja lo cotiza
+  // con eso (por la API, Fase 7). Después de confirmado, le escribe a la sede y
+  // ella le propone el cambio (§9.2). Con pago adelantado no: ya está pagado.
+  const canAddItems = etapaDe(order).etapa === 'enviado' && !order.pagoAdelantado && !etapaDe(order).excepcion
   const addExtraItem = async () => {
     const txt = extraItem.trim()
     if (!txt) { setExtraError('Escribe qué quieres agregar'); return }
     setExtraError('')
     setSavingExtra(true)
     try {
-      // Si ya estaba cotizado vuelve a Enviado: la caja debe cotizar de nuevo.
-      await actualizarPedido(order, {
-        items: `${order.items || ''}\n+ ${txt}`.trim(),
-        needsRequote: true,
-        ...(order.status === 'quoted'
-          // El billete que había elegido puede no alcanzar con el nuevo total:
-          // se limpia y lo vuelve a escoger cuando llegue la nueva cotización.
-          ? { status: 'pending', cashBillAmount: null, cashChange: null }
-          : {}),
-        clientMessages: arrayUnion({
-          role: 'client',
-          name: user?.displayName || 'Cliente',
-          text: `➕ Quiero agregar a mi pedido: ${txt}`,
-          ts:   Date.now(),
-        }),
-      }, { rol: 'cliente' }, { retroceder: order.status === 'quoted' })
+      await llamarPedidos(`${order.id}/agregar`, { texto: txt })
       setExtraItem('')
       setAddingItem(false)
-    } catch (_) {
-      setExtraError('No se pudo agregar. Revisa tu conexión e intenta de nuevo.')
+    } catch (err) {
+      setExtraError(err instanceof ErrorApi && err.status < 500 ? err.message : 'No se pudo agregar. Revisa tu conexión e intenta de nuevo.')
     } finally { setSavingExtra(false) }
   }
 
@@ -3073,9 +3103,7 @@ function ClientOrderDetail({ order, onClose }) {
                     autoFocus
                   />
                   <p className="font-body text-[11px] text-coal/50">
-                    {order.status === 'quoted'
-                      ? 'La caja volverá a cotizarte con el producto nuevo y te llegará el total actualizado.'
-                      : 'Se suma a tu pedido antes de que la caja te cotice.'}
+                    Se suma a tu pedido antes de que la sede te cotice.
                   </p>
                   {extraError && <p className="font-body text-xs text-pepper">{extraError}</p>}
                   <div className="flex gap-2">
@@ -3098,12 +3126,19 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* La sede propone un cambio (Fase 7, §9.2): aceptar o rechazar */}
+          {excepcionActual === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
+            <CambioPropuesto order={order} />
+          )}
+
           {/* Pidió cancelar: la caja lo está revisando */}
           {solicitudCancelacion && (
             <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-4">
               <p className="font-display text-base tracking-wide text-coal">⏳ Pediste cancelar este pedido</p>
               <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
-                La sede lo está revisando y te confirma aquí mismo.
+                {['en_camino', 'llego'].includes(etapaActual)
+                  ? 'Como ya va en camino, lo decide administración y te confirman aquí mismo.'
+                  : 'La sede lo está revisando y te confirma aquí mismo.'}
                 {order.excepcionMotivo ? <> Tu motivo: «{order.excepcionMotivo}».</> : null}
               </p>
             </div>
@@ -3122,8 +3157,10 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="font-body text-[11px] text-coal/45 text-center">
                 {cancelaDirecto
                   ? 'Puedes cancelar mientras la sede no lo haya confirmado.'
-                  : 'La sede ya lo confirmó: revisa tu solicitud y te responde.'}
-                {' '}¿Solo quieres cambiar algo? Escríbele por el chat de arriba.
+                  : ['en_camino', 'llego'].includes(etapaActual)
+                    ? 'Ya va en camino: tu solicitud le llega a administración, que decide.'
+                    : 'La sede ya lo confirmó: revisa tu solicitud y te responde.'}
+                {' '}¿Solo quieres cambiar algo? Escríbele por el chat de arriba y la sede te propone el cambio.
               </p>
             </div>
           )}
