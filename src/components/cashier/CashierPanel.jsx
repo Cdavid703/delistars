@@ -445,20 +445,20 @@ export default function CashierPanel() {
   return (
     <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
       {/* Header */}
-      <header className="page-header">
-        <div className="flex items-center gap-3">
+      <header className="page-header gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Logo variant="light" size="sm" />
-          <div>
+          <div className="min-w-0">
             <p className="font-display text-base text-coal tracking-wide leading-tight">
               {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Cajero'}
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-tangelo/15 text-tangelo">Cajero</span>
-              <p className="font-body text-xs text-coal/50">{sede?.name}</p>
+              <p className="font-body text-xs text-coal/50 truncate">{sede?.name}</p>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 flex-wrap justify-end">
           <button onClick={() => setShowCuadreTurno(true)} title="Cuadre de turno"
             className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
             <Calculator size={18} />
