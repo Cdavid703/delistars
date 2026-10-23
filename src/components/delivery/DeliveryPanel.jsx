@@ -29,8 +29,10 @@ import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 import TurnoDomiciliario from './TurnoDomiciliario'
 
+// "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
+// el pedido llega ya asignado y aparece directo en "En curso".
 const TABS = [
-  { id: 'pending',   label: 'Pedidos' },
+  { id: 'pending',   label: 'Por aceptar' },
   { id: 'active',    label: 'En curso' },
   { id: 'completed', label: 'Entregados' },
 ]
@@ -90,7 +92,7 @@ const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toL
 export default function DeliveryPanel() {
   const { user, sede, logout, selectSede } = useAuth()
   const [orders,          setOrders]         = useState([])
-  const [tab,             setTab]            = useState('pending')
+  const [tab,             setTab]            = useState('active')
   const [selected,        setSelected]       = useState(null)
   const [notifCount,      setNotifCount]     = useState(0)
   const [showCuadre,      setShowCuadre]     = useState(false)
@@ -139,6 +141,7 @@ export default function DeliveryPanel() {
             ['accepted', 'preparing'].includes(o.status))
           if (nuevos.length) {
             sonar('asignado'); sonó = true
+            setTab('active')
             try {
               if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 new Notification('🛵 DeliStars — Nuevo domicilio', {
@@ -390,20 +393,20 @@ export default function DeliveryPanel() {
           </div>
         </div>
       )}
-      <header className="page-header">
-        <div className="flex items-center gap-3">
+      <header className="page-header gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Logo variant="light" size="sm" />
-          <div>
+          <div className="min-w-0">
             <p className="font-display text-base text-coal tracking-wide leading-tight">
               {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Domiciliario'}
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-mint/15 text-mint">Domiciliario</span>
-              <p className="font-body text-xs text-coal/50">{sede?.id === 'all' ? 'Ambas sedes' : sede?.name}</p>
+              <p className="font-body text-xs text-coal/50 truncate">{sede?.id === 'all' ? 'Ambas sedes' : sede?.name}</p>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 flex-wrap justify-end">
           <BotonPushEquipo email={user?.email} rol="driver" sedeId={sede?.id} />
           <BotonSilencio />
           <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
@@ -423,7 +426,7 @@ export default function DeliveryPanel() {
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
           <div className="relative">
-            <button className="btn-icon" onClick={() => setTab('pending')}>
+            <button className="btn-icon" onClick={() => setTab(pendingOrders.length ? 'pending' : 'active')}>
               <Bell size={20} />
               {notifCount > 0 && <span className="notif-badge">{notifCount}</span>}
             </button>
@@ -451,7 +454,7 @@ export default function DeliveryPanel() {
       )}
 
       <div className="flex border-b border-coal/10 bg-cream/80 px-4 mt-2">
-        {TABS.map(t => {
+        {TABS.filter(t => t.id !== 'pending' || pendingOrders.length > 0).map(t => {
           const count = t.id === 'pending' ? pendingOrders.length : t.id === 'active' ? activeOrders.length : completedOrders.length
           return (
             <button key={t.id} onClick={() => setTab(t.id)}

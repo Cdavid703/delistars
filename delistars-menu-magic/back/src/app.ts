@@ -30,6 +30,7 @@ import mercadeoRoutes from './modules/modulo_mercadeo/routes/mercadeo.routes';
 import pedidosRoutes from './modules/modulo_pedidos/routes/pedidos.routes';
 import equipoRoutes from './modules/modulo_equipo/routes/equipo.routes';
 import cuentaRoutes from './modules/modulo_cuenta/routes/cuenta.routes';
+import authRoutes from './modules/modulo_auth/routes/auth.routes';
 import { programarEliminaciones } from './modules/modulo_cuenta/cuenta.service';
 import { pedidosApiActiva } from './config/firestore';
 
@@ -118,6 +119,7 @@ app.use(`${apiPrefix}/rutas`, rutasRoutes);
 app.use(`${apiPrefix}/pedidos`, pedidosRoutes);
 app.use(`${apiPrefix}/equipo`, equipoRoutes);
 app.use(`${apiPrefix}/cuenta`, cuentaRoutes);
+app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/mercadeo`, mercadeoRoutes);
 
 // 404 Handler
