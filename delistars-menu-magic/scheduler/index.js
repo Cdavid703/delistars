@@ -718,7 +718,11 @@ function watchOrdersForPush() {
           if (prev.etapa !== o.etapa) sendPushForOrder(id, o, true).catch((e) => console.error('[scheduler] push error:', e?.message || e))
           continue
         }
-        sendPushForOrder(id, o).catch((e) => console.error('[scheduler] push error:', e?.message || e))
+        // Fase 5: al confirmar, el domicilio se asigna solo y pasa de "pendiente"
+        // directo a "aceptado" (sin quedar en "cotizado"): al cliente le llega
+        // igual el aviso de que ya está cotizado y puede elegir cómo pagar.
+        const paraCliente = prev?.status === 'pending' && o.status === 'accepted' && o.asignacion ? { ...o, status: 'quoted' } : o
+        sendPushForOrder(id, paraCliente).catch((e) => console.error('[scheduler] push error:', e?.message || e))
         sendPushForStaff(id, o).catch((e) => console.error('[scheduler] push equipo error:', e?.message || e))
       }
       baseline = false
