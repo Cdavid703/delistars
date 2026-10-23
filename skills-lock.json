@@ -7,17 +7,17 @@
       "skillPath": "skills/emil-design-eng/SKILL.md",
       "computedHash": "51f2537e04d15911b41d78e2de24c36a0e26d41beae15e82a954fe5496a5eda9"
     },
+    "gemini-api-dev": {
+      "source": "google-gemini/gemini-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gemini-api-dev/SKILL.md",
+      "computedHash": "3dd98822c90c18be4f7c9484419aaa3aeb62fc729d63527880390cb370ce9907"
+    },
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
       "computedHash": "1ad14198da6e9430fe4f595da83b74b68cfbc052de7d160b65c24fccbab9f148"
-    },
-    "nano-banana-2": {
-      "source": "prime-skills/runcomfy-agent-skills",
-      "sourceType": "github",
-      "skillPath": "nano-banana-2/SKILL.md",
-      "computedHash": "1f8e3c29a2ac938e8f8d874a699ebcd4ed49d604cc3b8ea45d2eeadfc84f8382"
     }
   }
 }
