@@ -236,6 +236,9 @@ function EliminarCuenta({ user }) {
 
   return (
     <Seccion titulo="Eliminar mi cuenta">
+      <p className="font-body text-xs text-coal/60 -mt-1">
+        Cómo usamos y cuidamos tus datos: <a href="/privacidad" target="_blank" rel="noopener" className="text-cherry underline underline-offset-2">política de privacidad</a>.
+      </p>
       {!estado && !error && <p className="font-body text-sm text-coal/60">Revisando tu cuenta…</p>}
 
       {estado?.solicitud ? (

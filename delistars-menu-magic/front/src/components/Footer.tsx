@@ -76,7 +76,8 @@ export const Footer = () => {
       </div>
 
       <div className="container mt-10 pt-6 border-t border-cream/10 text-center text-xs text-cream/50">
-        © {new Date().getFullYear()} DeliStars. Hecho con 🌭 y ❤️
+        © {new Date().getFullYear()} DeliStars. Hecho con 🌭 y ❤️ ·{" "}
+        <a href="/privacidad" className="underline underline-offset-2 hover:text-cherry">Política de privacidad</a>
       </div>
     </footer>
   );
