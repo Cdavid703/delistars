@@ -1,38 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'
+import { FileSpreadsheet, FileText, Info, RefreshCw } from 'lucide-react'
 import { db } from '@/services/firebase'
-import { type Order, DELIVERED_STATUSES, fmtCOP } from '@/lib/orders'
+import { type Order, fmtCOP } from '@/lib/orders'
 import { informeSemana, ultimasSemanas, etiquetaSemana, pesosPorKm, type FilaKm, type PedidoKm } from '@/lib/informeKm'
+import { pedirReporte, periodo, tablasDe, exportarExcel, exportarPDF, pesos, SEDES, type Reporte, type Tabla } from '@/lib/reportes'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-const dayKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-const dayLabel = (d: Date) =>
-  d.toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit' })
-
-// Extrae productos del texto libre de items ("2x Hamburguesa Especial (+ queso)").
-// Best-effort: agrupa por nombre sin adiciones ni notas.
-function parseItems(items?: string): { name: string; qty: number }[] {
-  if (!items) return []
-  const out: { name: string; qty: number }[] = []
-  for (const raw of items.split('\n')) {
-    const line = raw.trim()
-    if (!line) continue
-    const m = line.match(/^(\d+)\s*x\s+(.+)$/i)
-    if (!m) continue
-    let name = m[2]
-      .replace(/\(.*?\)/g, '')     // adiciones "(Adición + queso, ...)"
-      .replace(/\|[^|—]*/g, '')    // salsas/cebollas "| Salsas: ..."
-      .replace(/—\s*".*?"/g, '')   // notas — "sin cebolla"
-      .replace(/\s+/g, ' ')
-      .trim()
-    if (!name || /premio fidelización/i.test(line)) name = '🎁 Premio fidelización (hamburguesa + perro)'
-    out.push({ name, qty: Number(m[1]) || 1 })
-  }
-  return out
-}
 
 const Bar = ({ label, value, max, display, color = 'bg-primary' }: {
   label: string; value: number; max: number; display: string; color?: string
@@ -42,12 +16,12 @@ const Bar = ({ label, value, max, display, color = 'bg-primary' }: {
     <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
       <div className={`${color} h-4 rounded-full transition-all`} style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }} />
     </div>
-    <span className="w-24 shrink-0 text-xs text-coal font-medium">{display}</span>
+    <span className="w-28 shrink-0 text-xs text-coal font-medium">{display}</span>
   </div>
 )
 
 const Card = ({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) => (
-  <div className="bg-white border border-gray-200 rounded-lg p-4">
+  <div className="bg-white border border-gray-200 rounded-lg p-4 min-w-0">
     <p className="font-display font-semibold text-coal">{title}</p>
     {subtitle && <p className="text-xs text-muted-fg mb-3">{subtitle}</p>}
     {!subtitle && <div className="mb-3" />}
@@ -55,11 +29,168 @@ const Card = ({ title, subtitle, children }: { title: string; subtitle?: string;
   </div>
 )
 
-export default function Reportes() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [days, setDays] = useState(14)
-  const [sede, setSede] = useState('')
+const Kpi = ({ label, valor, nota, tono = 'text-coal' }: { label: string; valor: string; nota?: string; tono?: string }) => (
+  <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <p className="text-sm text-muted-fg">{label}</p>
+    <p className={`text-2xl font-display font-bold ${tono}`}>{valor}</p>
+    {nota && <p className="text-xs text-muted-fg mt-0.5">{nota}</p>}
+  </div>
+)
 
+function TablaReporte({ t }: { t: Tabla }) {
+  return (
+    <Card title={t.titulo}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-fg border-b border-gray-200">
+              {t.columnas.map((c, i) => <th key={c} className={`py-1.5 px-2 font-medium ${i ? 'text-right' : ''}`}>{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {t.filas.map((f, i) => (
+              <tr key={i} className="border-b border-gray-100 last:border-0">
+                {f.map((c, j) => <td key={j} className={`py-1.5 px-2 ${j ? 'text-right tabular-nums' : 'text-coal whitespace-pre'}`}>{c}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
+
+// Reportes aprobados (especificación §16.3): los calcula el servidor con los
+// filtros de fecha (Bogotá) y sede; Excel y PDF salen con los mismos filtros.
+function ReportesAprobados() {
+  const [{ desde, hasta }, setRango] = useState(() => periodo('7'))
+  const [sede, setSede] = useState('')
+  const [rep, setRep] = useState<Reporte | null>(null)
+  const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState('')
+  const [exportando, setExportando] = useState('')
+  const [verFormulas, setVerFormulas] = useState(false)
+  const [vuelta, setVuelta] = useState(0)
+
+  useEffect(() => {
+    let vivo = true
+    setCargando(true); setError('')
+    pedirReporte(desde, hasta, sede)
+      .then((r) => { if (vivo) setRep(r) })
+      .catch((e) => { if (vivo) { setRep(null); setError(e.message) } })
+      .finally(() => { if (vivo) setCargando(false) })
+    return () => { vivo = false }
+  }, [desde, hasta, sede, vuelta])
+
+  const tablas = useMemo(() => (rep ? tablasDe(rep) : []), [rep])
+  const grupos = useMemo(() => [...new Set(tablas.map((t) => t.grupo))], [tablas])
+  const exportar = async (cual: 'excel' | 'pdf') => {
+    if (!rep) return
+    setExportando(cual)
+    try { await (cual === 'excel' ? exportarExcel(rep) : exportarPDF(rep)) } finally { setExportando('') }
+  }
+  const atajos: [Parameters<typeof periodo>[0], string][] = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['7', '7 días'], ['30', '30 días'], ['mes', 'Este mes'], ['mesPasado', 'Mes pasado']]
+  const f = rep?.financiero
+  const maxDia = Math.max(1, ...(rep?.demanda.porFecha.map((d) => d.ventas) ?? [0]))
+  const horas = rep?.demanda.porHora.filter((h) => h.pedidos) ?? []
+  const maxHora = Math.max(1, ...horas.map((h) => h.pedidos))
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          {atajos.map(([k, l]) => {
+            const p = periodo(k)
+            const activo = p.desde === desde && p.hasta === hasta
+            return (
+              <button key={k} onClick={() => setRango(p)}
+                className={`px-3 py-1.5 rounded-full text-sm border ${activo ? 'bg-coal text-white border-coal' : 'border-gray-300 text-coal hover:bg-gray-50'}`}>{l}</button>
+            )
+          })}
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs text-muted-fg flex flex-col gap-1">Desde
+            <input type="date" value={desde} max={hasta} onChange={(e) => e.target.value && setRango({ desde: e.target.value, hasta })}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm text-coal" />
+          </label>
+          <label className="text-xs text-muted-fg flex flex-col gap-1">Hasta
+            <input type="date" value={hasta} min={desde} onChange={(e) => e.target.value && setRango({ desde, hasta: e.target.value })}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm text-coal" />
+          </label>
+          <label className="text-xs text-muted-fg flex flex-col gap-1">Sede
+            <select value={sede} onChange={(e) => setSede(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm text-coal">
+              <option value="">Las dos sedes</option>
+              {Object.entries(SEDES).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+            </select>
+          </label>
+          <button onClick={() => setVuelta((n) => n + 1)} disabled={cargando} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 text-sm text-coal hover:bg-gray-50 disabled:opacity-50">
+            <RefreshCw size={14} className={cargando ? 'animate-spin' : ''} aria-hidden="true" /> Actualizar
+          </button>
+          <div className="flex gap-2 ml-auto">
+            <button onClick={() => exportar('excel')} disabled={!rep || !!exportando} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-mint text-white text-sm disabled:opacity-50">
+              <FileSpreadsheet size={15} aria-hidden="true" /> {exportando === 'excel' ? 'Preparando…' : 'Excel'}
+            </button>
+            <button onClick={() => exportar('pdf')} disabled={!rep || !!exportando} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-coal text-white text-sm disabled:opacity-50">
+              <FileText size={15} aria-hidden="true" /> {exportando === 'pdf' ? 'Preparando…' : 'PDF'}
+            </button>
+          </div>
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {rep?.avisos.map((a) => <p key={a} className="text-xs text-muted-fg">{a}</p>)}
+      </div>
+
+      {!rep && cargando && <p className="text-sm text-muted-fg">Armando el reporte…</p>}
+
+      {rep && f && (
+        <div className={`flex flex-col gap-6 transition-opacity ${cargando ? 'opacity-50' : ''}`}>
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <Kpi label="Ventas" valor={pesos(f.ventas.total)} nota={`${f.pedidos.entregados} pedidos entregados`} tono="text-mint" />
+            <Kpi label="Ticket promedio" valor={pesos(f.ventas.ticketPromedio)} />
+            <Kpi label="Domicilios cobrados" valor={pesos(f.ventas.domicilios)} tono="text-tangelo" />
+            <Kpi label="Cancelados y rechazados" valor={String(f.pedidos.cancelados + f.pedidos.rechazados)} nota={`de ${f.pedidos.total} recibidos`} />
+            <Kpi label="Cobros pendientes" valor={pesos(f.pendientes.efectivoPorCuadrar.monto + f.pendientes.transferenciasSinVerificar.monto)}
+              nota={`${f.pendientes.efectivoPorCuadrar.pedidos + f.pendientes.transferenciasSinVerificar.pedidos} pedidos`} tono={f.pendientes.efectivoPorCuadrar.pedidos + f.pendientes.transferenciasSinVerificar.pedidos ? 'text-tangelo' : 'text-coal'} />
+            <Kpi label="Diferencias sin resolver" valor={String(f.cuadres.diferenciasSinResolver)} nota={`neto ${pesos(f.cuadres.diferenciaNeta)}`} tono={f.cuadres.diferenciasSinResolver ? 'text-red-600' : 'text-coal'} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card title="Ventas por día" subtitle="Pedidos entregados, por la fecha en que se pidieron">
+              {rep.demanda.porFecha.length === 0 ? <p className="text-sm text-muted-fg">Sin ventas en el período.</p> : (
+                <div className="space-y-1.5">{rep.demanda.porFecha.map((d) => <Bar key={d.fecha} label={d.fecha.slice(5)} value={d.ventas} max={maxDia} display={`${fmtCOP(d.ventas)} (${d.pedidos})`} />)}</div>
+              )}
+            </Card>
+            <Card title="Horas pico" subtitle="Pedidos entregados según la hora en que se pidieron">
+              {horas.length === 0 ? <p className="text-sm text-muted-fg">Sin datos.</p> : (
+                <div className="space-y-1.5">{horas.map((h) => <Bar key={h.hora} label={`${h.hora}:00`} value={h.pedidos} max={maxHora} display={`${h.pedidos} pedido${h.pedidos !== 1 ? 's' : ''}`} color="bg-mustard" />)}</div>
+              )}
+            </Card>
+          </div>
+
+          {grupos.map((g) => (
+            <section key={g} className="flex flex-col gap-3">
+              <h2 className="font-display text-lg font-semibold text-coal">{g}</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                {tablas.filter((t) => t.grupo === g).map((t) => <TablaReporte key={t.titulo} t={t} />)}
+              </div>
+            </section>
+          ))}
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <button onClick={() => setVerFormulas((v) => !v)} className="flex items-center gap-2 text-sm font-medium text-coal">
+              <Info size={15} aria-hidden="true" /> Cómo se calcula
+            </button>
+            {verFormulas && <ul className="mt-2 list-disc pl-5 text-xs text-muted-fg space-y-1">{rep.formulas.map((x) => <li key={x}>{x}</li>)}</ul>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Reportes() {
+  // Pedidos recientes: solo para el embudo y los kilómetros de la semana.
+  const [orders, setOrders] = useState<Order[]>([])
+  const [days] = useState(14)
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(500))
     return onSnapshot(q, (snap) => {
@@ -93,126 +224,15 @@ export default function Reportes() {
     return { checkouts, clientOrders, abandoned, rate }
   }, [funnel, orders, days])
 
-  // Solo pedidos ENTREGADOS dentro del rango — ventas reales, no intentos.
-  const delivered = useMemo(() => {
-    const cutoff = Date.now() - days * DAY_MS
-    return orders.filter((o) => {
-      if (!DELIVERED_STATUSES.includes(o.status)) return false
-      if (sede && o.sedeName !== sede) return false
-      const d = o.createdAt?.toDate?.()
-      return !!d && d.getTime() >= cutoff
-    })
-  }, [orders, days, sede])
-
-  const sedes = useMemo(
-    () => Array.from(new Set(orders.map((o) => o.sedeName).filter(Boolean) as string[])).sort(),
-    [orders],
-  )
-
-  // Ventas por día
-  const byDay = useMemo(() => {
-    const map: Record<string, { label: string; total: number; count: number }> = {}
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(Date.now() - i * DAY_MS)
-      map[dayKey(d)] = { label: dayLabel(d), total: 0, count: 0 }
-    }
-    delivered.forEach((o) => {
-      const d = o.createdAt!.toDate()
-      const k = dayKey(d)
-      if (map[k]) { map[k].total += o.totalPrice || 0; map[k].count++ }
-    })
-    return Object.values(map)
-  }, [delivered, days])
-
-  // Comparación entre sedes (sin el filtro de sede, para poder compararlas)
-  const bySede = useMemo(() => {
-    const cutoff = Date.now() - days * DAY_MS
-    const map: Record<string, { total: number; count: number }> = {}
-    orders.forEach((o) => {
-      if (!DELIVERED_STATUSES.includes(o.status)) return
-      const d = o.createdAt?.toDate?.()
-      if (!d || d.getTime() < cutoff) return
-      const k = o.sedeName || 'Sin sede'
-      map[k] = map[k] || { total: 0, count: 0 }
-      map[k].total += o.totalPrice || 0
-      map[k].count++
-    })
-    return Object.entries(map).sort(([, a], [, b]) => b.total - a.total)
-  }, [orders, days])
-
-  // Top productos (parseo best-effort del texto de items)
-  const topProducts = useMemo(() => {
-    const map: Record<string, number> = {}
-    delivered.forEach((o) => parseItems(o.items).forEach(({ name, qty }) => {
-      map[name] = (map[name] || 0) + qty
-    }))
-    return Object.entries(map).sort(([, a], [, b]) => b - a).slice(0, 10)
-  }, [delivered])
-
-  // Horas pico (pedidos entregados por hora de creación)
-  const byHour = useMemo(() => {
-    const map: Record<number, number> = {}
-    delivered.forEach((o) => {
-      const h = o.createdAt!.toDate().getHours()
-      map[h] = (map[h] || 0) + 1
-    })
-    const hours = Object.keys(map).map(Number).sort((a, b) => a - b)
-    return hours.map((h) => ({ h, count: map[h] }))
-  }, [delivered])
-
-  const totalVentas = delivered.reduce((s, o) => s + (o.totalPrice || 0), 0)
-  const totalDomis = delivered.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
-  const ticketPromedio = delivered.length ? totalVentas / delivered.length : 0
-
-  const maxDia = Math.max(1, ...byDay.map((d) => d.total))
-  const maxSede = Math.max(1, ...bySede.map(([, v]) => v.total))
-  const maxProd = Math.max(1, ...topProducts.map(([, n]) => n))
-  const maxHora = Math.max(1, ...byHour.map((x) => x.count))
-
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Reportes</h1>
-          <p className="text-muted-fg mt-1">Ventas entregadas — últimos {days} días{sede ? ` · ${sede}` : ' · todas las sedes'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={sede} onChange={(e) => setSede(e.target.value)} className="border rounded px-2 py-1 text-sm">
-            <option value="">Todas las sedes</option>
-            {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {[7, 14, 30].map((n) => (
-            <button
-              key={n}
-              onClick={() => setDays(n)}
-              className={`px-3 py-1 rounded text-sm font-medium ${days === n ? 'bg-primary text-white' : 'border text-coal'}`}
-            >
-              {n}d
-            </button>
-          ))}
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl sm:text-4xl font-display font-bold text-coal">Reportes</h1>
+        <p className="text-muted-fg mt-1">Ventas, tiempos, productos, demanda, clientes, domicilios, cancelaciones y reclamos, con fechas de Bogotá.</p>
       </div>
+      <ReportesAprobados />
 
-      {/* Totales del período */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Pedidos entregados</p>
-          <p className="text-2xl font-display font-bold text-coal">{delivered.length}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Ventas</p>
-          <p className="text-2xl font-display font-bold text-mint">{fmtCOP(totalVentas)}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Domicilios cobrados</p>
-          <p className="text-2xl font-display font-bold text-tangelo">{fmtCOP(totalDomis)}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-muted-fg">Ticket promedio</p>
-          <p className="text-2xl font-display font-bold text-coal">{fmtCOP(Math.round(ticketPromedio))}</p>
-        </div>
-      </div>
-
+      <h2 className="font-display text-lg font-semibold text-coal mt-10 mb-3">Otros</h2>
       {/* Embudo de carritos: checkout iniciado vs pedido enviado (todas las sedes) */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
@@ -229,60 +249,7 @@ export default function Reportes() {
         <p className="text-xs text-muted-fg mt-1">Se mide desde que el cliente llega con su carrito al paso de dirección. Los datos se acumulan desde el 10 de julio de 2026.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Ventas por día" subtitle="Total vendido cada día (pedidos entregados)">
-          <div className="space-y-1.5">
-            {byDay.map((d, i) => (
-              <Bar key={i} label={d.label} value={d.total} max={maxDia}
-                display={`${fmtCOP(d.total)} (${d.count})`} />
-            ))}
-          </div>
-        </Card>
-
-        <div className="flex flex-col gap-6">
-          <Card title="Comparación entre sedes" subtitle="Ventas del período por sede">
-            {bySede.length === 0 ? <p className="text-sm text-muted-fg">Sin datos.</p> : (
-              <div className="space-y-1.5">
-                {bySede.map(([name, v]) => (
-                  <Bar key={name} label={name.split(',')[0]} value={v.total} max={maxSede}
-                    display={`${fmtCOP(v.total)} (${v.count})`} color="bg-mint" />
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card title="Horas pico" subtitle="Pedidos entregados según la hora en que se pidieron">
-            {byHour.length === 0 ? <p className="text-sm text-muted-fg">Sin datos.</p> : (
-              <div className="space-y-1.5">
-                {byHour.map(({ h, count }) => (
-                  <Bar key={h} label={`${h}:00`} value={count} max={maxHora}
-                    display={`${count} pedido${count !== 1 ? 's' : ''}`} color="bg-mustard" />
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
-
-        <KmSemana orders={orders} sede={sede} />
-
-        <Card title="Productos más vendidos" subtitle="Leído del detalle de cada pedido (aproximado)">
-          {topProducts.length === 0 ? <p className="text-sm text-muted-fg">Sin datos.</p> : (
-            <div className="space-y-1.5">
-              {topProducts.map(([name, qty]) => (
-                <div key={name} className="flex items-center gap-2 text-sm">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-coal truncate">{name}</p>
-                    <div className="bg-gray-100 rounded-full h-3 overflow-hidden mt-0.5">
-                      <div className="bg-cherry h-3 rounded-full" style={{ width: `${(qty / maxProd) * 100}%` }} />
-                    </div>
-                  </div>
-                  <span className="w-10 shrink-0 text-xs text-coal font-medium text-right">{qty}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+      <KmSemana orders={orders} sede="" />
     </div>
   )
 }

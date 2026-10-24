@@ -35,6 +35,7 @@ import avisosRoutes from './modules/modulo_avisos/routes/avisos.routes';
 import reclamosRoutes from './modules/modulo_reclamos/routes/reclamos.routes';
 import cuadresRoutes from './modules/modulo_cuadres/routes/cuadres.routes';
 import impresionesRoutes from './modules/modulo_impresiones/routes/impresiones.routes';
+import reportesRoutes from './modules/modulo_reportes/routes/reportes.routes';
 import { programarEliminaciones } from './modules/modulo_cuenta/cuenta.service';
 import { pedidosApiActiva } from './config/firestore';
 
@@ -128,6 +129,7 @@ app.use(`${apiPrefix}/avisos`, avisosRoutes);
 app.use(`${apiPrefix}/reclamos`, reclamosRoutes);
 app.use(`${apiPrefix}/cuadres`, cuadresRoutes);
 app.use(`${apiPrefix}/impresiones`, impresionesRoutes);
+app.use(`${apiPrefix}/reportes`, reportesRoutes);
 app.use(`${apiPrefix}/mercadeo`, mercadeoRoutes);
 
 // 404 Handler
