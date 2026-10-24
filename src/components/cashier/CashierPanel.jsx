@@ -20,6 +20,7 @@ import BotonPushEquipo from '../common/BotonPushEquipo'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
+import TableroCaja from './TableroCaja'
 import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import AssignDeliveryDetail from './AssignDeliveryDetail'
@@ -67,6 +68,17 @@ const alarm = crearAlarma()
 export default function CashierPanel() {
   const { user, sede, logout, selectSede } = useAuth()
   const [tab,             setTab]            = useState('active')
+  // Computador (≥1280 px): «Activos» se ve como tablero por etapa.
+  const [ancho, setAncho] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)')
+    const cambio = () => setAncho(mq.matches)
+    mq.addEventListener('change', cambio)
+    return () => mq.removeEventListener('change', cambio)
+  }, [])
+  // Reloj de la caja: la demora de cada tarjeta se actualiza cada 30 s.
+  const [ahora, setAhora] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 30000); return () => clearInterval(t) }, [])
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])
   const [showForm,        setShowForm]       = useState(false)
@@ -444,7 +456,7 @@ export default function CashierPanel() {
   }
 
   return (
-    <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
+    <div className="min-h-screen-safe xl:h-dvh xl:min-h-0 flex flex-col bg-gradient-soft">
       {/* Header */}
       <header className="page-header gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -461,37 +473,43 @@ export default function CashierPanel() {
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           <button onClick={() => setShowCuadreTurno(true)} title="Cuadre de turno"
-            className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
+            className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2 w-auto min-w-11">
             <Calculator size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
           <RoleSwitcher />
-          <button onClick={() => setShowManual(true)} className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
+          <button onClick={() => setShowManual(true)} className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2 w-auto min-w-11">
             <BookOpen size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
           </button>
           <button onClick={() => setShowTracking(true)} title="Ver ubicación domiciliarios"
-            className="btn-icon text-coal/60 hover:text-mint relative">
+            className="btn-icon text-coal/60 hover:text-mint relative flex items-center gap-1 px-2 w-auto min-w-11">
             <Navigation size={20} />
+            <span className="font-body text-xs font-semibold hidden xl:inline">Mapa</span>
             {orders.filter(o => ['accepted','in_transit','arrived'].includes(o.status)).length > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-mint animate-pulse" />
             )}
           </button>
-          <button onClick={() => setAddDriver(v => !v)} className="btn-icon" title="Gestionar domiciliarios">
+          <button onClick={() => setAddDriver(v => !v)} className="btn-icon flex items-center gap-1 px-2 w-auto min-w-11" title="Gestionar domiciliarios">
             <Users size={20} />
+            <span className="font-body text-xs font-semibold hidden xl:inline">Domiciliarios</span>
           </button>
-          <button onClick={() => selectSede(null)} className="btn-icon" title="Cambiar sede">
+          <button onClick={() => selectSede(null)} className="btn-icon flex items-center gap-1 px-2 w-auto min-w-11" title="Cambiar sede">
             <MapPin size={20} />
+            <span className="font-body text-xs font-semibold hidden xl:inline">Sede</span>
           </button>
-          <button onClick={logout} className="btn-icon" title="Cerrar sesión">
+          <button onClick={logout} className="btn-icon flex items-center gap-1 px-2 w-auto min-w-11" title="Cerrar sesión">
             <LogOut size={20} />
+            <span className="font-body text-xs font-semibold hidden xl:inline">Salir</span>
           </button>
         </div>
       </header>
 
       {/* Estado del sonido — que la caja NUNCA se entere de que el audio está
           bloqueado por haber perdido un pedido. */}
-      <div className="mx-4 mt-2 flex items-center gap-2 flex-wrap">
+      {/* En computador, sonido/avisos y la apertura de la sede van en una sola fila. */}
+      <div className="xl:flex xl:items-center xl:gap-4 xl:mx-4">
+      <div className="mx-4 xl:mx-0 mt-2 flex items-center gap-2 flex-wrap">
         <BotonSilencio />
         <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
         {/* Avisos de la caja de la sede (compartidos: lo que uno marca, lo ven todos) y los propios */}
@@ -502,7 +520,7 @@ export default function CashierPanel() {
 
       {/* Estado de la sede para clientes y apertura/cierre a mano (hasta el final del día) */}
       {horarios !== undefined && (
-        <div className="mx-4 mt-2 flex flex-wrap gap-2">
+        <div className="mx-4 xl:mx-0 xl:ml-auto mt-2 flex flex-wrap gap-2">
           {sedesHorario.map(s => {
             const e = estadoSede(horarios?.[s.id], ahoraMin)
             const ocupado = cambiandoSede === s.id
@@ -530,6 +548,7 @@ export default function CashierPanel() {
           })}
         </div>
       )}
+      </div>
 
       {/* Driver management panel */}
       {addDriver && (
@@ -609,7 +628,7 @@ export default function CashierPanel() {
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto">
+      <div className="flex items-center border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-3`}>
@@ -630,6 +649,11 @@ export default function CashierPanel() {
             )}
           </button>
         ))}
+        {!showForm && (
+          <button onClick={() => setShowForm(true)} className="btn-primary btn-sm hidden xl:inline-flex ml-3 my-1.5 whitespace-nowrap flex-shrink-0">
+            <Plus size={16} aria-hidden="true" /> Nuevo pedido
+          </button>
+        )}
       </div>
 
       {/* Mensajes sin leer del cliente. El banner ABRE el pedido directamente:
@@ -661,7 +685,9 @@ export default function CashierPanel() {
       )}
 
       {/* Aparato principal de la caja (Fase 6): solo ese suena */}
-      <PuestoCaja puesto={puesto} />
+      <div className="grid xl:grid-cols-2 xl:items-start">
+        <PuestoCaja puesto={puesto} />
+      </div>
 
       {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
       <EstadoDomiciliarios sedeId={sede?.id} />
@@ -738,9 +764,15 @@ export default function CashierPanel() {
       )}
 
       {/* Orders list */}
-      <main className="flex-1 overflow-y-auto scroll-custom p-4 pb-24 flex flex-col gap-3 stagger">
+      {tab === 'active' && ancho ? (
+        <main className="flex-1 min-h-0 p-4 pt-3">
+          <TableroCaja orders={filteredOrders} ahora={ahora} unreadChatMap={unreadChatMap}
+            onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} />
+        </main>
+      ) : (
+      <main className="flex-1 min-h-0 overflow-y-auto scroll-custom p-4 pb-24 xl:pb-6 flex flex-col gap-3 stagger md:grid md:grid-cols-2 xl:grid-cols-3 md:items-start md:content-start">
         {filteredOrders.length === 0 && !showForm && (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center md:col-span-2 xl:col-span-3">
             {tab === 'active' ? <ShoppingBag size={32} className="text-coal/25" aria-hidden="true" />
               : tab === 'assign' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />
               : tab === 'cuadre' ? <Banknote size={32} className="text-coal/25" aria-hidden="true" />
@@ -757,16 +789,18 @@ export default function CashierPanel() {
           <OrderCard
             key={order.id}
             order={order}
+            ahora={ahora}
             unreadCount={unreadChatMap[order.id] || 0}
             onClick={() => tab === 'assign' ? openAssign(order) : openOrderDetail(order.id)}
             onToggleFacturado={() => toggleFacturado(order)}
           />
         ))}
       </main>
+      )}
 
       {/* Barra fija: el botón flotante tapaba el final de la última tarjeta */}
       {!showForm && (
-        <div className="fixed bottom-0 inset-x-0 z-30 bg-cream/90 backdrop-blur-md border-t border-coal/10 px-4 pt-3"
+        <div className="xl:hidden fixed bottom-0 inset-x-0 z-30 bg-cream/90 backdrop-blur-md border-t border-coal/10 px-4 pt-3"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
           <button onClick={() => setShowForm(true)} className="btn-primary w-full max-w-lg mx-auto">
             <Plus size={20} aria-hidden="true" /> Nuevo pedido

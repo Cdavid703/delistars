@@ -1,206 +1,165 @@
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
-import StatusBadge from '../common/StatusBadge'
-import { MapPin, Phone, Clock, User, Bike, MessageCircle, Check, Receipt, Gift, CircleCheck, CircleX, AlertCircle, Plus, Banknote } from 'lucide-react'
+import { Bike, Store, MessageCircle, Check, Receipt, Gift, CircleCheck, CircleX, AlertCircle, Plus, Banknote, Clock, Smartphone, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { etapaDe, ETAPAS } from '../../utils/etapas'
+import { minutosEnEtapa, DEMORA } from '../../utils/tableroCaja'
 
-// Chulito de "facturado" (ingresado al sistema de facturación). Se puede prender
-// y apagar sin abrir el pedido; por eso corta la propagación del clic de la
-// tarjeta. Aparece en todos los pedidos, sin importar el medio de pago.
-function FacturadoToggle({ facturado, onToggle }) {
-  const stop = (e) => { e.stopPropagation(); onToggle?.() }
+// Tarjeta de pedido de la caja. Se lee de un vistazo, de arriba abajo:
+//   1. número, etapa real y cuánto lleva en ella (se pone naranja/roja si se demora)
+//   2. lo que pide atención (una línea por aviso, sin cajas gigantes)
+//   3. quién y a dónde
+//   4. qué pidió (sin precios por línea)
+//   5. total, cómo paga, domiciliario y el chulito de facturado
+// La etapa sale de etapaDe (no del status viejo): un pedido «listo» ya no dice
+// «En preparación».
+
+const NOMBRE_ETAPA = Object.fromEntries(ETAPAS.domicilio.map((e) => [e.id, e.texto]))
+
+const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`
+
+function textoMinutos(m) {
+  if (m == null) return ''
+  if (m < 1) return 'ahora'
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  return `${h} h ${m % 60} min`
+}
+
+function Demora({ order, ahora }) {
+  const { etapa } = etapaDe(order)
+  const m = minutosEnEtapa(order, ahora)
+  if (m == null || etapa === 'entregado') return null
+  const [aviso, alerta] = DEMORA[etapa] || [Infinity, Infinity]
+  const tono = m >= alerta ? 'bg-pepper text-cream' : m >= aviso ? 'bg-tangelo/15 text-tangelo' : 'text-coal/45'
   return (
-    <span
-      role="checkbox"
-      aria-checked={facturado}
-      tabIndex={0}
-      onClick={stop}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') stop(e) }}
-      className={`mt-2 flex items-center gap-2 rounded-xl border px-3 py-2 cursor-pointer transition-colors select-none ${
-        facturado
-          ? 'bg-mint/15 border-mint/40 hover:bg-mint/25'
-          : 'bg-white border-coal/15 hover:border-coal/30 hover:bg-smoked/40'
-      }`}
-    >
-      <span className={`flex items-center justify-center w-5 h-5 rounded-md border-2 flex-shrink-0 transition-colors ${
-        facturado ? 'bg-mint border-mint text-cream' : 'bg-white border-coal/25 text-transparent'
-      }`}>
-        <Check size={13} strokeWidth={3.5} />
-      </span>
-      <Receipt size={13} className={facturado ? 'text-mint' : 'text-coal/35'} />
-      <span className={`font-body text-xs font-bold ${facturado ? 'text-mint' : 'text-coal/45'}`}>
-        {facturado ? 'Facturado' : 'Sin facturar'}
-      </span>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-body text-[11px] font-semibold tabular ${tono}`}
+      title="Tiempo en esta etapa">
+      <Clock size={11} aria-hidden="true" /> {textoMinutos(m)}
     </span>
   )
 }
 
-const BORDER_COLOR = {
-  pending:        'border-mustard',
-  quoted:         'border-tangelo',
-  assigned:       'border-tangelo',
-  accepted:       'border-mint',
-  in_transit:     'border-cherry',
-  arrived:        'border-tangelo',
-  delivered_paid: 'border-mint',
-  delivered_cash: 'border-mustard',
-  pending_cuadre: 'border-mustard',
-  completed:      'border-smoked',
+// Una línea de aviso: icono + texto corto. El tono dice cuánto urge.
+const TONO = {
+  urgente: 'bg-pepper/10 text-pepper',
+  atencion: 'bg-tangelo/10 text-coal',
+  bien: 'bg-mint/10 text-mint',
+  premio: 'bg-mint text-cream',
+}
+function Aviso({ tono, icono: Icono, children }) {
+  return (
+    <p className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-body text-xs font-semibold leading-snug ${TONO[tono]}`}>
+      <Icono size={13} className="flex-shrink-0" aria-hidden="true" />
+      <span className="min-w-0">{children}</span>
+    </p>
+  )
 }
 
-export default function OrderCard({ order, onClick, compact = false, unreadCount = 0, onToggleFacturado }) {
-  const border = unreadCount > 0 ? 'border-cherry' : (BORDER_COLOR[order.status] || 'border-smoked')
-  const time   = order.createdAt?.toDate ? format(order.createdAt.toDate(), 'HH:mm', { locale: es }) : '--'
+function avisosDe(order, unreadCount) {
+  const a = []
+  if (order.excepcion === 'cancelacion_solicitada') a.push({ k: 'cancelar', tono: 'urgente', icono: AlertCircle, texto: 'Pidió cancelar · ábrelo para resolver' })
+  if (unreadCount > 0) a.push({ k: 'chat', tono: 'urgente', icono: MessageCircle, texto: unreadCount === 1 ? '1 mensaje nuevo del cliente' : `${unreadCount} mensajes nuevos del cliente` })
+  if (order.loyaltyRedemption?.count > 0) a.push({ k: 'premio', tono: 'premio', icono: Gift, texto: `Premio ×${order.loyaltyRedemption.count} · Hamburguesa Especial + Perro Grande · NO cobrar` })
+  if (order.needsRequote) a.push({ k: 'recotizar', tono: 'atencion', icono: Plus, texto: 'Agregó productos · vuelve a cotizar' })
+  if (order.excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente') a.push({ k: 'cambio', tono: 'atencion', icono: Clock, texto: 'Cambio propuesto · esperando al cliente' })
+  if (!order.excepcion && order.cambioPropuesto?.estado === 'rechazado') a.push({ k: 'rechazo', tono: 'urgente', icono: CircleX, texto: 'Rechazó el cambio · queda el original' })
+  if (order.sinDomiciliario && !order.driverEmail && order.deliveryMode !== 'pickup' && order.status === 'quoted') a.push({ k: 'sindomi', tono: 'atencion', icono: Bike, texto: 'Nadie en turno · asígnalo a mano' })
+  if (order.pagoAdelantado && order.status === 'pending') a.push({ k: 'completo', tono: 'bien', icono: CircleCheck, texto: `Pedido completo · ${order.payment} · solo aceptar` })
+  if (order.status === 'pending_cuadre') a.push({ k: 'cuadre', tono: 'atencion', icono: Banknote, texto: 'Efectivo por cuadrar con la caja' })
+  return a
+}
+
+// Productos sin el precio de cada línea; las unidades de un combo quedan debajo.
+function lineas(items) {
+  return String(items || '').split('\n').map((l) => l.replace(/\s*\(= \$[\d.,]+\)\s*$/, '').trimEnd()).filter((l) => l.trim())
+}
+
+function Pago({ order }) {
+  const p = order.payment
+  if (!p) return <span className="font-body text-xs text-coal/45">Pago por definir</span>
+  const digital = ['Transferencia', 'Nequi', 'Mixto'].includes(p)
+  const Icono = p === 'Efectivo' ? Banknote : Smartphone
+  return (
+    <span className="inline-flex items-center gap-1 font-body text-xs text-coal/70">
+      <Icono size={13} className="text-coal/45" aria-hidden="true" /> {p}
+      {digital && order.deliveryMode !== 'pickup' && (order.transferValidated
+        ? <ShieldCheck size={13} className="text-mint" aria-label="Transferencia verificada" />
+        : <ShieldAlert size={13} className="text-tangelo" aria-label="Transferencia por verificar" />)}
+    </span>
+  )
+}
+
+// Chulito de "facturado": se prende y apaga sin abrir el pedido.
+function Facturado({ facturado, onToggle }) {
+  const stop = (e) => { e.stopPropagation(); onToggle?.() }
+  return (
+    <span role="checkbox" aria-checked={facturado} tabIndex={0} onClick={stop}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(e) } }}
+      title={facturado ? 'Facturado (toca para quitar)' : 'Marcar como facturado'}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-body text-[11px] font-semibold cursor-pointer select-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/40 ${
+        facturado ? 'bg-mint/15 text-mint hover:bg-mint/25' : 'bg-smoked text-coal/45 hover:text-coal/70'}`}>
+      {facturado ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : <Receipt size={12} aria-hidden="true" />}
+      {facturado ? 'Facturado' : 'Facturar'}
+    </span>
+  )
+}
+
+export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFacturado, ahora, tablero = false }) {
+  const { etapa, excepcion } = etapaDe(order)
+  const pickup = order.deliveryMode === 'pickup'
+  const avisos = avisosDe(order, unreadCount)
+  const prods = lineas(order.items)
+  const visibles = tablero ? prods.slice(0, 3) : prods.slice(0, 4)
+  const total = Number(order.totalPrice) || (Number(order.quotedPrice) || 0) + (Number(order.deliveryPrice) || 0)
+  const nombreEtapa = excepcion ? null : (pickup && etapa === 'listo' ? 'Listo para recoger' : NOMBRE_ETAPA[etapa])
 
   return (
-    <button
-      onClick={onClick}
-      className={`order-card w-full text-left ${border}`}
-    >
-      {/* Premio de fidelización canjeado — muy visible, para que no se cobre */}
-      {order.loyaltyRedemption?.count > 0 && (
-        <div className="mb-2 bg-mint rounded-xl px-3 py-2.5 shadow-soft">
-          <p className="font-display text-sm tracking-wide text-cream flex items-center gap-2">
-            <Gift size={15} aria-hidden="true" /> USA PREMIO DE FIDELIZACIÓN
-          </p>
-          <p className="font-body text-xs font-semibold text-cream/95 mt-0.5">
-            {order.loyaltyRedemption.count}x Hamburguesa Especial + Perro Grande con tocineta — GRATIS, NO cobrar
-          </p>
-        </div>
-      )}
-
-      {/* Unread chat banner — very visible, at the top */}
-      {unreadCount > 0 && (
-        <div className="mb-2 flex items-center gap-1.5 bg-cherry/10 border border-cherry/30 rounded-xl px-3 py-2">
-          <MessageCircle size={13} className="text-cherry flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-cherry">
-            {unreadCount === 1 ? '1 mensaje nuevo del cliente' : `${unreadCount} mensajes nuevos del cliente`}
-          </span>
-          <span className="ml-auto text-[10px] font-body text-cherry/70 font-semibold">Ver →</span>
-        </div>
-      )}
-
-      {/* Llegó completo: el cliente vio el total y eligió pago. Solo aceptar. */}
-      {order.pagoAdelantado && order.status === 'pending' && (
-        <div className="mb-2 flex items-center gap-1.5 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
-          <CircleCheck size={13} className="text-mint flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-bold text-mint">
-            Pedido completo · {order.payment} — solo aceptar
-          </span>
-        </div>
-      )}
-
-      {/* Domicilio confirmado sin nadie en turno (Fase 5): asignarlo a mano */}
-      {order.sinDomiciliario && !order.driverEmail && order.deliveryMode !== 'pickup' && order.status === 'quoted' && (
-        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
-          <Bike size={13} className="text-tangelo flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-coal">
-            Nadie en turno — asígnalo a mano
-          </span>
-        </div>
-      )}
-
-      {/* Cambio propuesto (Fase 7): esperando al cliente o rechazado */}
-      {order.excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
-        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
-          <Clock size={13} className="text-tangelo flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-coal">Cambio propuesto — esperando al cliente</span>
-        </div>
-      )}
-      {!order.excepcion && order.cambioPropuesto?.estado === 'rechazado' && (
-        <div className="mb-2 flex items-center gap-1.5 bg-pepper/10 border border-pepper/40 rounded-xl px-3 py-2">
-          <CircleX size={13} className="text-pepper flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-pepper">El cliente rechazó el cambio — queda el original</span>
-        </div>
-      )}
-
-      {/* El cliente pidió cancelar: la caja lo resuelve en el detalle */}
-      {order.excepcion === 'cancelacion_solicitada' && (
-        <div className="mb-2 flex items-center gap-1.5 bg-pepper/15 border border-pepper/50 rounded-xl px-3 py-2">
-          <AlertCircle size={13} className="text-pepper flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-pepper">
-            El cliente pidió cancelar — ábrelo para resolver
-          </span>
-        </div>
-      )}
-
-      {/* El cliente agregó productos después de enviarlo: hay que recotizar */}
-      {order.needsRequote && (
-        <div className="mb-2 flex items-center gap-1.5 bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2">
-          <Plus size={13} className="text-mustard flex-shrink-0" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-coal">
-            El cliente agregó productos — vuelve a cotizar
-          </span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          {order.orderNumber && (
-            <span className="font-display text-lg text-cherry">#{order.orderNumber}</span>
-          )}
-          <StatusBadge status={order.status} />
-          {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 bg-cherry rounded-full text-[10px] font-bold text-cream px-1.5">
-              {unreadCount}
-            </span>
-          )}
-        </div>
-        <span className="flex items-center gap-1 text-xs text-coal/40 font-body flex-shrink-0">
-          <Clock size={12} /> {time}
+    <button onClick={onClick}
+      className={`w-full text-left bg-white rounded-2xl shadow-card p-3.5 flex flex-col gap-2.5 cursor-pointer transition-[transform,box-shadow] duration-200 [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/50 ${unreadCount > 0 || order.excepcion === 'cancelacion_solicitada' ? 'ring-2 ring-cherry/50' : ''}`}
+      style={{ transitionTimingFunction: 'var(--ease-out)' }}>
+      {/* 1. Número, etapa y demora */}
+      <div className="flex items-center gap-2">
+        <span className="font-display text-2xl leading-none text-cherry tabular">#{order.orderNumber || '—'}</span>
+        <span className="inline-flex items-center gap-1 text-coal/50" title={pickup ? 'Recoge en la sede' : 'Domicilio'}>
+          {pickup ? <Store size={14} aria-hidden="true" /> : <Bike size={14} aria-hidden="true" />}
+          {!tablero && nombreEtapa && <span className="font-body text-xs font-semibold text-coal/60">{nombreEtapa}</span>}
         </span>
+        <span className="ml-auto"><Demora order={order} ahora={ahora} /></span>
       </div>
 
-      {/* Client */}
-      <div className="flex items-center gap-1.5 mb-1">
-        <User size={13} className="text-coal/40 flex-shrink-0" />
-        <span className="font-body font-semibold text-sm text-coal truncate">{order.name || '—'}</span>
-      </div>
-
-      {/* Address */}
-      <div className="flex items-start gap-1.5 mb-1">
-        <MapPin size={13} className="text-coal/40 flex-shrink-0 mt-0.5" />
-        <span className="font-body text-xs text-coal/60 line-clamp-2">{order.fullAddress}</span>
-      </div>
-
-      {/* Phone */}
-      <div className="flex items-center gap-1.5 mb-2">
-        <Phone size={13} className="text-coal/40 flex-shrink-0" />
-        <span className="font-body text-xs text-coal/60">{order.phone}</span>
-      </div>
-
-      {!compact && (
-        <>
-          {/* Items preview */}
-          <div className="bg-smoked/60 rounded-lg p-2 mb-2">
-            <p className="font-body text-xs text-coal/70 line-clamp-2">{order.items}</p>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between">
-            <span className="font-body text-xs text-coal/40">{order.payment || 'Pago: pendiente'}</span>
-            {order.driverName && (
-              <span className="flex items-center gap-1 font-body text-xs text-mint">
-                <Bike size={12} /> {order.driverName}
-              </span>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Cash pending cuadre label */}
-      {order.status === 'pending_cuadre' && (
-        <div className="mt-2 bg-mustard/10 border border-mustard/30 rounded-lg px-3 py-1.5">
-          <p className="text-xs font-semibold text-mustard font-body flex items-center gap-1.5">
-            <Banknote size={13} aria-hidden="true" /> Pendiente cuadre de caja
-          </p>
+      {/* 2. Lo que pide atención */}
+      {avisos.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {avisos.map((x) => <Aviso key={x.k} tono={x.tono} icono={x.icono}>{x.texto}</Aviso>)}
         </div>
       )}
 
-      {/* Chulito de facturación — en todos los pedidos */}
-      {onToggleFacturado && (
-        <FacturadoToggle facturado={!!order.facturado} onToggle={onToggleFacturado} />
+      {/* 3. Quién y a dónde */}
+      <div className="min-w-0">
+        <p className="font-body text-sm font-semibold text-coal truncate">{order.name || order.clientName || 'Cliente'}</p>
+        <p className="font-body text-xs text-coal/55 truncate">
+          {pickup ? 'Recoge en la sede' : (order.barrio || order.fullAddress || 'Sin dirección')}
+          {!tablero && order.phone ? ` · ${order.phone}` : ''}
+        </p>
+      </div>
+
+      {/* 4. Qué pidió */}
+      {prods.length > 0 && (
+        <ul className="flex flex-col gap-0.5 border-t border-coal/10 pt-2">
+          {visibles.map((l, i) => (
+            <li key={i} className={`font-body text-xs leading-snug ${l.startsWith(' ') ? 'pl-3 text-coal/50' : 'text-coal/80'} line-clamp-2`}>{l.trim()}</li>
+          ))}
+          {prods.length > visibles.length && <li className="font-body text-[11px] text-coal/45">+{prods.length - visibles.length} más</li>}
+        </ul>
       )}
+
+      {/* 5. Total, pago, domiciliario y facturado */}
+      <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap border-t border-coal/10 pt-2">
+        <span className="font-display text-xl leading-none text-coal tabular">{pesos(total)}</span>
+        <Pago order={order} />
+        {order.driverName && !pickup && (
+          <span className="inline-flex items-center gap-1 font-body text-xs text-mint"><Bike size={12} aria-hidden="true" /> {order.driverName}</span>
+        )}
+        {onToggleFacturado && <span className="ml-auto"><Facturado facturado={!!order.facturado} onToggle={onToggleFacturado} /></span>}
+      </div>
     </button>
   )
 }
