@@ -49,7 +49,7 @@ export default function BotonSilencio({ className = '', oscuro = false }) {
         className={`btn btn-sm gap-1.5 rounded-full bg-pepper text-cream font-semibold ${className}`}
       >
         <VolumeX size={14} aria-hidden="true" />
-        Activar sonido
+        Sonido
       </button>
     )
   }

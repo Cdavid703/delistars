@@ -14,7 +14,6 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebas
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
-import StatusBadge from '../common/StatusBadge'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
 import { parseHandoff, parseMenuCart, carritoParaApi } from '../../utils/handoff'
@@ -41,7 +40,8 @@ import {
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
   HelpCircle, ChevronDown, ChevronUp, Send, UserRound,
   ClipboardList, Wallet, Bike, ChefHat, CircleCheck, CircleX, Ban, Mail, Gift, Trash2, Banknote, MessageCircle,
-  CreditCard, Paperclip, Lightbulb, Store
+  CreditCard, Paperclip, Lightbulb, Store, Check, Upload, Smartphone, Building2, Shuffle,
+  Bell, BellOff, Lock, Phone, Pencil
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
@@ -76,6 +76,26 @@ const STEP_ICON = {
   rejected: CircleX, cancelled: Ban,
 }
 /** Icono del paso actual del pedido, en un disco discreto (tarjetas) o suelto (encabezados). */
+// Las líneas del pedido traen el precio al final entre "(= $…)": separarlo
+// deja el producto a la izquierda y la plata alineada, como un recibo.
+function ListaItems({ texto, className = '' }) {
+  const lineas = (texto || '').split('\n').filter(l => l.trim())
+  if (lineas.length === 0) return null
+  return (
+    <div className={`divide-y divide-coal/10 ${className}`}>
+      {lineas.map((linea, i) => {
+        const m = linea.match(/^(.*?)\s*\(=\s*(\$[\d.,]+)\)\s*$/)
+        return (
+          <div key={i} className="flex items-start justify-between gap-3 py-2">
+            <p className="font-body text-sm text-coal/80 leading-relaxed min-w-0">{m ? m[1] : linea}</p>
+            {m && <p className="font-body text-sm font-semibold text-coal tabular flex-shrink-0">{m[2]}</p>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StepIcon({ step, size = 18, className = '', disco = true }) {
   const Icon = STEP_ICON[step?.key] || ClipboardList
   if (!disco) return <Icon size={size} className={className} aria-hidden="true" />
@@ -470,7 +490,7 @@ export default function ClientPanel() {
     return (
       <div className="min-h-screen-safe flex flex-col bg-gradient-to-br from-cherry via-tangelo to-mustard">
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
-          <div className="text-6xl mb-4">🔒</div>
+          <Clock size={48} className="text-cream/80 mb-4" aria-hidden="true" />
           <h1 className="font-display text-3xl text-cream tracking-widest mb-3">{sede?.name} está cerrada</h1>
           <p className="font-body text-cream/80 text-sm max-w-xs">
             Mientras tanto puedes ver el menú y armar tu carrito en la página principal.
@@ -774,7 +794,7 @@ export default function ClientPanel() {
             </div>
             <p className="font-body text-xs text-coal/65 mt-1.5 tabular">
               {sedeLoyalty.count}/10 domicilios entregados
-              {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial y un Perro Grande con tocineta gratis! 🎉'}
+              {sedeLoyalty.count > 0 && sedeLoyalty.count % 10 === 9 && ' — ¡el próximo te regala una Hamburguesa Especial y un Perro Grande con tocineta gratis!'}
             </p>
           </div>
         </div>
@@ -816,7 +836,7 @@ export default function ClientPanel() {
             </p>
             {sede?.whatsapp && (
               <a
-                href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! 👋 Tengo un problema con la plataforma.`)}`}
+                href={`https://wa.me/${sede.whatsapp}?text=${encodeURIComponent(`Hola DeliStars ${sede.name}! Tengo un problema con la plataforma.`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-sm mt-2 border border-[#25D366]/50 text-[#128C7E] bg-transparent [@media(hover:hover)]:hover:bg-[#25D366]/10"
@@ -1063,11 +1083,13 @@ function SelectorBillete({ monto, billete, onChange, titulo }) {
       </div>
       {billete != null && (
         billete < monto ? (
-          <p className="font-body text-sm text-pepper font-semibold">
-            ⚠️ No alcanza: faltan ${(monto - billete).toLocaleString('es-CO')}
+          <p className="font-body text-sm text-pepper font-semibold flex items-center gap-1.5">
+            <AlertCircle size={15} aria-hidden="true" /> No alcanza: faltan ${(monto - billete).toLocaleString('es-CO')}
           </p>
         ) : billete === monto ? (
-          <p className="font-body text-sm text-mint font-semibold">✅ Pagas exacto, no necesitas cambio</p>
+          <p className="font-body text-sm text-mint font-semibold flex items-center gap-1.5">
+            <Check size={15} aria-hidden="true" /> Pagas exacto, no necesitas cambio
+          </p>
         ) : (
           <div className="flex items-center justify-between">
             <p className="font-body text-sm text-coal font-semibold">Tu cambio será:</p>
@@ -1096,7 +1118,9 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
 
   return (
     <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
-      <p className="font-display text-base tracking-wide text-cherry">💳 Paga tu pedido</p>
+      <p className="font-display text-base tracking-wide text-cherry flex items-center gap-2">
+        <CreditCard size={18} aria-hidden="true" /> Paga tu pedido
+      </p>
 
       {/* Resumen del valor */}
       <div className="bg-cream rounded-xl px-4 py-3 flex flex-col gap-1.5">
@@ -1122,7 +1146,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
 
       {total === 0 && (
         <p className="font-body text-sm font-semibold text-mint">
-          ✅ Tu saldo a favor cubre todo el pedido: no tienes que pagar nada.
+          Tu saldo a favor cubre todo el pedido: no tienes que pagar nada.
         </p>
       )}
       {total > 0 && (<>
@@ -1131,16 +1155,16 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
         <label className="label-field">¿Cómo vas a pagar? *</label>
         <div className="grid grid-cols-2 gap-2">
           {[
-            ['Efectivo',      '💵 Efectivo'],
-            ['Transferencia', '🏦 Transferencia'],
-            ['Nequi',         '📲 Nequi'],
-            ['Mixto',         '🔀 Mixto'],
-          ].map(([valor, etiqueta]) => (
+            ['Efectivo',      Banknote],
+            ['Transferencia', Building2],
+            ['Nequi',         Smartphone],
+            ['Mixto',         Shuffle],
+          ].map(([valor, IconoPago]) => (
             <button key={valor} type="button" onClick={() => set('payment', valor)}
-              className={`py-2.5 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+              className={`btn btn-sm w-full justify-center border-2 ${
                 metodo === valor ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/15 text-coal/60 bg-cream'
               }`}>
-              {etiqueta}
+              <IconoPago size={16} aria-hidden="true" /> {valor}
             </button>
           ))}
         </div>
@@ -1164,7 +1188,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label-field">💵 En efectivo</label>
+              <label className="label-field">En efectivo</label>
               <input className="input-field" type="number" min="0" inputMode="numeric" placeholder="$0"
                 value={form.mixtoEfectivo}
                 onChange={e => {
@@ -1176,7 +1200,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
                 }} />
             </div>
             <div>
-              <label className="label-field">📲 Por transferencia</label>
+              <label className="label-field">Por transferencia</label>
               <input className="input-field" type="number" min="0" inputMode="numeric" placeholder="$0"
                 value={form.mixtoTransferencia}
                 onChange={e => set('mixtoTransferencia', e.target.value)} />
@@ -1206,8 +1230,11 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
             comprobante ? 'border-mint/50 bg-mint/10' : 'border-coal/20 hover:border-tangelo/50 hover:bg-tangelo/5'
           }`}>
             <input type="file" accept="image/*,.pdf" className="hidden" onChange={elegirArchivo} />
+            {comprobante
+              ? <Check size={16} className="text-mint flex-shrink-0" aria-hidden="true" />
+              : <Upload size={16} className="text-coal/50 flex-shrink-0" aria-hidden="true" />}
             <span className={`font-body text-sm ${comprobante ? 'text-mint font-semibold' : 'text-coal/60'}`}>
-              {comprobante ? `✅ ${comprobante.name} — tocar para cambiar` : '📤 Subir comprobante (imagen o PDF)'}
+              {comprobante ? `${comprobante.name} — tocar para cambiar` : 'Subir comprobante (imagen o PDF)'}
             </span>
           </label>
           {archivoError && <p className="font-body text-xs text-pepper">{archivoError}</p>}
@@ -1541,10 +1568,12 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   return (
     <div className="flex flex-col gap-4">
       {/* Info banner */}
-      <div className="bg-cherry/5 border border-cherry/20 rounded-xl px-4 py-3">
-        <p className="font-body text-xs text-coal/60">
-          Sede: <span className="font-semibold text-cherry">{sede?.name}</span>
-        </p>
+      <div className="card-quiet flex items-center gap-3 py-3">
+        <MapPin size={18} className="text-cherry flex-shrink-0" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="font-body text-[11px] uppercase tracking-wider text-coal/45">Pides en</p>
+          <p className="font-body text-sm font-semibold text-coal truncate">{sede?.name}</p>
+        </div>
       </div>
 
       {/* Tipo de entrega: domicilio o recoger en sede */}
@@ -1554,20 +1583,20 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           <button
             type="button"
             onClick={() => set('deliveryMode', 'delivery')}
-            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+            className={`btn w-full justify-center border-2 ${
               form.deliveryMode === 'delivery' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
             }`}
           >
-            🛵 Domicilio
+            <Bike size={18} aria-hidden="true" /> Domicilio
           </button>
           <button
             type="button"
             onClick={() => set('deliveryMode', 'pickup')}
-            className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold font-body transition-colors ${
+            className={`btn w-full justify-center border-2 ${
               form.deliveryMode === 'pickup' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
             }`}
           >
-            🏪 Recoger en sede
+            <Store size={18} aria-hidden="true" /> Recoger
           </button>
         </div>
       </div>
@@ -1650,20 +1679,12 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         />
 
         {/* Resumen de la dirección elegida + aviso NO restrictivo de barrio */}
-        {form.fullAddress && (
-          <div className="mt-2 bg-mint/10 border border-mint/30 rounded-xl px-4 py-2.5 flex items-start gap-2">
-            <MapPin size={14} className="text-mint flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="font-body text-sm font-semibold text-coal">{form.fullAddress}</p>
-              <p className="font-body text-[11px] text-coal/55 leading-relaxed mt-0.5">
-                {form.barrio && <>📍 {form.barrio} · </>}
-                {form.addrLat != null ? 'Ubicada en el mapa. ' : ''}
-                {midiendoRuta && 'Calculando el valor del domicilio…'}
-                {!midiendoRuta && !cobroAutomático && tarifa.estado !== 'fuera_de_rango' &&
-                  'El valor del domicilio se confirma en caja antes de que pagues.'}
-              </p>
-            </div>
-          </div>
+        {form.fullAddress && (midiendoRuta || (!cobroAutomático && tarifa.estado !== 'fuera_de_rango')) && (
+          <p className="mt-2 font-body text-xs text-coal/55 leading-relaxed">
+            {midiendoRuta
+              ? 'Calculando el valor del domicilio…'
+              : 'El valor del domicilio se confirma en caja antes de que pagues.'}
+          </p>
         )}
 
         {/* Domicilio calculado: el cliente ve el valor de una vez, sin esperar
@@ -1686,7 +1707,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
             <button
               type="button"
               onClick={() => setPidioRevisión(true)}
-              className="mt-2 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2"
+              className="btn-link text-xs"
             >
               ¿Te parece caro? Pide que la caja lo revise
             </button>
@@ -1697,7 +1718,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         {form.fullAddress && sugerencia && (
           <div className="mt-2 bg-mint/10 border border-mint/40 rounded-xl px-4 py-3">
             <p className="font-body text-xs text-coal/80 leading-relaxed">
-              📍 <strong>{otraSede.name}</strong> te queda más cerca: {sugerencia.km.toFixed(1)} km por calle
+              <strong>{otraSede.name}</strong> te queda más cerca: {sugerencia.km.toFixed(1)} km por calle
               {sugerencia.ahorro > 0
                 ? <> y el domicilio vale <strong>${sugerencia.precio.toLocaleString('es-CO')}</strong> (ahorras ${sugerencia.ahorro.toLocaleString('es-CO')}).</>
                 : <>, así te llega más rápido.</>}
@@ -1707,8 +1728,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
                 Tu carrito es del menú de {sede.name}. Si prefieres {otraSede.name}, vuelve al menú y elige esa sede.
               </p>
             ) : onCambiarSede && (
-              <button type="button" onClick={() => onCambiarSede(otraSede)}
-                className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+              <button type="button" onClick={() => onCambiarSede(otraSede)} className="btn-link text-xs">
                 Pedir en {otraSede.name}
               </button>
             )}
@@ -1725,7 +1745,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
             <button
               type="button"
               onClick={() => setPidioRevisión(false)}
-              className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2"
+              className="btn-link text-xs"
             >
               Mejor cóbrame los ${tarifa.precio.toLocaleString('es-CO')}
             </button>
@@ -1759,8 +1779,8 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         {/* Los productos se escogen en el menú: el servidor los cobra con los
             precios del catálogo, así que aquí ya no se escriben a mano. */}
         {form.items.trim() ? (
-          <div className="bg-coal/5 border border-coal/10 rounded-xl px-4 py-3 max-h-48 overflow-y-auto scroll-custom">
-            <p className="font-body text-sm text-coal/80 whitespace-pre-line leading-relaxed">{form.items}</p>
+          <div className="card-quiet max-h-56 overflow-y-auto scroll-custom py-2">
+            <ListaItems texto={form.items} />
           </div>
         ) : (
           <div className="bg-coal/5 border border-dashed border-coal/20 rounded-xl px-4 py-4 text-center">
@@ -1787,27 +1807,28 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         <div className={`rounded-2xl p-4 border-2 transition-colors ${
           redeemCount > 0 ? 'bg-mint border-mint' : 'bg-mint/10 border-mint'}`}>
           <p className={`font-display text-xl tracking-wide ${redeemCount > 0 ? 'text-cream' : 'text-mint'}`}>
-            🎁 {sortedRewards.length > 1 ? `Tienes ${sortedRewards.length} premios de fidelización` : 'Tienes un premio de fidelización'}
+            <Gift size={18} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />
+            {sortedRewards.length > 1 ? `Tienes ${sortedRewards.length} premios de fidelización` : 'Tienes un premio de fidelización'}
           </p>
           <p className={`font-body text-sm mt-1 leading-relaxed ${redeemCount > 0 ? 'text-cream/90' : 'text-coal/75'}`}>
-            {sortedRewards.length > 1 ? 'Cada premio incluye' : 'Incluye'}, <strong>GRATIS</strong>: 🍔 1 Hamburguesa Especial + 🌭 1 Perro Grande con tocineta.
+            {sortedRewards.length > 1 ? 'Cada premio incluye' : 'Incluye'}, <strong>GRATIS</strong>: 1 Hamburguesa Especial + 1 Perro Grande con tocineta.
             {venceTexto(sortedRewards[0]) && <> Vence el <strong>{venceTexto(sortedRewards[0])}</strong>.</>}
           </p>
           <div className="flex flex-col gap-2 mt-3">
             {Array.from({ length: sortedRewards.length }, (_, i) => i + 1).map(n => (
               <button key={n} type="button" onClick={() => setRedeemCount(n)}
-                className={`w-full py-3 rounded-xl border-2 text-sm font-bold font-body transition-colors ${
+                className={`btn w-full justify-center border-2 ${
                   redeemCount === n ? 'bg-cream text-mint border-cream'
                     : redeemCount > 0 ? 'border-cream/50 text-cream' : 'border-mint bg-cream text-mint'
                 }`}>
-                {redeemCount === n ? '✅ ' : ''}
+                {redeemCount === n && <Check size={16} aria-hidden="true" />}
                 {sortedRewards.length > 1 ? `Usar ${n} premio${n > 1 ? 's' : ''} en este pedido` : 'Usar mi premio en este pedido'}
               </button>
             ))}
             <button type="button" onClick={() => setRedeemCount(0)}
               className={`w-full py-2 text-xs font-semibold font-body underline underline-offset-2 ${
                 redeemCount > 0 ? 'text-cream/80' : 'text-coal/60'}`}>
-              {redeemCount === 0 ? '✓ Por ahora lo guardo para otro pedido' : 'Mejor guardarlo para otro pedido'}
+              {redeemCount === 0 ? 'Por ahora lo guardo para otro pedido' : 'Mejor guardarlo para otro pedido'}
             </button>
           </div>
           {redeemCount > 0 && (
@@ -1824,11 +1845,12 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         <label className="label-field">¿Tienes un código?</label>
         {codigoAplicado ? (
           <div className="flex items-center justify-between gap-2 bg-mint/10 border border-mint/40 rounded-xl px-3 py-2.5">
-            <p className="font-body text-sm text-coal">
-              ✅ <strong>{codigoAplicado}</strong>: {CODIGOS[codigoAplicado].descripcion}
+            <p className="font-body text-sm text-coal flex items-center gap-1.5">
+              <Check size={15} className="text-mint flex-shrink-0" aria-hidden="true" />
+              <span><strong>{codigoAplicado}</strong>: {CODIGOS[codigoAplicado].descripcion}</span>
             </p>
             <button type="button" onClick={() => setCodigoAplicado(null)}
-              className="font-body text-xs font-semibold text-tangelo underline underline-offset-2 flex-shrink-0">Quitar</button>
+              className="btn-link text-xs flex-shrink-0">Quitar</button>
           </div>
         ) : (
           <>
@@ -1852,7 +1874,9 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
 
       {saldo > 0 && (
         <div className={`rounded-2xl p-4 border-2 ${conSaldo ? 'bg-mint/15 border-mint' : 'bg-cream border-coal/15'}`}>
-          <p className="font-display text-base tracking-wide text-mint">💚 Tienes ${saldo.toLocaleString('es-CO')} a favor</p>
+          <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
+            <Wallet size={17} aria-hidden="true" /> Tienes ${saldo.toLocaleString('es-CO')} a favor
+          </p>
           <label className="flex items-center gap-2 mt-2 font-body text-sm text-coal cursor-pointer">
             <input type="checkbox" checked={usarMiSaldo} onChange={e => setUsarMiSaldo(e.target.checked)} className="w-5 h-5 accent-[#2a9d7a]" />
             Usar mi saldo en este pedido
@@ -1888,7 +1912,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           En "recoger en sede" no hay domicilio que cotizar. */}
       {!pagoAhora && (
       <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex items-start gap-3">
-        <span className="text-2xl leading-none">⏳</span>
+        <Clock size={20} className="text-tangelo flex-shrink-0 mt-0.5" aria-hidden="true" />
         <div className="flex flex-col gap-1">
           <p className="font-display text-base tracking-wide text-tangelo">
             {form.deliveryMode === 'pickup' ? 'La caja confirmará tu pedido' : 'Falta cotizar tu domicilio'}
@@ -1908,12 +1932,12 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       </div>
       )}
 
-      <div className="flex gap-3 pt-2">
-        <button onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
-        <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
+      <div className="flex flex-col gap-2 pt-2">
+        <button onClick={handleSubmit} disabled={loading} className="btn-primary w-full btn-lg">
           {subiendo !== null ? `Subiendo comprobante ${subiendo}%…`
             : loading ? 'Enviando…' : 'Enviar pedido'}
         </button>
+        <button onClick={onCancel} className="btn-ghost w-full">Cancelar</button>
       </div>
     </div>
   )
@@ -1997,14 +2021,15 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
         </div>
       )}
 
-      <div className="mb-2">
+      {/* La etapa ya está escrita arriba de la barra: el distintivo en
+          mayúsculas repetía lo mismo dos renglones más abajo. */}
+      <div>
         <p className="font-body text-sm font-semibold text-cherry mb-1">{labelPaso(step, order)}</p>
         <div className="w-full bg-smoked rounded-full h-2">
           <div className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }} />
         </div>
       </div>
-      <StatusBadge status={order.status} />
     </button>
   )
 }
@@ -2019,8 +2044,8 @@ function PushOptIn({ uid, className = '' }) {
 
   if (listo) {
     return (
-      <p className={`font-body text-xs text-mint font-semibold ${className}`}>
-        ✅ Listo, te avisamos en este celular cada vez que tu pedido cambie.
+      <p className={`font-body text-xs text-mint font-semibold flex items-center gap-1.5 ${className}`}>
+        <Check size={14} aria-hidden="true" /> Listo, te avisamos en este celular cada vez que tu pedido cambie.
       </p>
     )
   }
@@ -2032,7 +2057,7 @@ function PushOptIn({ uid, className = '' }) {
     return (
       <div className={`bg-mustard/10 border border-mustard/30 rounded-xl px-3 py-2.5 ${className}`}>
         <p className="font-body text-xs text-coal/75 leading-relaxed">
-          🔔 <strong>¿Quieres que te avisemos en el celular</strong> cuando tu pedido cambie?
+          <strong>¿Quieres que te avisemos en el celular</strong> cuando tu pedido cambie?
           En iPhone hay que instalar DeliStars primero: pulsa <strong>Compartir → Agregar a inicio</strong>,
           ábrela desde ahí y actívalos.
         </p>
@@ -2042,9 +2067,12 @@ function PushOptIn({ uid, className = '' }) {
   if (perm === 'denied') {
     return (
       <div className={`bg-coal/5 border border-coal/15 rounded-xl px-3 py-2.5 ${className}`}>
-        <p className="font-body text-xs text-coal/70 leading-relaxed">
-          🔕 Tienes los avisos <strong>bloqueados</strong> para esta página, por eso no te llegan los
-          cambios de tu pedido. Actívalos en el candado 🔒 de la barra de direcciones → Notificaciones.
+        <p className="font-body text-xs text-coal/70 leading-relaxed flex items-start gap-2">
+          <BellOff size={15} className="text-coal/45 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <span>
+            Tienes los avisos <strong>bloqueados</strong> para esta página, por eso no te llegan los
+            cambios de tu pedido. Actívalos en el candado de la barra de direcciones → Notificaciones.
+          </span>
         </p>
       </div>
     )
@@ -2062,8 +2090,8 @@ function PushOptIn({ uid, className = '' }) {
   return (
     <div className={className}>
       <button onClick={activar} disabled={busy || !uid}
-        className="w-full py-2.5 rounded-xl bg-cherry/10 border border-cherry/30 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors disabled:opacity-50">
-        {busy ? 'Activando…' : '🔔 Avísame en el celular cuando mi pedido cambie'}
+        className="btn btn-sm w-full justify-center bg-cherry/10 border border-cherry/30 text-cherry [@media(hover:hover)]:hover:bg-cherry/20">
+        {busy ? 'Activando…' : <><Bell size={15} aria-hidden="true" /> Avísame en el celular cuando mi pedido cambie</>}
       </button>
       {error
         ? <p className="font-body text-[11px] text-pepper mt-1 leading-relaxed">{error}</p>
@@ -2092,7 +2120,7 @@ function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) 
   if (!siguiendo) {
     return (
       <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
-        <p className="font-display text-base tracking-wide text-coal">🔑 Entra para enviar tu pedido</p>
+        <p className="font-display text-base tracking-wide text-coal">Entra para enviar tu pedido</p>
         <p className="font-body text-xs text-coal/75 mt-1.5 leading-relaxed">
           Para pedir necesitas tu cuenta. Tu carrito se conserva
           {!compacto && <>, sigues tus pedidos desde cualquier celular y acumulas premios</>}.
@@ -2104,12 +2132,14 @@ function AvisoInvitado({ className = '', compacto = false, siguiendo = false }) 
   }
   return (
     <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
-      <p className="font-display text-base tracking-wide text-coal">⚠️ Estás siguiendo tu pedido sin cuenta</p>
+      <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+        <AlertCircle size={17} className="text-mustard" aria-hidden="true" /> Estás siguiendo tu pedido sin cuenta
+      </p>
       {/* Lo más importante va primero y en grande: si se sale, pierde el rastro
           de su pedido y termina pidiendo otra vez creyendo que no entró. */}
       <div className="bg-cream border border-mustard/50 rounded-xl px-3 py-2.5 mt-2">
         <p className="font-body text-sm font-bold text-coal leading-snug">
-          👉 No cierres esta página hasta que te entreguen el pedido.
+          No cierres esta página hasta que te entreguen el pedido.
         </p>
         <p className="font-body text-[11px] text-coal/70 mt-1 leading-relaxed">
           Sin cuenta, el pedido se ve <strong>solo en este navegador</strong>. Crea tu cuenta aquí mismo
@@ -2175,7 +2205,9 @@ function CambioPropuesto({ order }) {
   return (
     <div className="bg-tangelo/10 border-2 border-tangelo rounded-2xl p-4 flex flex-col gap-3">
       <div>
-        <p className="font-display text-xl tracking-wide text-tangelo">✏️ La sede propone un cambio</p>
+        <p className="font-display text-xl tracking-wide text-tangelo flex items-center gap-2">
+          <Pencil size={18} aria-hidden="true" /> La sede propone un cambio
+        </p>
         {c.motivo && <p className="font-body text-sm text-coal/80 mt-1 leading-relaxed">«{c.motivo}»</p>}
       </div>
       <div className="grid grid-cols-1 gap-2">
@@ -2252,12 +2284,14 @@ function DevolucionCliente({ order }) {
     const textos = {
       transferencia_solicitada: `Te vamos a transferir ${monto} a ${dev.datos?.medio || 'tu cuenta'} (${dev.datos?.numero || ''}). Te avisamos por el chat cuando esté hecho.`,
       saldo_solicitado:         `Pediste ${monto} como saldo a favor. La caja lo acredita en tu cuenta en breve.`,
-      transferida:              `✅ Ya te transferimos ${monto}.`,
-      acreditada:               `✅ Tienes ${monto} a favor para tu próximo pedido en ${order.sedeName || 'esta sede'}. No vence.`,
+      transferida:              `Ya te transferimos ${monto}.`,
+      acreditada:               `Tienes ${monto} a favor para tu próximo pedido en ${order.sedeName || 'esta sede'}. No vence.`,
     }
     return (
       <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-4">
-        <p className="font-display text-base tracking-wide text-coal">💸 Devolución de {monto}</p>
+        <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+          <Banknote size={17} className="text-coal/50" aria-hidden="true" /> Devolución de {monto}
+        </p>
         <p className="font-body text-sm text-coal/80 mt-1 leading-relaxed">{textos[dev.estado] || ''}</p>
       </div>
     )
@@ -2265,20 +2299,26 @@ function DevolucionCliente({ order }) {
 
   return (
     <div className="bg-cherry/5 border-2 border-cherry rounded-2xl p-4 flex flex-col gap-3">
-      <p className="font-display text-xl tracking-wide text-cherry">💸 Te devolvemos {monto}</p>
+      <p className="font-display text-xl tracking-wide text-cherry flex items-center gap-2">
+        <Banknote size={19} aria-hidden="true" /> Te devolvemos {monto}
+      </p>
       <p className="font-body text-sm text-coal/80 leading-relaxed">
         Tu pedido no siguió y ya lo habías pagado por transferencia. ¿Cómo quieres tu plata?
       </p>
       <div className="flex flex-col gap-2">
         <button type="button" onClick={() => setOpcion('transferencia')}
           className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${opcion === 'transferencia' ? 'border-cherry bg-cherry/10' : 'border-coal/15 bg-cream'}`}>
-          <p className="text-sm font-bold text-coal">🏦 Transferencia de vuelta</p>
+          <p className="text-sm font-bold text-coal flex items-center gap-2">
+            <Building2 size={16} className="text-coal/50" aria-hidden="true" /> Transferencia de vuelta
+          </p>
           <p className="text-xs text-coal/60">Te la enviamos a tu cuenta o Nequi.</p>
         </button>
         {saldoPermitido && (
           <button type="button" onClick={() => setOpcion('saldo')}
             className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${opcion === 'saldo' ? 'border-mint bg-mint/10' : 'border-coal/15 bg-cream'}`}>
-            <p className="text-sm font-bold text-coal">💚 Saldo a favor para mi próximo pedido</p>
+            <p className="text-sm font-bold text-coal flex items-center gap-2">
+              <Wallet size={16} className="text-mint" aria-hidden="true" /> Saldo a favor para mi próximo pedido
+            </p>
             <p className="text-xs text-coal/60">Queda en tu cuenta para pedir en {order.sedeName || 'esta sede'}. No vence.</p>
           </button>
         )}
@@ -2566,14 +2606,14 @@ function ClientOrderDetail({ order, onClose }) {
           {eta && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <p className="font-body text-xs text-cream/80 mt-2">
               {eta.tarde
-                ? <>⏳ Se está demorando un poco más de lo normal — escríbenos por el chat si necesitas algo</>
+                ? <>Se está demorando un poco más de lo normal — escríbenos por el chat si necesitas algo</>
                 : eta.enVivo
                   ? (eta.faltan > 1
-                      ? <>🛵 Tu domiciliario llega en ~<strong>{eta.faltan} min</strong> · {horaCorta(eta.llegada)}</>
-                      : <>🛵 Tu domiciliario está por llegar</>)
+                      ? <>Tu domiciliario llega en ~<strong>{eta.faltan} min</strong> · {horaCorta(eta.llegada)}</>
+                      : <>Tu domiciliario está por llegar</>)
                 : eta.faltan > 0
-                  ? <>🕒 Te llega alrededor de las <strong>{horaCorta(eta.llegada)}</strong> · faltan ~{eta.faltan} min</>
-                  : <>🕒 Debe estar llegando en cualquier momento</>}
+                  ? <>Te llega alrededor de las <strong>{horaCorta(eta.llegada)}</strong> · faltan ~{eta.faltan} min</>
+                  : <>Debe estar llegando en cualquier momento</>}
             </p>
           )}
         </div>
@@ -2583,14 +2623,14 @@ function ClientOrderDetail({ order, onClose }) {
           {!hasQuote && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-3xl leading-none">⏳</span>
+                <Clock size={24} className="text-tangelo flex-shrink-0" aria-hidden="true" />
                 <p className="font-display text-xl tracking-wide text-tangelo">
                   {order.deliveryMode === 'pickup' ? 'Esperando confirmación de la caja' : 'Falta cotizar tu domicilio'}
                 </p>
               </div>
               {/* Confirmación de que el pedido SÍ llegó — tranquiliza al cliente */}
               <div className="bg-mint/15 border border-mint/40 rounded-xl px-3 py-2 flex items-center gap-2">
-                <span className="text-lg">✅</span>
+                <CircleCheck size={17} className="text-mint flex-shrink-0" aria-hidden="true" />
                 <p className="font-body text-xs text-coal/75 leading-relaxed">
                   <strong>¡Pedido recibido!</strong>{order.createdAt?.toDate ? ` Enviado a las ${format(order.createdAt.toDate(), 'h:mm a')}.` : ''} Ya está en la caja.
                 </p>
@@ -2601,12 +2641,12 @@ function ClientOrderDetail({ order, onClose }) {
                   : <>La caja está revisando tu pedido. Cuando confirme que puede entregarlo, te enviará el <strong>valor del domicilio</strong>. Normalmente responde en pocos minutos.</>}
               </p>
               <p className="font-body text-xs text-tangelo flex items-start gap-1.5">
-                <span>🔔</span>
+                <Bell size={13} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <span>Te avisaremos <strong>aquí mismo</strong> y en el chat apenas cotice — puedes dejar esta pantalla abierta.</span>
               </p>
               <PushOptIn uid={user?.uid} />
               <div className="bg-cream/60 rounded-xl px-4 py-3 flex items-center gap-2">
-                <span className="text-lg">🔒</span>
+                <Lock size={16} className="text-coal/40 flex-shrink-0" aria-hidden="true" />
                 <p className="font-body text-xs text-coal/70 leading-relaxed">
                   Aún <strong>no puedes pagar</strong>: el método de pago se habilita cuando
                   recibas la cotización. Así evitas pagar por un pedido que luego no podamos entregar.
@@ -2637,7 +2677,9 @@ function ClientOrderDetail({ order, onClose }) {
           {/* El pedido lleva premio de fidelización: se lo confirmamos en grande */}
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint rounded-2xl p-4">
-              <p className="font-display text-lg tracking-wide text-cream">🎁 Este pedido incluye tu premio</p>
+              <p className="font-display text-lg tracking-wide text-cream flex items-center gap-2">
+                <Gift size={18} aria-hidden="true" /> Este pedido incluye tu premio
+              </p>
               <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
                 {order.loyaltyRedemption.count > 1 ? `${order.loyaltyRedemption.count}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta, <strong>GRATIS</strong>.
                 {CLOSED_STATUSES.includes(order.status) && ' Como el pedido no siguió, el premio volvió a tu cuenta.'}
@@ -2665,7 +2707,7 @@ function ClientOrderDetail({ order, onClose }) {
           {hasQuote && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
               <p className="font-display text-base tracking-wide text-tangelo">
-                {order.pagoAdelantado ? '💰 Valor de tu pedido' : '💰 Cotización del cajero'}
+                {order.pagoAdelantado ? 'Valor de tu pedido' : 'Cotización del cajero'}
               </p>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-coal/60">Valor pedido:</span>
@@ -2687,7 +2729,7 @@ function ClientOrderDetail({ order, onClose }) {
               </div>
               <div className="flex justify-between font-body text-sm">
                 <span className="text-coal/60">Forma de pago:</span>
-                <span className="font-semibold">{order.payment || 'Por elegir 👇'}</span>
+                <span className="font-semibold">{order.payment || 'Por elegir'}</span>
               </div>
             </div>
           )}
@@ -2695,7 +2737,9 @@ function ClientOrderDetail({ order, onClose }) {
           {/* Selector de método de pago — aparece tras la cotización de la caja */}
           {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-base tracking-wide text-cherry">✅ ¡Domicilio cotizado! Elige cómo pagar</p>
+              <p className="font-display text-base tracking-wide text-cherry flex items-center gap-2">
+                <CircleCheck size={17} aria-hidden="true" /> ¡Domicilio cotizado! Elige cómo pagar
+              </p>
               <p className="font-body text-xs text-coal/60">
                 Total a pagar: <span className="font-bold text-tangelo">{fmt(order.totalPrice)}</span>
               </p>
@@ -2715,12 +2759,12 @@ function ClientOrderDetail({ order, onClose }) {
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="label-field">💵 En efectivo</label>
+                      <label className="label-field">En efectivo</label>
                       <input className="input-field" type="number" min="0"
                         value={payMixtoEf} onChange={e => setPayMixtoEf(e.target.value)} placeholder="$0" />
                     </div>
                     <div>
-                      <label className="label-field">📲 En transferencia</label>
+                      <label className="label-field">En transferencia</label>
                       <input className="input-field" type="number" min="0"
                         value={payMixtoTr} onChange={e => setPayMixtoTr(e.target.value)} placeholder="$0" />
                     </div>
@@ -2738,7 +2782,9 @@ function ClientOrderDetail({ order, onClose }) {
           {/* Calculadora de cambio — solo para efectivo con cotización */}
           {hasQuote && order.payment === 'Efectivo' && !isDelivered && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-base tracking-wide text-coal">💵 ¿Con qué billete vas a pagar?</p>
+              <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+                <Banknote size={17} className="text-coal/50" aria-hidden="true" /> ¿Con qué billete vas a pagar?
+              </p>
               <p className="font-body text-xs text-coal/60">
                 Total a pagar: <span className="font-bold text-tangelo">{fmt(order.totalPrice)}</span>
               </p>
@@ -2784,14 +2830,14 @@ function ClientOrderDetail({ order, onClose }) {
               {billAmount !== null && (
                 billAmount < order.totalPrice ? (
                   <div className="bg-pepper/10 border border-pepper/30 rounded-xl px-4 py-3 flex items-center gap-2">
-                    <span className="text-lg">⚠️</span>
+                    <AlertCircle size={17} className="text-pepper flex-shrink-0" aria-hidden="true" />
                     <p className="font-body text-sm text-pepper font-semibold">
                       Ese valor no cubre el total ({fmt(order.totalPrice - billAmount)} de diferencia)
                     </p>
                   </div>
                 ) : billAmount === order.totalPrice ? (
                   <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-center gap-2">
-                    <span className="text-lg">✅</span>
+                    <CircleCheck size={17} className="text-mint flex-shrink-0" aria-hidden="true" />
                     <p className="font-body text-sm text-mint font-semibold">Pagas exacto — no necesitas cambio</p>
                   </div>
                 ) : (
@@ -2809,7 +2855,7 @@ function ClientOrderDetail({ order, onClose }) {
               {billAmount !== null && billAmount >= order.totalPrice && (
                 order.cashBillAmount === billAmount ? (
                   <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-center gap-2">
-                    <span className="text-lg">✅</span>
+                    <CircleCheck size={17} className="text-mint flex-shrink-0" aria-hidden="true" />
                     <p className="font-body text-sm text-mint font-semibold">
                       Enviado al cajero — tu pedido está en gestión. Sigue su avance aquí abajo.
                     </p>
@@ -2818,7 +2864,7 @@ function ClientOrderDetail({ order, onClose }) {
                   <div className="flex flex-col gap-1.5">
                     <button onClick={sendBill} disabled={sendingBill} className="btn-primary w-full">
                       {sendingBill ? 'Enviando…' :
-                        (order.cashBillAmount != null ? 'Actualizar billete y reenviar' : '📨 Enviar al cajero')}
+                        (order.cashBillAmount != null ? 'Actualizar billete y reenviar' : 'Enviar al cajero')}
                     </button>
                     {billError && <p className="font-body text-xs text-pepper">{billError}</p>}
                     <p className="font-body text-[11px] text-coal/50 text-center">
@@ -2846,7 +2892,7 @@ function ClientOrderDetail({ order, onClose }) {
            !['completed', 'rejected', 'cancelled'].includes(order.status) && (
             <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
               <p className="font-display text-sm tracking-wide text-coal">
-                {order.payment === 'Mixto' ? '📎 Comprobante de tu parte por transferencia' : `📎 Comprobante de ${order.payment}`}
+                {order.payment === 'Mixto' ? 'Comprobante de tu parte por transferencia' : `Comprobante de ${order.payment}`}
               </p>
 
               {/* Desglose del pago mixto: efectivo + transferencia */}
@@ -2854,11 +2900,11 @@ function ClientOrderDetail({ order, onClose }) {
                 <div className="bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1.5">
                   <p className="font-body text-xs text-coal/70 font-semibold">Tu pago se divide así:</p>
                   <div className="flex justify-between font-body text-sm">
-                    <span className="text-coal/60">💵 En efectivo (al recibir):</span>
+                    <span className="text-coal/60">En efectivo (al recibir):</span>
                     <span className="font-semibold">{fmt(Number(order.mixtoEfectivo) || 0)}</span>
                   </div>
                   <div className="flex justify-between font-body text-sm">
-                    <span className="text-coal/60">📲 Por transferencia / QR:</span>
+                    <span className="text-coal/60">Por transferencia / QR:</span>
                     <span className="font-semibold text-tangelo">{fmt(Number(order.mixtoTransferencia) || 0)}</span>
                   </div>
                   <p className="font-body text-[11px] text-coal/50">
@@ -2873,13 +2919,13 @@ function ClientOrderDetail({ order, onClose }) {
 
               {order.transferValidated ? (
                 <div className="flex items-center gap-2 text-mint">
-                  <span className="text-lg">✅</span>
+                  <CircleCheck size={17} className="flex-shrink-0" aria-hidden="true" />
                   <p className="font-body text-sm font-semibold">Pago validado por el cajero</p>
                 </div>
               ) : order.transferReceiptUrl ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-tangelo">
-                    <span>📄</span>
+                    <Paperclip size={14} className="text-coal/50 flex-shrink-0" aria-hidden="true" />
                     <p className="font-body text-xs font-semibold">Comprobante enviado — esperando validación</p>
                   </div>
                   <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
@@ -2902,7 +2948,9 @@ function ClientOrderDetail({ order, onClose }) {
                     {uploadProgress !== null ? (
                       <span className="font-body text-sm text-tangelo">Subiendo {uploadProgress}%…</span>
                     ) : (
-                      <span className="font-body text-sm text-coal/60">📤 Subir comprobante (imagen o PDF)</span>
+                      <span className="font-body text-sm text-coal/60 flex items-center gap-2">
+                        <Upload size={16} aria-hidden="true" /> Subir comprobante (imagen o PDF)
+                      </span>
                     )}
                   </label>
                   {uploadError && <p className="font-body text-xs text-pepper">{uploadError}</p>}
@@ -2918,18 +2966,24 @@ function ClientOrderDetail({ order, onClose }) {
               if (order.deliveryMode === 'pickup' && ['assigned','in_transit','arrived'].includes(s.key)) return false
               const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
               if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
+              // Rechazado y cancelado no son pasos que faltan: solo se ven si
+              // el pedido terminó así. Listarlos siempre asustaba de gratis.
+              if (['rejected','cancelled'].includes(s.key)) return s.key === pasoCliente(order.status)
               return true
             }).map((s, i) => {
               const currentIdx = STATUS_STEPS.findIndex(x => x.key === pasoCliente(order.status))
               const done = CLOSED_STATUSES.includes(order.status)
                 ? s.key === pasoCliente(order.status)
                 : currentIdx >= 0 && currentIdx >= STATUS_STEPS.findIndex(x => x.key === s.key)
+              const actual = s.key === pasoCliente(order.status)
               return (
                 <div key={s.key} className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 font-body text-xs ${
                     done ? 'bg-cherry text-cream' : 'bg-smoked text-coal/30'
-                  }`}>{done ? '✓' : (i+1)}</div>
-                  <span className={`font-body text-sm ${done ? 'text-coal font-semibold' : 'text-coal/40'}`}>{labelPaso(s, order)}</span>
+                  }`}>{done ? <Check size={13} aria-hidden="true" /> : (i+1)}</div>
+                  <span className={`font-body text-sm ${
+                    actual ? 'text-cherry font-bold' : done ? 'text-coal font-semibold' : 'text-coal/40'
+                  }`}>{labelPaso(s, order)}</span>
                 </div>
               )
             })}
@@ -2939,10 +2993,10 @@ function ClientOrderDetail({ order, onClose }) {
           {['accepted', 'preparing', 'in_transit', 'arrived'].includes(order.status) && (
             <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
               <p className="font-display text-base tracking-wide">
-                {order.status === 'in_transit' ? '🛵 Tu pedido está en camino' :
-                 order.status === 'arrived'    ? '📍 Domiciliario llegó' :
-                 order.deliveryMode === 'pickup' ? '🍳 Tu pedido está en preparación' :
-                                                 '🍳 Aceptado por el domiciliario y en preparación'}
+                {order.status === 'in_transit' ? 'Tu pedido está en camino' :
+                 order.status === 'arrived'    ? 'El domiciliario llegó' :
+                 order.deliveryMode === 'pickup' ? 'Tu pedido está en preparación' :
+                                                 'Aceptado por el domiciliario y en preparación'}
               </p>
               {/* La espera larga vive aquí (mediana de 31 min entre asignado y
                   en camino), así que es donde más falta hace la hora concreta. */}
@@ -2958,7 +3012,7 @@ function ClientOrderDetail({ order, onClose }) {
               )}
               {eta?.tarde && (
                 <p className="font-body text-xs text-mustard leading-relaxed">
-                  ⏳ Se está demorando más de lo normal. Si necesitas algo, escríbenos aquí por el chat.
+                  Se está demorando más de lo normal. Si necesitas algo, escríbenos aquí por el chat.
                 </p>
               )}
               {['accepted', 'preparing'].includes(order.status) && (
@@ -2978,11 +3032,11 @@ function ClientOrderDetail({ order, onClose }) {
                   <div className="flex gap-2 mt-1">
                     <a href={`tel:${order.driverPhone}`}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors">
-                      📞 Llamar
+                      <Phone size={15} aria-hidden="true" /> Llamar
                     </a>
                     <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-sm font-semibold hover:bg-[#25D366]/20 transition-colors">
-                      📱 WhatsApp
+                      <MessageCircle size={15} aria-hidden="true" /> WhatsApp
                     </a>
                   </div>
                 )
@@ -3001,7 +3055,7 @@ function ClientOrderDetail({ order, onClose }) {
                         destLat={order.addrLat} destLng={order.addrLng}
                       />
                     </Suspense>
-                    <p className="font-body text-[11px] text-coal/50 text-center">🛵 Tu domiciliario · 🏠 Tu dirección — el mapa se actualiza solo</p>
+                    <p className="font-body text-[11px] text-coal/50 text-center">El mapa se actualiza solo: la moto es tu domiciliario y la casa, tu dirección.</p>
                     <button onClick={openDriverMap} className="btn-secondary btn-sm w-full">
                       <Navigation size={14} /> Abrir en Google Maps
                     </button>
@@ -3020,7 +3074,7 @@ function ClientOrderDetail({ order, onClose }) {
               <ShoppingBag size={16} className="text-cherry" />
               <p className="font-display text-base tracking-wide">Tu pedido</p>
             </div>
-            <p className="font-body text-sm text-coal whitespace-pre-wrap">{order.items}</p>
+            <ListaItems texto={order.items} />
             {order.notes && (
               <div className="mt-2 bg-mustard/10 rounded-lg p-2">
                 <p className="font-body text-xs text-coal/70">{order.notes}</p>
@@ -3043,7 +3097,7 @@ function ClientOrderDetail({ order, onClose }) {
 
           {isDelivered && (
             <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 text-center">
-              <p className="text-3xl mb-2">🎉</p>
+              <CircleCheck size={32} className="text-mint mx-auto mb-2" aria-hidden="true" />
               <p className="font-display text-lg tracking-wide text-mint">¡Pedido entregado!</p>
               <p className="font-body text-xs text-coal/50 mt-1">Gracias por tu pedido en DeliStars</p>
             </div>
@@ -3051,7 +3105,7 @@ function ClientOrderDetail({ order, onClose }) {
 
           {order.status === 'rejected' && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 text-center">
-              <p className="text-3xl mb-2">❌</p>
+              <CircleX size={32} className="text-pepper mx-auto mb-2" aria-hidden="true" />
               <p className="font-display text-lg tracking-wide text-pepper">Pedido rechazado</p>
               {order.rejectionReason && (
                 <p className="font-body text-sm text-coal/70 mt-2">Motivo: {order.rejectionReason}</p>
@@ -3064,7 +3118,7 @@ function ClientOrderDetail({ order, onClose }) {
 
           {order.status === 'cancelled' && (
             <div className="bg-coal/5 border border-coal/20 rounded-2xl p-4 text-center">
-              <p className="text-3xl mb-2">🚫</p>
+              <Ban size={32} className="text-coal/50 mx-auto mb-2" aria-hidden="true" />
               <p className="font-display text-lg tracking-wide text-coal/70">Pedido cancelado</p>
               <p className="font-body text-xs text-coal/50 mt-3">
                 Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
@@ -3090,7 +3144,7 @@ function ClientOrderDetail({ order, onClose }) {
                   {[...order.clientMessages].sort((a,b) => a.ts - b.ts).map((m, i) => (
                     <div key={i} className={`rounded-xl px-3 py-2 ${m.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 mr-4' : 'bg-cherry/5 border border-cherry/20 ml-4'}`}>
                       <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
-                        {m.role === 'cashier' ? '🧾 Cajero' : '🛍️ Tú'}
+                        {m.role === 'cashier' ? 'Cajero' : 'Tú'}
                       </p>
                       <p className="font-body text-sm text-coal">{m.text}</p>
                     </div>
@@ -3188,9 +3242,9 @@ function ClientOrderDetail({ order, onClose }) {
               <button
                 onClick={cancelOrder}
                 disabled={cancelling}
-                className="w-full py-2.5 rounded-xl border border-pepper/40 text-pepper font-body text-sm font-semibold hover:bg-pepper/5 transition-colors disabled:opacity-50"
+                className="btn btn-sm w-full justify-center border border-pepper/40 text-pepper [@media(hover:hover)]:hover:bg-pepper/5"
               >
-                {cancelling ? 'Enviando…' : cancelaDirecto ? '✕ Cancelar pedido' : '✕ Pedir que cancelen el pedido'}
+                {cancelling ? 'Enviando…' : <><X size={15} aria-hidden="true" /> {cancelaDirecto ? 'Cancelar pedido' : 'Pedir que cancelen el pedido'}</>}
               </button>
               <p className="font-body text-[11px] text-coal/45 text-center">
                 {cancelaDirecto
@@ -3283,7 +3337,7 @@ function ClientHistoryModal({ orders, onClose, onSelect, onReorder }) {
         <div className="overflow-y-auto scroll-custom p-4 flex flex-col gap-2 pb-8">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <p className="text-4xl">🔍</p>
+              <Search size={32} className="text-coal/30" aria-hidden="true" />
               <p className="font-body text-coal/40">
                 {historical.length === 0 ? 'Aún no tienes pedidos anteriores' : 'Sin resultados para esa búsqueda'}
               </p>

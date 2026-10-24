@@ -37,7 +37,11 @@ export default function SedeSelectionPage() {
                 ? <>Hola, <span className="text-cherry">{user.displayName.split(' ')[0]}</span></>
                 : '¡Hola!'}
             </p>
-            <p className="font-body text-xs text-coal/50 mt-0.5">{roleLabel}</p>
+            {/* A un cliente el "rol" no le dice nada: solo se muestra a quien
+                trabaja en la plataforma. */}
+            {role && role !== 'client' && (
+              <p className="font-body text-xs text-coal/50 mt-0.5">{roleLabel}</p>
+            )}
           </div>
         </div>
 

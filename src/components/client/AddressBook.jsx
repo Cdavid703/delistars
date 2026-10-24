@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
-import { MapPin, Plus, Check, X, Trash2, Pencil } from 'lucide-react'
+import { MapPin, Plus, Check, X, Trash2, Pencil, House, Briefcase, Heart, Users, AlertCircle } from 'lucide-react'
 import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
 import { ubicarDireccion } from '../../services/recorrido'
@@ -18,13 +18,19 @@ const VIA_TIPOS = [
 ]
 const ORIENTACIONES = ['', 'Sur', 'Este']
 
+// El emoji se sigue guardando con la dirección (las que ya existen lo traen),
+// pero en pantalla se dibuja el icono: así la lista no depende de cómo pinte
+// los emojis cada teléfono.
 const LABEL_PRESETS = [
-  { label: 'Casa',    emoji: '🏠' },
-  { label: 'Trabajo', emoji: '💼' },
-  { label: 'Pareja',  emoji: '❤️' },
-  { label: 'Familia', emoji: '👨‍👩‍👧' },
-  { label: 'Otra',    emoji: '📍' },
+  { label: 'Casa',    emoji: '🏠', icon: House },
+  { label: 'Trabajo', emoji: '💼', icon: Briefcase },
+  { label: 'Pareja',  emoji: '❤️', icon: Heart },
+  { label: 'Familia', emoji: '👨‍👩‍👧', icon: Users },
+  { label: 'Otra',    emoji: '📍', icon: MapPin },
 ]
+
+const iconoDeEtiqueta = (etiqueta) =>
+  LABEL_PRESETS.find(x => x.label === etiqueta)?.icon || MapPin
 
 const EMPTY = {
   id: '', label: 'Casa', emoji: '🏠',
@@ -158,8 +164,8 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
                 const active = preset.label === 'Otra' ? isOtra : (p.label === preset.label && !isOtra)
                 return (
                   <button key={preset.label} type="button" onClick={() => pickLabel(preset)}
-                    className={`px-3 py-1.5 rounded-xl font-body text-sm border transition-colors ${active ? 'bg-cherry text-cream border-cherry' : 'bg-white text-coal/70 border-coal/15 hover:border-cherry/40'}`}>
-                    {preset.emoji} {preset.label}
+                    className={`btn btn-sm border ${active ? 'bg-cherry text-cream border-cherry' : 'bg-white text-coal/70 border-coal/15'}`}>
+                    <preset.icon size={15} aria-hidden="true" /> {preset.label}
                   </button>
                 )
               })}
@@ -238,9 +244,9 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
             <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3">
               <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider mb-0.5">Así queda tu dirección</p>
               <p className="font-body text-sm font-semibold text-coal">
-                {p.emoji} {preview}{p.complemento?.trim() ? `, ${p.complemento.trim()}` : ''}
+                {preview}{p.complemento?.trim() ? `, ${p.complemento.trim()}` : ''}
               </p>
-              {p.barrio && <p className="font-body text-xs text-coal/50">📍 {p.barrio}</p>}
+              {p.barrio && <p className="font-body text-xs text-coal/50">{p.barrio}</p>}
             </div>
           )}
 
@@ -270,8 +276,7 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
             <div className="bg-mustard/10 border border-mustard/40 rounded-xl px-3 py-2.5">
               <p className="font-body text-xs text-coal/80 leading-relaxed">{aviso}</p>
               {onDejarComoEstaba && (
-                <button type="button" onClick={onDejarComoEstaba}
-                  className="mt-1.5 font-body text-[11px] font-semibold text-tangelo underline underline-offset-2">
+                <button type="button" onClick={onDejarComoEstaba} className="btn-link text-xs">
                   El pin anterior estaba bien, déjalo así
                 </button>
               )}
@@ -279,16 +284,20 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
           )}
 
           {errors.length > 0 && (
-            <div className="bg-red-50 border border-red-300 rounded-xl p-3 flex flex-col gap-1">
-              {errors.map(e => <p key={e} className="font-body text-xs text-red-600">• {e}</p>)}
+            <div className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1.5">
+              {errors.map(e => (
+                <p key={e} className="font-body text-xs text-pepper flex items-start gap-1.5">
+                  <AlertCircle size={13} className="flex-shrink-0 mt-0.5" aria-hidden="true" /> {e}
+                </p>
+              ))}
             </div>
           )}
 
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
-            <button type="button" onClick={handleSave} disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Guardando…' : '✓ Guardar dirección'}
+          <div className="flex flex-col gap-2 pt-1">
+            <button type="button" onClick={handleSave} disabled={saving} className="btn-primary w-full btn-lg">
+              {saving ? 'Guardando…' : <><Check size={18} aria-hidden="true" /> Guardar dirección</>}
             </button>
+            <button type="button" onClick={onCancel} className="btn-ghost w-full">Cancelar</button>
           </div>
         </div>
       </div>
@@ -408,14 +417,15 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
       {places.map(p => (
         <button key={p.id} type="button" onClick={() => selectPlace(p)}
           className={`text-left rounded-2xl px-4 py-3 border transition-colors flex items-start gap-3 ${isSelected(p) ? 'border-cherry bg-cherry/5' : 'border-coal/12 bg-white hover:border-cherry/40'}`}>
-          <span className="text-xl leading-none mt-0.5">{p.emoji || '📍'}</span>
+          {(() => { const IconoEtiqueta = iconoDeEtiqueta(p.label)
+            return <IconoEtiqueta size={18} className="text-cherry flex-shrink-0 mt-0.5" aria-hidden="true" /> })()}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-body font-semibold text-sm text-coal">{p.label}</p>
               {isSelected(p) && <Check size={14} className="text-cherry" />}
             </div>
             <p className="font-body text-xs text-coal/60 truncate">{fullAddressOf(p)}</p>
-            {p.barrio && <p className="font-body text-[11px] text-coal/40">📍 {p.barrio}{p.lat != null ? ' · ubicada en el mapa' : ''}</p>}
+            {p.barrio && <p className="font-body text-[11px] text-coal/40">{p.barrio}{p.lat != null ? ' · ubicada en el mapa' : ''}</p>}
             {revisando === p.id && <p className="font-body text-[11px] text-tangelo">Verificando la ubicación…</p>}
           </div>
           <span className="flex items-center gap-1 flex-shrink-0">

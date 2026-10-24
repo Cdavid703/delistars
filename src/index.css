@@ -57,6 +57,15 @@
   .btn-mint   { @apply btn bg-mint text-cream shadow-card [@media(hover:hover)]:hover:opacity-90; }
   .btn-mustard{ @apply btn bg-mustard text-coal shadow-card [@media(hover:hover)]:hover:opacity-90; }
   .btn-sm { @apply px-4 py-2 text-sm rounded-full; min-height: 40px; }
+  /* Acción secundaria en forma de enlace: ni borde ni fondo, pero con la misma
+     área para el dedo que un botón. Reemplaza los subrayados sueltos. */
+  .btn-link {
+    @apply inline-flex items-center gap-1.5 font-body text-sm font-semibold text-tangelo
+           underline underline-offset-4 decoration-tangelo/40 rounded-lg px-1
+           transition-colors duration-150 [@media(hover:hover)]:hover:text-cherry
+           focus-visible:ring-2 focus-visible:ring-cherry/50;
+    min-height: 40px;
+  }
   .btn-lg { @apply px-8 py-4 text-lg rounded-full; }
 
   /* Botón de icono: área táctil de 44 px aunque el icono mida 20. Varias
