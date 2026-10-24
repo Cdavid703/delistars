@@ -31,6 +31,8 @@ import BotonPushEquipo from '../common/BotonPushEquipo'
 import TurnoDomiciliario from './TurnoDomiciliario'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
+import CuadresEfectivo from '../common/CuadresEfectivo'
+import { transferenciaPendiente } from '../../utils/cuadres'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -608,7 +610,7 @@ export default function DeliveryPanel() {
       {selected && <DriverOrderDetail key={selected.id} order={selected} onClose={() => setSelected(null)} />}
 
       {showCuadre && (
-        <DriverCuadreTurnoModal orders={orders} onClose={() => setShowCuadre(false)} />
+        <DriverCuadreTurnoModal orders={orders} sede={sede} user={user} onClose={() => setShowCuadre(false)} />
       )}
 
       {showManual && (
@@ -875,6 +877,8 @@ function DriverOrderDetail({ order, onClose }) {
   const arrived   = () => update('transiciones', { a: 'llego' }, { status: 'arrived', arrivedAt: serverTimestamp() })
 
   const markDelivered = () => {
+    // §13.1: pagada en digital, no se entrega hasta que la caja confirme la plata.
+    if (transferenciaPendiente(order)) { alert('La caja aún no confirma la transferencia. Pídele que la verifique antes de entregar.'); return }
     const isCash = order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto'
     const newStatus = isCash ? 'pending_cuadre' : 'completed'
     // Por la API el servidor cuenta la fidelización; en el respaldo, como siempre.
@@ -1249,8 +1253,14 @@ function DriverOrderDetail({ order, onClose }) {
                 <MapPin size={20} /> Llegué al destino
               </button>
             )}
+            {order.status === 'arrived' && transferenciaPendiente(order) && (
+              <p className="font-body text-sm text-coal bg-mustard/15 border border-mustard/50 rounded-xl px-3 py-2 flex items-start gap-2">
+                <AlertTriangle size={16} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
+                <span><strong>Transferencia pendiente de verificar.</strong> No entregues hasta que la caja confirme que la plata llegó.</span>
+              </p>
+            )}
             {order.status === 'arrived' && (
-              <button onClick={markDelivered} disabled={loading} className="btn-mint w-full btn-lg">
+              <button onClick={markDelivered} disabled={loading || transferenciaPendiente(order)} className="btn-mint w-full btn-lg">
                 <CheckCircle size={20} /> Marcar como entregado
               </button>
             )}
@@ -1308,7 +1318,7 @@ function DriverEntregadosSummary({ orders }) {
 }
 
 // ─── Cuadre de turno del domiciliario ────────────────────────────────────────
-function DriverCuadreTurnoModal({ orders, onClose }) {
+function DriverCuadreTurnoModal({ orders, sede, user, onClose }) {
   const completedToday = orders.filter(o =>
     ['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status) && isToday(o.createdAt)
   )
@@ -1340,6 +1350,8 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Entregas de efectivo y fondos para cambio (§13.2, §13.3) */}
+          <CuadresEfectivo modo="domiciliario" sedeId={sede?.id} user={user} pedidos={completedToday} />
           <div className="card">
             <p className="font-display text-base tracking-wide mb-1">Pedidos entregados hoy</p>
             <p className="font-body text-2xl font-bold text-coal">{completedToday.length} pedidos</p>

@@ -943,6 +943,53 @@ function watchChatDomiciliario() {
   console.log('[scheduler] avisos del chat cliente ↔ domiciliario activos')
 }
 
+// ─── Cuadres de efectivo (Fase 7, §13) ──────────────────────────────────────
+// Entrega propuesta → la caja; fondo propuesto o corregido → el domiciliario;
+// fondo rechazado → la caja; entrega con diferencia → administración;
+// confirmación → el domiciliario.
+function watchCuadres() {
+  const seen = new Map()
+  let baseline = true
+  const pesos = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
+  adminDb.collection('cuadres').orderBy('creadoAt', 'desc').limit(100)
+    .onSnapshot(async (snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') { seen.delete(chg.doc.id); continue }
+        const id = chg.doc.id
+        const m = chg.doc.data()
+        const prev = seen.get(id)
+        seen.set(id, { estado: m.estado, monto: m.monto })
+        if (baseline) continue
+        const o = { sedeId: m.sedeId, sedeName: m.sedeId === 'santa_teresita' ? 'Santa Teresita' : 'Santa Lucía', name: m.driverName }
+        const alDomi = (clave, title, body) => sendPushForStaff(id, o, { rol: 'driver', soloA: m.driverEmail, clave, tipo: 'cuadre', title, body })
+        const aCaja = (clave, title, body) => sendPushForStaff(id, o, { rol: 'cashier', clave, tipo: 'cuadre', title, body })
+        try {
+          if (!prev) {
+            if (m.tipo === 'entrega') await aCaja('cuadre-entrega', '💵 Entrega de efectivo por confirmar', `${m.driverName || 'Un domiciliario'} dice que te entrega ${pesos(m.monto)}. Cuenta la plata y confírmalo en el cuadre de turno.`)
+            if (m.tipo === 'fondo') await alDomi('cuadre-fondo', '💵 Fondo para cambio', `La caja te dio ${pesos(m.monto)} para cambio. Confírmalo en tu cuadre de turno.`)
+            continue
+          }
+          if (prev.estado === m.estado && prev.monto === m.monto) continue
+          if (m.tipo === 'fondo' && m.estado === 'rechazado') await aCaja(`cuadre-fondo-no-${m.respondidoAt || ''}`, '⚠️ El fondo no cuadra', `${m.driverName || 'El domiciliario'} dice que recibió ${pesos(m.montoRecibido)}, no ${pesos(m.monto)}. Revísalo y corrígelo.`)
+          if (m.tipo === 'fondo' && m.estado === 'propuesto' && prev.estado === 'rechazado') await alDomi(`cuadre-fondo-corr-${m.monto}`, '💵 Fondo corregido', `La caja corrigió el fondo a ${pesos(m.monto)}. Confírmalo.`)
+          if (m.estado === 'confirmado' && m.tipo === 'entrega') await alDomi('cuadre-ok', '✅ Entrega confirmada', `La caja confirmó que recibió ${pesos(m.montoRecibido)}.`)
+          if (m.estado === 'con_diferencia') {
+            await alDomi('cuadre-dif', '⚠️ La entrega no cuadró', `La caja contó ${pesos(m.montoRecibido)} de ${pesos(m.monto)}. Administración lo revisa.`)
+            for (const email of ADMIN_EMAILS) {
+              await sendPushForStaff(id, o, { rol: 'admin', soloA: email, clave: 'cuadre-dif-admin', tipo: 'cuadre', title: '⚠️ Cuadre con diferencia',
+                body: `${m.driverName || 'Un domiciliario'} entregó ${pesos(m.montoRecibido)} de ${pesos(m.monto)} en ${o.sedeName}: ${m.motivo || 'sin motivo'}. Resuélvelo en el cuadre de turno.` }).catch(() => {})
+            }
+          }
+        } catch (e) { console.error('[scheduler] aviso cuadre error:', e?.message || e) }
+      }
+      baseline = false
+    }, (err) => {
+      console.error('[scheduler] watch cuadres error:', err?.message || err)
+      setTimeout(() => { try { watchCuadres() } catch (e) { console.error('[scheduler] cuadres reintento error:', e?.message || e) } }, 60000)
+    })
+  console.log('[scheduler] avisos de cuadres activos')
+}
+
 // ─── Reclamos (Fase 7, §14) ─────────────────────────────────────────────────
 // Cada cambio de estado del caso le avisa a quien le toca mover: caso nuevo →
 // la caja (comida) o administración (entrega); reembolso solicitado →
@@ -1125,6 +1172,8 @@ async function main() {
       catch (err) { console.error('[scheduler] avisos del chat del domiciliario deshabilitados:', err?.message || err) }
       try { watchReclamos() }
       catch (err) { console.error('[scheduler] avisos de reclamos deshabilitados:', err?.message || err) }
+      try { watchCuadres() }
+      catch (err) { console.error('[scheduler] avisos de cuadres deshabilitados:', err?.message || err) }
       try { watchDevoluciones() }
       catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
       try { watchSolicitudesAcceso() }

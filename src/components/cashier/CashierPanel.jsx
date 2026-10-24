@@ -7,6 +7,7 @@ import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
 import DevolucionesSaldo from './DevolucionesSaldo'
 import Reclamos from './Reclamos'
+import CuadresEfectivo from '../common/CuadresEfectivo'
 import EstadoDomiciliarios from './EstadoDomiciliarios'
 import CampanaAvisos from '../common/CampanaAvisos'
 import PuestoCaja from './PuestoCaja'
@@ -855,6 +856,7 @@ export default function CashierPanel() {
       {/* Cuadre de turno modal */}
       {showCuadreTurno && (
         <CuadreTurnoModal
+          sede={sede} esAdmin={esAdminReclamos}
           orders={orders}
           drivers={drivers}
           onClose={() => setShowCuadreTurno(false)}
@@ -1268,7 +1270,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
 }
 
 // ─── Cuadre de turno modal ────────────────────────────────────────────────────
-function CuadreTurnoModal({ orders, drivers, onClose }) {
+function CuadreTurnoModal({ orders, drivers, sede, esAdmin, onClose }) {
   const [selectedDriver, setSelectedDriver] = useState('')
 
   const completedToday = orders.filter(o =>
@@ -1315,6 +1317,9 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
               {drivers.map(d => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
             </select>
           </div>
+
+          {/* Entregas de efectivo, fondos para cambio y diferencias (§13.2, §13.3) */}
+          <CuadresEfectivo modo="caja" sedeId={sede?.id} esAdmin={esAdmin} drivers={drivers} pedidos={completedToday} />
 
           {/* Total pedidos */}
           <div className="card">

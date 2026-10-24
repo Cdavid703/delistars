@@ -233,6 +233,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Cuadres de efectivo (Fase 7, especificación §13.2 y §13.3) ──────────
+    // cuadres/{id}: entregas de efectivo del domiciliario a la caja y fondos
+    // para cambio de la caja al domiciliario. Los lee la caja, administración
+    // y el domiciliario dueño del movimiento. Todo se escribe por /api/v1/cuadres.
+    match /cuadres/{movimientoId} {
+      allow read: if isAdmin() || isCashier()
+                  || (isDriver() && resource.data.driverEmail == userEmail());
+      allow write: if false;
+    }
+
     // ── Reclamos (Fase 7, especificación §14) ──────────────────────────────
     // reclamos/{id}: lo lee el cliente dueño, administración (todos) y la caja
     // solo los de comida ("producto"); los de entrega (domiciliario, chat) son
