@@ -158,8 +158,13 @@ router.get('/domiciliarios', requireUser, async (req: Request, res: Response) =>
     for (const [email, nombre] of Object.entries(DOMICILIARIOS_FIJOS)) porEmail.set(email, { email, nombre, telefono: null, sedes: TODAS_LAS_SEDES });
     for (const d of dinamicos.docs) {
       const x = d.data();
-      const sedes = Array.isArray(x.sedes) && x.sedes.length ? x.sedes : TODAS_LAS_SEDES;
-      porEmail.set(d.id.toLowerCase(), { email: d.id.toLowerCase(), nombre: x.name || d.id, telefono: x.phone || null, sedes });
+      const email = d.id.toLowerCase();
+      const propias: string[] = Array.isArray(x.sedes) && x.sedes.length ? x.sedes : TODAS_LAS_SEDES;
+      // Igual que /equipo/yo: un domiciliario fijo conserva sus sedes aunque
+      // su documento dinámico tenga menos (antes lo reemplazaba).
+      const previas = porEmail.get(email)?.sedes ?? [];
+      const sedes = [...new Set([...previas, ...propias])];
+      porEmail.set(email, { email, nombre: x.name || porEmail.get(email)?.nombre || d.id, telefono: x.phone || null, sedes });
     }
     res.json([...porEmail.values()]
       .filter((x) => !baja.has(x.email) && (!sedeId || x.sedes.includes(sedeId)))
