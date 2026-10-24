@@ -27,6 +27,7 @@ import categoriesRoutes from './modules/modulo_categories/routes/categories.rout
 import sedesRoutes from './modules/modulo_sedes/routes/sede.routes';
 import rutasRoutes from './modules/modulo_rutas/routes/rutas.routes';
 import mercadeoRoutes from './modules/modulo_mercadeo/routes/mercadeo.routes';
+import campanasRoutes from './modules/modulo_mercadeo/routes/campanas.routes';
 import pedidosRoutes from './modules/modulo_pedidos/routes/pedidos.routes';
 import equipoRoutes from './modules/modulo_equipo/routes/equipo.routes';
 import cuentaRoutes from './modules/modulo_cuenta/routes/cuenta.routes';
@@ -125,6 +126,7 @@ app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/avisos`, avisosRoutes);
 app.use(`${apiPrefix}/reportes`, reportesRoutes);
 app.use(`${apiPrefix}/mercadeo`, mercadeoRoutes);
+app.use(`${apiPrefix}/mercadeo`, campanasRoutes);
 
 // 404 Handler
 app.use((_req: Request, res: Response) => {

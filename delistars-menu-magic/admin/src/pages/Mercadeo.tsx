@@ -3,15 +3,26 @@ import {
   collection, doc, onSnapshot, orderBy, query, addDoc, updateDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore'
 import { toast } from 'sonner'
-import { Users, Megaphone, Plus, Save, Trash2, Send, Eye, Pencil, Info, CalendarDays } from 'lucide-react'
+import { Users, Megaphone, Plus, Save, Trash2, Send, Eye, Pencil, Info, CalendarDays, Bell, Pause, Play, BarChart3 } from 'lucide-react'
+import { apiService, type Producto, type Categoria } from '@/services/api'
 import Calendario from '@/components/mercadeo/Calendario'
 import SubirImagen from '@/components/mercadeo/SubirImagen'
 import { db } from '@/services/firebase'
 import { useAuthStore } from '@/store/authStore'
 import logo from '@/assets/logo.svg'
 import {
-  SEGMENTOS, nombreSegmento, CAMPANA_VACIA, faltantes, type Audiencia, type Campana,
+  SEGMENTOS, nombreSegmento, CAMPANA_VACIA, faltantes, faltantesProgramar, estadoProgramacion, conCorreo, type Audiencia, type Campana,
 } from '@/lib/mercadeo'
+
+const SEDES_CAMPANA: Record<string, string> = { '': 'Las dos sedes', santa_lucia: 'Santa Lucía', santa_teresita: 'Santa Teresita' }
+const aLocal = (ms?: number | null) => (ms ? new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
+const deLocal = (v: string) => (v ? new Date(v).getTime() : null)
+const ESTADO_PROG: Record<string, { texto: string; cls: string }> = {
+  programada: { texto: 'Programada', cls: 'bg-sky-100 text-sky-700' },
+  activa: { texto: 'Activa', cls: 'bg-emerald-100 text-emerald-700' },
+  pausada: { texto: 'Pausada', cls: 'bg-amber-100 text-amber-700' },
+  terminada: { texto: 'Terminó', cls: 'bg-gray-100 text-gray-600' },
+}
 
 const n = (v?: number) => (v ?? 0).toLocaleString('es-CO')
 
@@ -144,6 +155,13 @@ function CampanasTab({ aud, lista }: { aud: Audiencia | null; lista: Campana[] }
         botonTexto: datos.botonTexto?.trim() || '', botonUrl: datos.botonUrl?.trim() || '',
         fechaPrevista: datos.fechaPrevista || '',
         estado: datos.estado || 'borrador', actualizadoAt: serverTimestamp(),
+        // Notificación y franja (§17): las métricas y la cola las escribe el servidor.
+        canales: { correo: conCorreo(datos), push: !!datos.canales?.push, franja: !!datos.canales?.franja },
+        sedeId: datos.sedeId || '',
+        vigencia: { inicio: datos.vigencia?.inicio ?? null, fin: datos.vigencia?.fin ?? null },
+        push: { titulo: datos.push?.titulo?.trim() || '', texto: datos.push?.texto?.trim() || '' },
+        franja: { titulo: datos.franja?.titulo?.trim() || '', texto: datos.franja?.texto?.trim() || '' },
+        destino: { tipo: datos.destino?.tipo || 'menu', id: datos.destino?.id ?? null },
       }
       if (id) await updateDoc(doc(db, 'campanas', id), limpio)
       else await addDoc(collection(db, 'campanas'), { ...limpio, creadoPor: user?.email || '', creadoAt: serverTimestamp() })
@@ -189,13 +207,22 @@ function CampanasTab({ aud, lista }: { aud: Audiencia | null; lista: Campana[] }
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-coal truncate">{c.nombre}</p>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    c.estado === 'enviada' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {c.estado === 'enviada' ? 'Enviada' : 'Borrador'}
-                  </span>
+                  {conCorreo(c) && (
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      c.estado === 'enviada' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {c.estado === 'enviada' ? 'Correo enviado' : 'Borrador'}
+                    </span>
+                  )}
+                  {ESTADO_PROG[estadoProgramacion(c)] && (
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${ESTADO_PROG[estadoProgramacion(c)].cls}`}>
+                      {ESTADO_PROG[estadoProgramacion(c)].texto}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-muted-fg truncate">
-                  {c.asunto} · {nombreSegmento(c.segmento)} · {n(aud?.segmentos?.[c.segmento]?.aceptan)} destinatarios
+                  {[conCorreo(c) && 'Correo', c.canales?.push && 'Notificación', c.canales?.franja && 'Franja'].filter(Boolean).join(' + ')}
+                  {' '}· {nombreSegmento(c.segmento)}{c.sedeId ? ` · ${SEDES_CAMPANA[c.sedeId]}` : ''}
+                  {c.metricas?.enviados ? ` · ${n(c.metricas.enviados)} notificaciones` : ''}{c.metricas?.pedidos ? ` · ${n(c.metricas.pedidos)} pedidos` : ''}
                 </p>
               </div>
               <button onClick={() => setEditando(c)} className="p-2 rounded-lg text-muted-fg hover:text-primary hover:bg-primary/10" title="Editar">
@@ -222,8 +249,18 @@ function EditorCampana({ c, vivo, setC, aud, onGuardar, onCancelar, guardando }:
   guardando: boolean
 }) {
   const set = (k: keyof Campana, v: string) => setC({ ...c, [k]: v })
+  const setObj = <K extends 'canales' | 'vigencia' | 'push' | 'franja' | 'destino'>(k: K, v: Partial<NonNullable<Campana[K]>>) =>
+    setC({ ...c, [k]: { ...(c[k] as object || {}), ...v } } as Campana)
   const destinatarios = aud?.segmentos?.[c.segmento]?.aceptan ?? 0
+  const notificables = aud?.segmentos?.[c.segmento]?.notificables ?? 0
   const campo = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary'
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  useEffect(() => {
+    apiService.getProductos().then(setProductos).catch(() => {})
+    apiService.getCategories().then(setCategorias).catch(() => {})
+  }, [])
+  const correo = conCorreo(c)
 
   return (
     <div className="grid lg:grid-cols-2 gap-6">
@@ -236,12 +273,26 @@ function EditorCampana({ c, vivo, setC, aud, onGuardar, onCancelar, guardando }:
           <select className={campo} value={c.segmento} onChange={(e) => set('segmento', e.target.value)}>
             {SEGMENTOS.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
           </select>
-          <span className="text-[11px] text-muted-fg">{n(destinatarios)} clientes de este grupo aceptan promociones</span>
+          <span className="text-[11px] text-muted-fg">
+            {n(destinatarios)} con correo aceptan promociones · {n(notificables)} pueden recibir notificaciones
+          </span>
         </label>
+        <div className="text-xs font-medium text-coal flex flex-col gap-1.5">Canales
+          <div className="flex flex-wrap gap-4 font-normal">
+            <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={correo} onChange={(e) => setObj('canales', { correo: e.target.checked })} /> Correo</label>
+            <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!!c.canales?.push} onChange={(e) => setObj('canales', { push: e.target.checked })} /> Notificación (app y navegador)</label>
+            <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!!c.canales?.franja} onChange={(e) => setObj('canales', { franja: e.target.checked })} /> Franja del menú</label>
+          </div>
+          <span className="text-[11px] text-muted-fg font-normal">Cada cliente recibe máximo una promoción cada 24 horas, sumando correo y notificaciones. La franja no cuenta.</span>
+        </div>
         <label className="text-xs font-medium text-coal">Fecha prevista de envío (opcional)
           <input type="date" className={campo} value={c.fechaPrevista || ''} onChange={(e) => set('fechaPrevista', e.target.value)} />
           <span className="text-[11px] text-muted-fg">Con fecha, la campaña aparece en el calendario.</span>
         </label>
+        {(c.canales?.push || c.canales?.franja) && (
+          <NotificacionYFranja c={c} setObj={setObj} onSede={(v) => setC({ ...c, sedeId: v })} campo={campo} productos={productos} categorias={categorias} />
+        )}
+        {correo && <>
         <label className="text-xs font-medium text-coal">Asunto del correo
           <input className={campo} value={c.asunto} onChange={(e) => set('asunto', e.target.value)} placeholder="Ej: 🌭 Hoy tu perro favorito con 20% off" maxLength={120} />
         </label>
@@ -265,6 +316,7 @@ function EditorCampana({ c, vivo, setC, aud, onGuardar, onCancelar, guardando }:
             <input className={campo} value={c.botonUrl || ''} onChange={(e) => set('botonUrl', e.target.value)} />
           </label>
         </div>
+        </>}
         <div className="flex gap-2 flex-wrap pt-2">
           <button onClick={onGuardar} disabled={guardando}
             className="bg-primary text-white font-semibold rounded-lg px-4 py-2.5 text-sm inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-50">
@@ -273,13 +325,18 @@ function EditorCampana({ c, vivo, setC, aud, onGuardar, onCancelar, guardando }:
           <button onClick={onCancelar} className="border border-gray-300 rounded-lg px-4 py-2.5 text-sm hover:bg-gray-50">Cancelar</button>
         </div>
         {vivo
-          ? <EnvioCampana c={vivo} destinatarios={destinatarios} />
-          : <p className="text-[11px] text-muted-fg">Guarda la campaña para poder enviar la prueba y la campaña.</p>}
+          ? <>
+              {conCorreo(vivo) && <EnvioCampana c={vivo} destinatarios={destinatarios} />}
+              {(vivo.canales?.push || vivo.canales?.franja) && <ProgramarCampana c={vivo} notificables={vivo.canales?.push ? notificables : null} productos={productos} />}
+            </>
+          : <p className="text-[11px] text-muted-fg">Guarda la campaña para poder enviarla o programarla.</p>}
       </div>
 
       <div>
         <p className="text-xs font-medium text-muted-fg mb-2 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Vista previa</p>
-        <VistaPrevia c={c} />
+        {c.canales?.push && <VistaNotificacion c={c} />}
+        {c.canales?.franja && <VistaFranja c={c} />}
+        {correo && <VistaPrevia c={c} />}
       </div>
     </div>
   )
@@ -399,6 +456,153 @@ function VistaPrevia({ c }: { c: Omit<Campana, 'id'> }) {
           <span className="underline">Darme de baja</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Notificación y franja (§17.2): sede, vigencia, textos y destino. */
+function NotificacionYFranja({ c, setObj, onSede, campo, productos, categorias }: {
+  c: Campana | Omit<Campana, 'id'>
+  setObj: <K extends 'canales' | 'vigencia' | 'push' | 'franja' | 'destino'>(k: K, v: Partial<NonNullable<Campana[K]>>) => void
+  onSede: (v: string) => void
+  campo: string; productos: Producto[]; categorias: Categoria[]
+}) {
+  const d = c.destino || { tipo: 'menu' as const }
+  return (
+    <div className="border border-sky-200 bg-sky-50/50 rounded-lg p-3 flex flex-col gap-3">
+      <p className="text-xs font-semibold text-sky-800 flex items-center gap-1.5"><Bell className="w-3.5 h-3.5" /> Notificación y franja</p>
+      <label className="text-xs font-medium text-coal">Sede
+        <select className={campo} value={c.sedeId || ''} onChange={(e) => onSede(e.target.value)}>
+          {Object.entries(SEDES_CAMPANA).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+        </select>
+        <span className="text-[11px] text-muted-fg font-normal">Con una sede, la notificación llega a quienes piden en esa sede y la franja sale en su menú.</span>
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs font-medium text-coal">Empieza
+          <input type="datetime-local" className={campo} value={aLocal(c.vigencia?.inicio)} onChange={(e) => setObj('vigencia', { inicio: deLocal(e.target.value) })} />
+        </label>
+        <label className="text-xs font-medium text-coal">Termina
+          <input type="datetime-local" className={campo} value={aLocal(c.vigencia?.fin)} onChange={(e) => setObj('vigencia', { fin: deLocal(e.target.value) })} />
+        </label>
+      </div>
+      {c.canales?.push && <>
+        <label className="text-xs font-medium text-coal">Título de la notificación
+          <input className={campo} maxLength={65} value={c.push?.titulo || ''} onChange={(e) => setObj('push', { titulo: e.target.value })} placeholder="Ej: 🌭 Martes de perros" />
+        </label>
+        <label className="text-xs font-medium text-coal">Texto de la notificación
+          <textarea className={`${campo} h-20`} maxLength={180} value={c.push?.texto || ''} onChange={(e) => setObj('push', { texto: e.target.value })} placeholder="Ej: Hoy el perro clásico a $15.000 hasta las 11 p. m." />
+        </label>
+      </>}
+      {c.canales?.franja && <>
+        <label className="text-xs font-medium text-coal">Título en la franja
+          <input className={campo} maxLength={60} value={c.franja?.titulo || ''} onChange={(e) => setObj('franja', { titulo: e.target.value })} placeholder={c.push?.titulo || 'Ej: Martes de perros'} />
+        </label>
+        <label className="text-xs font-medium text-coal">Texto en la franja
+          <input className={campo} maxLength={120} value={c.franja?.texto || ''} onChange={(e) => setObj('franja', { texto: e.target.value })} placeholder="Ej: Solo hoy, en Santa Lucía" />
+        </label>
+      </>}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs font-medium text-coal">Al tocarla abre
+          <select className={campo} value={d.tipo} onChange={(e) => setObj('destino', { tipo: e.target.value as 'menu', id: null })}>
+            <option value="menu">El menú</option>
+            <option value="producto">Un producto</option>
+            <option value="categoria">Una categoría</option>
+            <option value="premios">Mis premios</option>
+          </select>
+        </label>
+        {d.tipo === 'producto' && (
+          <label className="text-xs font-medium text-coal">Producto
+            <select className={campo} value={d.id ?? ''} onChange={(e) => setObj('destino', { id: e.target.value || null })}>
+              <option value="">Elige…</option>
+              {productos.map((p) => <option key={p.id_producto} value={p.id_producto}>{p.nombre_producto}</option>)}
+            </select>
+          </label>
+        )}
+        {d.tipo === 'categoria' && (
+          <label className="text-xs font-medium text-coal">Categoría
+            <select className={campo} value={d.id ?? ''} onChange={(e) => setObj('destino', { id: e.target.value || null })}>
+              <option value="">Elige…</option>
+              {categorias.map((x) => <option key={x.id_categoria} value={x.id_categoria}>{x.nombre_categoria}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-fg">Solo comunica precios, ofertas y premios ya configurados por administración. Si la promoción ya terminó cuando el cliente abre la notificación, verá «Esta promoción terminó» y los precios de hoy.</p>
+    </div>
+  )
+}
+
+/** Programar, pausar o reanudar; destinatarios y métricas (las cuenta el servidor). */
+function ProgramarCampana({ c, notificables, productos }: { c: Campana; notificables: number | null; productos: Producto[] }) {
+  const [busy, setBusy] = useState(false)
+  const estado = estadoProgramacion(c)
+  const falta = faltantesProgramar(c, productos as never)
+  const m = c.metricas || {}
+  const cambiar = async (datos: Record<string, unknown>, ok: string) => {
+    setBusy(true)
+    try { await updateDoc(doc(db, 'campanas', c.id), datos); toast.success(ok) } catch { toast.error('No se pudo cambiar') } finally { setBusy(false) }
+  }
+  const fecha = (ms?: number | null) => (ms ? new Date(ms).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—')
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 flex flex-col gap-2">
+      <p className="text-xs font-semibold text-coal flex items-center gap-1.5"><Bell className="w-3.5 h-3.5" /> Notificación y franja
+        {ESTADO_PROG[estado] && <span className={`ml-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${ESTADO_PROG[estado].cls}`}>{ESTADO_PROG[estado].texto}</span>}
+      </p>
+      <p className="text-[11px] text-muted-fg">Del {fecha(c.vigencia?.inicio)} al {fecha(c.vigencia?.fin)}{notificables != null ? ` · ${n(notificables)} clientes pueden recibir la notificación hoy` : ''}.</p>
+      {estado === 'sin_programar' && (falta.length
+        ? <p className="text-[11px] text-amber-700">Para programarla falta {falta.join(', ')}. Guarda los cambios primero.</p>
+        : <button onClick={() => cambiar({ programada: true, pausada: false }, 'Campaña programada')} disabled={busy}
+            className="self-start bg-primary text-white font-semibold rounded-lg px-4 py-2 text-sm inline-flex items-center gap-2 disabled:opacity-50"><Play className="w-4 h-4" /> Programar</button>)}
+      {estado === 'programada' && (
+        <button onClick={() => cambiar({ programada: false }, 'Ya no está programada')} disabled={busy} className="self-start border border-gray-300 rounded-lg px-3 py-1.5 text-sm">Quitar de la programación</button>
+      )}
+      {estado === 'activa' && (
+        <button onClick={() => cambiar({ pausada: true }, 'Campaña pausada')} disabled={busy} className="self-start border border-amber-300 text-amber-800 rounded-lg px-3 py-1.5 text-sm inline-flex items-center gap-1.5"><Pause className="w-4 h-4" /> Pausar</button>
+      )}
+      {estado === 'pausada' && (
+        <button onClick={() => cambiar({ pausada: false }, 'Campaña reanudada')} disabled={busy} className="self-start bg-primary text-white rounded-lg px-3 py-1.5 text-sm inline-flex items-center gap-1.5"><Play className="w-4 h-4" /> Reanudar</button>
+      )}
+      {c.programada && (
+        <div className="grid grid-cols-4 gap-2 pt-1">
+          {([['En cola', m.enCola], ['Enviadas', m.enviados], ['Vencidas', m.expirados], ['Sin permiso', m.omitidos],
+             ['Aperturas', m.aperturas], ['Clics en la franja', m.clics], ['Pedidos', m.pedidos], ['En productos', m.ventas != null ? `$${n(m.ventas)}` : undefined]] as [string, number | string | undefined][])
+            .map(([t, v]) => (
+              <div key={t} className="bg-gray-50 rounded-md px-2 py-1.5">
+                <p className="text-[10px] text-muted-fg leading-tight">{t}</p>
+                <p className="text-sm font-semibold text-coal">{typeof v === 'string' ? v : n(v as number | undefined)}</p>
+              </div>
+            ))}
+        </div>
+      )}
+      {c.programada && <p className="text-[10px] text-muted-fg flex items-start gap-1"><BarChart3 className="w-3 h-3 mt-0.5 shrink-0" /> Pedidos: los que hizo alguien que abrió esta campaña de esa sede en las 24 horas anteriores. Es una relación, no prueba que la campaña causó la compra.</p>}
+    </div>
+  )
+}
+
+function VistaNotificacion({ c }: { c: Campana | Omit<Campana, 'id'> }) {
+  return (
+    <div className="mb-4 bg-gray-800 rounded-2xl p-3 max-w-sm">
+      <div className="bg-white/95 rounded-xl p-3 flex gap-3">
+        <img src={logo} alt="" className="w-9 h-9 rounded-lg shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[11px] text-gray-500">DeliStars · ahora</p>
+          <p className="text-sm font-semibold text-gray-900 truncate">{c.push?.titulo || 'Título de la notificación'}</p>
+          <p className="text-xs text-gray-700 line-clamp-3">{c.push?.texto || 'Texto de la notificación'}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function VistaFranja({ c }: { c: Campana | Omit<Campana, 'id'> }) {
+  return (
+    <div className="mb-4 max-w-sm rounded-2xl bg-gradient-to-r from-red-600 to-orange-500 text-white px-4 py-3 flex items-center gap-3">
+      <span className="text-2xl">⭐</span>
+      <span className="flex-1 min-w-0">
+        <span className="block font-display text-lg leading-tight">{c.franja?.titulo || c.push?.titulo || c.nombre || 'Título'}</span>
+        <span className="block text-xs opacity-90">{c.franja?.texto || 'Texto de la franja'}</span>
+      </span>
+      <span className="rounded-xl bg-white/20 px-3 py-2 text-sm font-semibold">Ver</span>
     </div>
   )
 }

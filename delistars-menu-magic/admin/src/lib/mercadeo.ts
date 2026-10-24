@@ -3,12 +3,14 @@
 // (colección `campanas`). El envío se activa cuando se configure el proveedor.
 import type { Timestamp } from 'firebase/firestore'
 
-export interface Segmento { clientes: number; aceptan: number }
+export interface Segmento { clientes: number; aceptan: number; notificables?: number }
 
 export interface Audiencia {
   clientes: number
   conCorreo: number
   aceptan: number
+  /** Aceptan promociones y tienen la app o el navegador con notificaciones. */
+  notificables?: number
   segmentos: Record<string, Segmento>
   actualizado?: Timestamp
 }
@@ -56,6 +58,57 @@ export interface Campana {
   creadoPor?: string
   creadoAt?: Timestamp
   actualizadoAt?: Timestamp
+  // ── Notificación y franja (§17, Fase 7) ──
+  /** Canales: correo (el de siempre), notificación (app y navegador) y franja del menú. */
+  canales?: { correo?: boolean; push?: boolean; franja?: boolean }
+  /** Sede de la campaña ('' = las dos). Define el destino y la atribución. */
+  sedeId?: string
+  /** Vigencia (milisegundos): obligatoria para notificación y franja. */
+  vigencia?: { inicio?: number | null; fin?: number | null }
+  push?: { titulo?: string; texto?: string }
+  franja?: { titulo?: string; texto?: string }
+  destino?: { tipo: 'menu' | 'producto' | 'categoria' | 'premios'; id?: string | number | null }
+  /** Mercadeo la programó (empieza sola en `vigencia.inicio`). */
+  programada?: boolean
+  pausada?: boolean
+  /** Lo escribe el servidor: cola de notificaciones y métricas agregadas. */
+  cola?: { encolada?: boolean; encoladaAt?: number; total?: number }
+  metricas?: { enCola?: number; enviados?: number; expirados?: number; omitidos?: number; aperturas?: number; clics?: number; pedidos?: number; ventas?: number }
+}
+
+export const conCorreo = (c: Partial<Campana>) => c.canales?.correo !== false
+
+/** Estado de la programación (notificación / franja) para mostrar. */
+export function estadoProgramacion(c: Partial<Campana>, ahora = Date.now()): 'sin_programar' | 'programada' | 'activa' | 'pausada' | 'terminada' {
+  if (!c.programada) return 'sin_programar'
+  const ini = Number(c.vigencia?.inicio) || 0, fin = Number(c.vigencia?.fin) || 0
+  if (fin && ahora >= fin) return 'terminada'
+  if (c.pausada) return 'pausada'
+  return ini && ahora < ini ? 'programada' : 'activa'
+}
+
+type ProductoConPromo = { id_producto: number; reglas?: { promo?: { hasta?: string } | null } | null }
+
+/** Qué falta para programar la notificación o la franja (espejo de scheduler/promos.js). */
+export function faltantesProgramar(c: Partial<Campana>, productos: ProductoConPromo[] = []): string[] {
+  const f: string[] = []
+  if (!c.canales?.push && !c.canales?.franja) f.push('elegir notificación o franja')
+  const ini = Number(c.vigencia?.inicio) || 0, fin = Number(c.vigencia?.fin) || 0
+  if (!ini || !fin) f.push('la fecha y hora de inicio y de fin')
+  else if (fin <= ini) f.push('un fin después del inicio')
+  if (c.canales?.push) {
+    if (!c.push?.titulo?.trim()) f.push('el título de la notificación')
+    if (!c.push?.texto?.trim()) f.push('el texto de la notificación')
+  }
+  if (c.canales?.franja && !c.franja?.texto?.trim()) f.push('el texto de la franja')
+  const d = c.destino
+  if (d && (d.tipo === 'producto' || d.tipo === 'categoria') && !d.id) f.push(d.tipo === 'producto' ? 'el producto del destino' : 'la categoría del destino')
+  // La campaña no puede durar más que el beneficio (combo con fechas).
+  if (d?.tipo === 'producto' && d.id && fin) {
+    const hasta = productos.find((p) => String(p.id_producto) === String(d.id))?.reglas?.promo?.hasta
+    if (hasta && fin > new Date(`${hasta}T00:00:00-05:00`).getTime() + 24 * 60 * 60 * 1000) f.push(`un fin que no pase del ${hasta}, cuando termina ese combo`)
+  }
+  return f
 }
 
 export const CAMPANA_VACIA: Omit<Campana, 'id'> = {
@@ -68,14 +121,21 @@ export const CAMPANA_VACIA: Omit<Campana, 'id'> = {
   botonUrl: 'https://delistars.com/',
   fechaPrevista: '',
   estado: 'borrador',
+  canales: { correo: true, push: false, franja: false },
+  sedeId: '',
+  vigencia: { inicio: null, fin: null },
+  push: { titulo: '', texto: '' },
+  franja: { titulo: '', texto: '' },
+  destino: { tipo: 'menu', id: null },
 }
 
 /** Qué le falta a una campaña para poder guardarse. */
 export function faltantes(c: Omit<Campana, 'id'>): string[] {
   const f: string[] = []
   if (!c.nombre.trim()) f.push('el nombre de la campaña')
-  if (!c.asunto.trim()) f.push('el asunto del correo')
-  if (!c.mensaje.trim()) f.push('el mensaje')
+  if (conCorreo(c) && !c.asunto.trim()) f.push('el asunto del correo')
+  if (conCorreo(c) && !c.mensaje.trim()) f.push('el mensaje')
+  if (!c.canales?.correo && !c.canales?.push && !c.canales?.franja && c.canales) f.push('al menos un canal')
   if (c.botonUrl && !/^https:\/\//.test(c.botonUrl)) f.push('un enlace del botón que empiece por https://')
   if (c.imagenUrl && !/^https:\/\//.test(c.imagenUrl)) f.push('un enlace de imagen que empiece por https://')
   return f

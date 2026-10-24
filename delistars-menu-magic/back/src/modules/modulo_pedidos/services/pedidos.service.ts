@@ -17,6 +17,7 @@ import { candidatoPara, cargaDe } from './domiciliarios.service';
 import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
 import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar } from '../reglas/cambios';
 import { validarMensaje } from '../reglas/chat';
+import { atribuible } from '../../modulo_mercadeo/campanas.reglas';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -111,6 +112,15 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     }
   }
 
+  // Atribución a una campaña de Mercadeo (§17.4): la última que abrió de esta
+  // sede en las 24 h anteriores. El aparato manda { id, abiertaAt }.
+  let campana: { id: string; abiertaAt: number } | null = null;
+  const cb = b?.campana;
+  if (cb && typeof cb.id === 'string' && /^[A-Za-z0-9]{10,40}$/.test(cb.id)) {
+    const cd = await db.doc(`campanas/${cb.id}`).get().catch(() => null);
+    if (cd?.exists && atribuible(cd.data() || null, sede.id, Number(cb.abiertaAt) || 0)) campana = { id: cb.id, abiertaAt: Number(cb.abiertaAt) };
+  }
+
   const orderRef = db.collection('orders').doc();
   const counterRef = db.doc(`counters/orders_${sede.id}`);
   const ahora = FieldValue.serverTimestamp();
@@ -144,6 +154,7 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     excepcionMotivo: null,
     // De dónde llegó: la web de domicilios manda 'web'; la app móvil, 'app' (o nada).
     origen: b?.origen === 'web' ? 'web' : 'app',
+    ...(campana ? { campana } : {}),
     version: 1,
     createdAt: ahora,
     updatedAt: ahora,
@@ -205,6 +216,10 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     ...(pedido.fullAddress ? { addresses: FieldValue.arrayUnion(pedido.fullAddress) } : {}),
     lastOrderAt: ahora, orderCount: FieldValue.increment(1),
   }, { merge: true }).catch(() => undefined);
+  // Métricas de la campaña: pedidos atribuidos y su valor en productos (al crearse).
+  if (campana) {
+    db.doc(`campanas/${campana.id}`).update({ 'metricas.pedidos': FieldValue.increment(1), 'metricas.ventas': FieldValue.increment(subtotal) }).catch(() => undefined);
+  }
 
   const bruto = domicilio.deliveryPrice != null || modo === 'pickup' ? subtotal + ((domicilio.deliveryPrice as number) || 0) : null;
   const saldoCalc = bruto != null && beneficios.saldo ? aplicarSaldo(bruto, beneficios.saldo.monto) : null;

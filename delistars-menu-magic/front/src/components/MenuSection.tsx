@@ -9,6 +9,7 @@ import { destacadosPrimero, normalizarNombre, visibleEnMenu, promoPorSlug, estad
 import { SEDES } from "@/data/menu";
 import { toast } from "sonner";
 import { PromoFranja } from "@/components/PromoFranja";
+import { franja, campanaPublica, registrar, recordar, type CampanaPublica } from "@/lib/campanas";
 import { ChevronDown } from "lucide-react";
 
 // Emojis para cada categoría
@@ -22,7 +23,7 @@ const EMOJI_MAP: Record<string, string> = {
 };
 
 export const MenuSection = () => {
-  const { sede, reconcilePrices } = useCart();
+  const { sede, setSede, reconcilePrices } = useCart();
   // Slug de la sede elegida ('santa_lucia' | 'santa_teresita'), como lo usa el servidor.
   const sedeSlug = SEDES.find((s) => s.id === sede)?.slug ?? null;
   const [selected, setSelected] = useState<ApiProduct | null>(null);
@@ -135,6 +136,58 @@ export const MenuSection = () => {
     } catch { /* sin historial */ }
   }, [products, sede]);
 
+  // Campañas de Mercadeo (§17): franja de la sede y enlace de una notificación.
+  const [campanas, setCampanas] = useState<CampanaPublica[]>([]);
+  useEffect(() => { franja(sedeSlug).then(setCampanas); }, [sedeSlug]);
+
+  /** Lleva al destino de una campaña: producto, categoría, menú o Mis premios. */
+  const irADestino = (c: CampanaPublica) => {
+    const d = c.destino || { tipo: "menu" };
+    if (d.tipo === "premios") { window.location.href = "/domicilios/"; return; }
+    if (d.tipo === "producto") {
+      const p = products.find((x) => String(x.id_producto) === String(d.id));
+      if (p && visibleEnMenu(p, sedeSlug)) {
+        const cat = categories.find((x) => x.id_categoria === p.id_categoria);
+        if (cat) irACategoria(idDeCategoria(cat.nombre_categoria));
+        setSelected(p);
+      }
+    } else if (d.tipo === "categoria") {
+      const cat = categories.find((x) => String(x.id_categoria) === String(d.id));
+      if (cat) irACategoria(idDeCategoria(cat.nombre_categoria));
+    }
+  };
+
+  // ?campana=<id>: llegó por una notificación. Cuenta la apertura; si la
+  // promoción ya terminó lo dice (no revive el precio de entonces) y deja el
+  // producto a su precio de hoy.
+  const campanaEnlazada = useRef(true);
+  useEffect(() => {
+    if (!campanaEnlazada.current || products.length === 0 || categories.length === 0) return;
+    let params: URLSearchParams | null = null;
+    try { params = new URLSearchParams(window.location.search); } catch { /* sin URL */ }
+    const id = params?.get("campana");
+    if (!id) { campanaEnlazada.current = false; return; }
+    const sedeUrl = params?.get("sede");
+    if (sedeUrl && !sede) {
+      const s = SEDES.find((x) => x.slug === sedeUrl);
+      if (s) { setSede(s.id); return; } // vuelve a correr ya con la sede
+    }
+    campanaEnlazada.current = false;
+    registrar(id, "apertura");
+    campanaPublica(id).then((c) => {
+      if (!c) return;
+      if (c.vigente) recordar(c);
+      else toast.info("Esta promoción terminó. Los precios son los de hoy; mira las promociones vigentes arriba del menú.", { duration: 9000 });
+      irADestino(c);
+    });
+    try {
+      const url = new URL(window.location.href);
+      ["campana", "sede", "producto", "categoria"].forEach((k) => url.searchParams.delete(k));
+      window.history.replaceState(null, "", url.toString());
+    } catch { /* sin historial */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, categories, sede]);
+
   // Atiende la petición del pop-up: abre la categoría del producto y su ficha.
   useEffect(() => {
     if (!pedido || products.length === 0 || categories.length === 0) return;
@@ -196,7 +249,10 @@ export const MenuSection = () => {
       </div>
 
       {/* Combos de promoción vigentes (en vez del popup de temporada). */}
-      {!loading && !searchQuery.trim() && <PromoFranja products={products} onVer={(p) => setSelected(p)} />}
+      {!loading && !searchQuery.trim() && (
+        <PromoFranja products={products} onVer={(p) => setSelected(p)} campanas={campanas}
+          onCampana={(c) => { registrar(c.id, "clic"); recordar(c); irADestino(c); }} />
+      )}
 
       {loading ? (
         <div className="container py-20 text-center text-muted-foreground animate-pulse">

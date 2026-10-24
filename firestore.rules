@@ -443,7 +443,12 @@ service cloud.firestore {
     // Las crean y editan Mercadeo y el admin. El envío lo hará el servidor,
     // que lee los correos de los clientes con credenciales propias.
     match /campanas/{campanaId} {
-      allow read, write: if isAdmin() || isMarketing();
+      allow read, delete: if isAdmin() || isMarketing();
+      // Las métricas y la cola de notificaciones solo las escribe el servidor (§17).
+      allow create: if (isAdmin() || isMarketing())
+                    && !request.resource.data.keys().hasAny(['metricas', 'cola']);
+      allow update: if (isAdmin() || isMarketing())
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['metricas', 'cola']);
       // El scheduler (bot) registra el avance del envío y puede corregir el
       // texto o el enlace del botón. No crea ni borra campañas.
       allow update: if isAutoOpenBot()
