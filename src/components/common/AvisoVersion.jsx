@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 // Aviso de versión nueva. Una pestaña abierta (o la app instalada) sigue con el
@@ -38,10 +39,11 @@ export default function AvisoVersion() {
   if (!nueva) return null
   return (
     <div className="fixed top-0 left-0 right-0 z-[199] bg-mustard text-coal flex items-center justify-center gap-3 py-2 px-4 text-sm font-body font-semibold shadow-md">
-      <span>✨ Hay una versión nueva de DeliStars</span>
+      <Sparkles size={16} className="flex-shrink-0" aria-hidden="true" />
+      <span>Hay una versión nueva de DeliStars</span>
       <button
         onClick={() => window.location.reload()}
-        className="bg-coal text-cream rounded-full px-4 py-1 text-xs font-semibold hover:opacity-90"
+        className="btn btn-sm bg-coal text-cream text-xs px-4"
       >
         Actualizar
       </button>

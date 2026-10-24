@@ -1,4 +1,4 @@
-import { Banknote } from 'lucide-react'
+import { Banknote, Check } from 'lucide-react'
 import { cashAmount } from '../../utils/payments'
 
 const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
@@ -25,7 +25,7 @@ export default function CashChangeNotice({ order, className = '' }) {
       <div className="flex items-center gap-2">
         <Banknote size={18} className="text-mustard flex-shrink-0" />
         <p className="font-display text-base tracking-wide text-coal">
-          💵 Efectivo — {order.payment === 'Mixto' ? 'pago mixto' : 'contra entrega'}
+          Efectivo — {order.payment === 'Mixto' ? 'pago mixto' : 'contra entrega'}
         </p>
       </div>
 
@@ -35,7 +35,9 @@ export default function CashChangeNotice({ order, className = '' }) {
       </div>
 
       {pagaExacto ? (
-        <p className="font-body text-sm font-semibold text-mint">✓ El cliente paga exacto — no se necesita cambio</p>
+        <p className="font-body text-sm font-semibold text-mint flex items-center gap-1.5">
+          <Check size={15} aria-hidden="true" /> El cliente paga exacto — no se necesita cambio
+        </p>
       ) : (
         <>
           <div className="flex justify-between font-body text-sm">

@@ -14,9 +14,10 @@ import { es } from 'date-fns/locale'
 import {
   MapPin, Phone, User, ShoppingBag, Navigation,
   ExternalLink, CheckCircle, LogOut, Bell,
-  DollarSign, Calculator, X, MessageSquare, BookOpen,
+  DollarSign, Calculator, X, MessageSquare, BookOpen, MoreVertical,
   Search, ChevronDown, ChevronUp, HelpCircle,
-  Send, Radio, Route, Target
+  Send, Radio, Route, Target, Gift, Check, Pencil, AlertTriangle, MessageCircle,
+  ClipboardList, Tag, Banknote, Calendar, Lightbulb, Bike, ChevronRight
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
 import CashChangeNotice from '../common/CashChangeNotice'
@@ -32,6 +33,10 @@ import CampanaAvisos from '../common/CampanaAvisos'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
+const ITEM_MENU = 'flex items-center gap-2.5 w-full text-left rounded-xl px-3 py-2.5 ' +
+  'font-body text-sm font-semibold text-coal/80 transition-colors duration-150 ' +
+  '[@media(hover:hover)]:hover:bg-smoked active:bg-smoked'
+
 const TABS = [
   { id: 'pending',   label: 'Por aceptar' },
   { id: 'active',    label: 'En curso' },
@@ -98,6 +103,7 @@ export default function DeliveryPanel() {
   const [notifCount,      setNotifCount]     = useState(0)
   const [showCuadre,      setShowCuadre]     = useState(false)
   const [showManual,      setShowManual]     = useState(false)
+  const [menu,            setMenu]           = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
   const [locationSharing, setLocationSharing] = useState(false)
   const [showRoute,       setShowRoute]      = useState(false)
@@ -145,7 +151,7 @@ export default function DeliveryPanel() {
             setTab('active')
             try {
               if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                new Notification('🛵 DeliStars — Nuevo domicilio', {
+                new Notification('DeliStars — Nuevo domicilio', {
                   body: nuevos.length === 1 ? `Pedido${nuevos[0].orderNumber ? ` #${nuevos[0].orderNumber}` : ''}: ya es tuyo` : `${nuevos.length} pedidos nuevos: ya son tuyos`,
                   icon: '/logo_sello.png',
                 })
@@ -169,7 +175,7 @@ export default function DeliveryPanel() {
           sonar('asignado')
           try {
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-              new Notification('🔔 DeliStars — Nuevo pedido', {
+              new Notification('DeliStars — Nuevo pedido', {
                 body: `Tienes ${newPending} pedido(s) por aceptar`,
                 icon: '/logo_sello.png',
               })
@@ -231,7 +237,7 @@ export default function DeliveryPanel() {
           try { navigator.vibrate?.([300, 150, 300]) } catch { /* sin vibración */ }
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
-              new Notification('📍 Tienes un pedido cerca', {
+              new Notification('Tienes un pedido cerca', {
                 body: `A ${metros} m: ${order.orderNumber ? `#${order.orderNumber} · ` : ''}${order.fullAddress || ''}`,
                 tag: `cerca-${order.id}`,
               })
@@ -373,7 +379,7 @@ export default function DeliveryPanel() {
             <MapPin size={22} className="text-mint flex-shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <p className="font-display text-lg text-coal tracking-wide leading-tight">
-                📍 Tienes un pedido a {avisoCerca.metros} m
+                <Target size={14} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />Tienes un pedido a {avisoCerca.metros} m
               </p>
               <p className="font-body text-sm text-coal/75 mt-1">
                 {avisoCerca.order.orderNumber && <strong>#{avisoCerca.order.orderNumber} · </strong>}
@@ -407,30 +413,48 @@ export default function DeliveryPanel() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-0.5 flex-wrap justify-end">
+        {/* En la mano, en la calle: en el encabezado solo lo que se usa en cada
+            entrega. Lo demás vive en el menú, que antes era una tercera fila
+            de iconos sueltos. */}
+        <div className="flex items-center gap-1.5 justify-end">
           <BotonPushEquipo email={user?.email} rol="driver" sedeId={sede?.id} />
           <BotonSilencio />
           <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
-            className={`btn-icon flex items-center gap-1 px-2 relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>
-            <Radio size={18} className={locationSharing ? 'animate-pulse' : ''} />
-            <span className="font-body text-xs font-semibold hidden sm:inline">{locationSharing ? 'GPS' : 'GPS'}</span>
-            {locationSharing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-mint animate-pulse" />}
-          </button>
-          <button onClick={() => setShowManual(true)} title="Manual"
-            className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2">
-            <BookOpen size={18} />
-            <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
-          </button>
-          <button onClick={() => setShowCuadre(true)} title="Cuadre de turno"
-            className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
-            <Calculator size={18} />
-            <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
+            className={`btn-icon relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>
+            <Radio size={18} aria-hidden="true" />
+            {locationSharing && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-mint" />}
           </button>
           <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
             onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) setSelected(o) }} />
-          <RoleSwitcher />
-          <button onClick={() => selectSede(null)} className="btn-icon"><MapPin size={20} /></button>
-          <button onClick={logout} className="btn-icon"><LogOut size={20} /></button>
+          <div className="relative">
+            <button onClick={() => setMenu(v => !v)} className="btn-icon" title="Más opciones"
+              aria-label="Más opciones" aria-expanded={menu}>
+              <MoreVertical size={20} aria-hidden="true" />
+            </button>
+            {menu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+                <div className="absolute right-0 top-12 z-50 w-60 card p-2 flex flex-col gap-0.5">
+                  <button onClick={() => { setMenu(false); setShowManual(true) }} className={ITEM_MENU}>
+                    <BookOpen size={16} aria-hidden="true" /> Manual del domiciliario
+                  </button>
+                  <button onClick={() => { setMenu(false); setShowCuadre(true) }} className={ITEM_MENU}>
+                    <Calculator size={16} aria-hidden="true" /> Cuadre de turno
+                  </button>
+                  <button onClick={() => { setMenu(false); selectSede(null) }} className={ITEM_MENU}>
+                    <MapPin size={16} aria-hidden="true" /> Cambiar de sede
+                  </button>
+                  <div className="flex items-center justify-between gap-2 px-3 py-1">
+                    <span className="font-body text-sm text-coal/60">Ver como</span>
+                    <RoleSwitcher />
+                  </div>
+                  <button onClick={logout} className={`${ITEM_MENU} text-pepper`}>
+                    <LogOut size={16} aria-hidden="true" /> Cerrar sesión
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -441,13 +465,18 @@ export default function DeliveryPanel() {
           if (estado === 'fuera' && locationSharing && activeOrders.length === 0) toggleLocationSharing()
         }} />
 
+      {/* Antes rebotaba sin parar y no se podía tocar: el rojo ya llama la
+          atención, y ahora lleva derecho a los pedidos por aceptar. */}
       {notifCount > 0 && (
-        <div className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 animate-bounce-soft">
-          <Bell size={18} className="flex-shrink-0" />
+        <button onClick={() => setTab('pending')}
+          className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 text-left
+                     transition-transform duration-150 active:scale-[0.99]">
+          <Bell size={18} className="flex-shrink-0" aria-hidden="true" />
           <p className="font-body font-semibold text-sm">
             {notifCount === 1 ? '¡Tienes 1 pedido nuevo!' : `¡Tienes ${notifCount} pedidos nuevos!`}
           </p>
-        </div>
+          <ChevronRight size={18} className="ml-auto flex-shrink-0" aria-hidden="true" />
+        </button>
       )}
 
       <div className="flex border-b border-coal/10 bg-cream/80 px-4 mt-2">
@@ -505,7 +534,7 @@ export default function DeliveryPanel() {
         const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto').reduce((s, o) => s + cashAmount(o), 0)
         return (
           <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
-            <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo a cobrar en ruta:</span>
+            <span className="font-body text-xs font-semibold text-coal/70">Efectivo a cobrar en ruta:</span>
             <span className="font-display text-lg text-mustard">{fmt(total)}</span>
           </div>
         )
@@ -561,7 +590,9 @@ export default function DeliveryPanel() {
       <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
         {tabOrders.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <p className="text-4xl">{tab === 'pending' ? '🛵' : tab === 'active' ? '🗺️' : '✅'}</p>
+            {tab === 'pending' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />
+              : tab === 'active' ? <Route size={32} className="text-coal/25" aria-hidden="true" />
+              : <CheckCircle size={32} className="text-coal/25" aria-hidden="true" />}
             <p className="font-body text-coal/40 text-center">
               {tab === 'pending' ? 'Sin pedidos nuevos' : tab === 'active' ? 'No tienes pedidos en curso' :
                historyDate ? `No hay entregados para esa fecha` : 'No hay entregados hoy'}
@@ -693,7 +724,9 @@ function DriverOrderCard({ order, onClick }) {
         </div>
       )}
       {order.loyaltyRedemption?.count > 0 && (
-        <p className="mt-1.5 font-body text-xs font-bold text-mint">🎁 Incluye premio gratis</p>
+        <p className="mt-1.5 font-body text-xs font-bold text-mint flex items-center gap-1.5">
+          <Gift size={13} aria-hidden="true" /> Incluye premio gratis
+        </p>
       )}
     </button>
   )
@@ -918,14 +951,16 @@ function DriverOrderDetail({ order, onClose }) {
             <StatusBadge status={order.status} />
             <SedeBadge order={order} size="lg" />
           </div>
-          <button onClick={onClose} className="btn-icon text-coal/50">✕</button>
+          <button onClick={onClose} className="btn-icon text-coal/50" aria-label="Cerrar"><X size={20} aria-hidden="true" /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">
           {/* Premio de fidelización canjeado */}
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
-              <p className="font-display text-base tracking-wide text-mint">🎁 Incluye premio de fidelización</p>
+              <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
+                <Gift size={17} aria-hidden="true" /> Incluye premio de fidelización
+              </p>
               <p className="font-body text-sm text-coal/80 mt-1">
                 Este pedido lleva {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta) — ya está cubierto, no es parte del cobro.
               </p>
@@ -948,7 +983,7 @@ function DriverOrderDetail({ order, onClose }) {
                 return (
                   <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors">
-                    📱 WhatsApp
+                    <MessageCircle size={15} aria-hidden="true" /> WhatsApp
                   </a>
                 )
               })()}
@@ -991,14 +1026,14 @@ function DriverOrderDetail({ order, onClose }) {
                   <div className="flex flex-col gap-2 mb-2">
                     {order.phone && (
                       <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#25D366] text-white font-body text-sm font-bold hover:brightness-95 transition-all">
-                        📍 Pedirle la ubicación por WhatsApp
+                        className="btn w-full justify-center bg-[#25D366] text-white [@media(hover:hover)]:hover:brightness-95">
+                        <MapPin size={14} aria-hidden="true" /> Pedirle la ubicación por WhatsApp
                       </a>
                     )}
                     {!pinOpen ? (
                       <button onClick={() => setPinOpen(true)}
-                        className="text-xs font-body font-semibold text-mint underline underline-offset-2 self-start">
-                        📌 Ya me mandó la ubicación — pegarla aquí
+                        className="btn-link text-xs self-start text-mint decoration-mint/40">
+                        <Target size={14} aria-hidden="true" /> Ya me mandó la ubicación — pegarla aquí
                       </button>
                     ) : (
                       <div className="flex flex-col gap-2 bg-smoked/50 rounded-xl p-3">
@@ -1016,7 +1051,9 @@ function DriverOrderDetail({ order, onClose }) {
                           <p className={`font-body text-[11px] leading-relaxed ${
                             pinCheck.nivel === 'ok' ? 'text-mint'
                             : pinCheck.nivel === 'aviso' ? 'text-[#8a5a00]' : 'text-cherry'}`}>
-                            {pinCheck.nivel === 'ok' ? '✓ ' : '⚠️ '}{pinCheck.mensaje}
+                            {pinCheck.nivel === 'ok'
+                              ? <Check size={12} className="inline-block mr-1 -mt-0.5" aria-hidden="true" />
+                              : <AlertTriangle size={12} className="inline-block mr-1 -mt-0.5" aria-hidden="true" />}{pinCheck.mensaje}
                           </p>
                         )}
                         <div className="flex gap-2">
@@ -1034,9 +1071,9 @@ function DriverOrderDetail({ order, onClose }) {
                 {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
                   <button
                     onClick={() => { setAddrDraft(localAddr); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
-                    className="text-xs font-body font-semibold text-tangelo underline underline-offset-2"
+                    className="btn-link text-xs"
                   >
-                    ✏️ Corregir dirección
+                    <Pencil size={13} aria-hidden="true" /> Corregir dirección
                   </button>
                 )}
               </>
@@ -1067,7 +1104,7 @@ function DriverOrderDetail({ order, onClose }) {
                       <button key={i} type="button"
                         onClick={() => { setAddrDraft(s); setAddrSuggestions([]) }}
                         className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
-                        📍 {s}
+                        {s}
                       </button>
                     ))}
                   </div>
@@ -1084,7 +1121,7 @@ function DriverOrderDetail({ order, onClose }) {
                     Cancelar
                   </button>
                   <button onClick={saveAddr} disabled={savingAddr || !addrDraft.trim()} className="btn-primary flex-1 btn-sm">
-                    {savingAddr ? 'Guardando…' : '✓ Guardar'}
+                    {savingAddr ? 'Guardando…' : <><Check size={14} aria-hidden="true" /> Guardar</>}
                   </button>
                 </div>
               </div>
@@ -1155,7 +1192,7 @@ function DriverOrderDetail({ order, onClose }) {
                 {[...order.comments].sort((a,b) => a.ts - b.ts).map((c, i) => (
                   <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20' : 'bg-mint/10 border border-mint/20'}`}>
                     <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-tangelo' : 'text-mint'}`}>
-                      {c.role === 'cashier' ? '🧾 Cajero' : '🛵 Tú'} · {c.name}
+                      {c.role === 'cashier' ? 'Cajero' : 'Tú'} · {c.name}
                     </p>
                     <p className="font-body text-sm text-coal">{c.text}</p>
                   </div>
@@ -1190,7 +1227,7 @@ function DriverOrderDetail({ order, onClose }) {
             {order.status === 'accepted' && (
               <>
                 <button onClick={prepare} disabled={loading} className="btn-mustard w-full btn-lg">
-                  🍳 En preparación
+                  En preparación
                 </button>
                 <button onClick={transit} disabled={loading} className="btn-primary w-full btn-lg">
                   <Navigation size={20} /> Iniciar entrega
@@ -1299,12 +1336,12 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
 
         <div className="p-5 flex flex-col gap-4">
           <div className="card">
-            <p className="font-display text-base tracking-wide mb-1">📦 Pedidos entregados hoy</p>
+            <p className="font-display text-base tracking-wide mb-1">Pedidos entregados hoy</p>
             <p className="font-body text-2xl font-bold text-coal">{completedToday.length} pedidos</p>
           </div>
 
           <div className="card border border-mustard/30">
-            <p className="font-display text-base tracking-wide mb-2">💵 Efectivo a entregar en caja</p>
+            <p className="font-display text-base tracking-wide mb-2">Efectivo a entregar en caja</p>
             {cashOrders.length === 0 ? (
               <p className="font-body text-sm text-coal/50">No hay pedidos en efectivo hoy</p>
             ) : (
@@ -1319,7 +1356,7 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
           </div>
 
           <div className="card border border-mint/30">
-            <p className="font-display text-base tracking-wide mb-3">🛵 Lo que te deben por domicilios</p>
+            <p className="font-display text-base tracking-wide mb-3">Lo que te deben por domicilios</p>
             {Object.keys(feeGroups).length === 0 ? (
               <p className="font-body text-sm text-coal/50">Sin datos de domicilios aún</p>
             ) : (
@@ -1351,7 +1388,7 @@ function DriverCuadreTurnoModal({ orders, onClose }) {
 // ─── Manual del domiciliario ──────────────────────────────────────────────────
 const DRIVER_MANUAL_SECTIONS = [
   {
-    id: 'flujo', emoji: '📋', title: 'Flujo de trabajo', color: 'text-cherry',
+    id: 'flujo', icon: ClipboardList, title: 'Flujo de trabajo',
     content: [
       { type: 'steps', items: [
         'Abre la app y selecciona tu sede (o "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita al mismo tiempo).',
@@ -1364,7 +1401,7 @@ const DRIVER_MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'sedes', emoji: '📍', title: 'Trabajar en ambas sedes', color: 'text-mint',
+    id: 'sedes', icon: MapPin, title: 'Trabajar en ambas sedes',
     content: [
       { type: 'p', text: 'Al entrar a la app puedes elegir "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita simultáneamente. No necesitas salir y cambiar de sede.' },
       { type: 'table', rows: [
@@ -1372,28 +1409,28 @@ const DRIVER_MANUAL_SECTIONS = [
         ['Santa Lucía',    'Solo ves pedidos de la sede de Santa Lucía'],
         ['Santa Teresita', 'Solo ves pedidos de la sede de Santa Teresita'],
       ]},
-      { type: 'tip', text: 'Para cambiar de sede sin cerrar sesión, toca el ícono de ubicación 📍 en la esquina superior derecha.' },
+      { type: 'tip', text: 'Para cambiar de sede sin cerrar sesión, toca el ícono de ubicación en la esquina superior derecha.' },
     ],
   },
   {
-    id: 'estados', emoji: '🏷️', title: 'Estados del pedido', color: 'text-coal',
+    id: 'estados', icon: Tag, title: 'Estados del pedido',
     content: [
       { type: 'table', rows: [
-        ['🛵 ASIGNADO',   'El cajero te asignó el pedido — acéptalo pronto'],
-        ['✅ ACEPTADO',   'Confirmaste que vas a recoger y entregar'],
-        ['🏃 EN CAMINO',  'Iniciaste la entrega — el cliente puede ver tu ruta'],
-        ['📍 LLEGÓ',      'Llegaste donde el cliente'],
-        ['💰 CUADRE',     'Entregado en efectivo — pendiente cuadre con cajero'],
-        ['☑️ COMPLETADO', 'Pedido cerrado y cuadrado'],
+        ['ASIGNADO',   'El cajero te asignó el pedido — acéptalo pronto'],
+        ['ACEPTADO',   'Confirmaste que vas a recoger y entregar'],
+        ['EN CAMINO',  'Iniciaste la entrega — el cliente puede ver tu ruta'],
+        ['LLEGÓ',      'Llegaste donde el cliente'],
+        ['CUADRE',     'Entregado en efectivo — pendiente cuadre con cajero'],
+        ['COMPLETADO', 'Pedido cerrado y cuadrado'],
       ]},
     ],
   },
   {
-    id: 'roles', emoji: '🔄', title: 'Cambiar de rol', color: 'text-tangelo',
+    id: 'roles', icon: Bike, title: 'Cambiar de rol',
     content: [
       { type: 'p', text: 'Si tienes más de un rol (por ejemplo, domiciliario y cajero), puedes cambiar entre ellos sin cerrar sesión usando el selector de rol en la barra superior.' },
       { type: 'steps', items: [
-        'Toca el ícono 🚴 con la flecha en la esquina superior derecha.',
+        'Toca el ícono con la flecha en la esquina superior derecha.',
         'Selecciona el rol al que quieres cambiar: Cajero, Cliente, etc.',
         'La app cambia de vista inmediatamente sin necesidad de cerrar sesión.',
       ]},
@@ -1401,18 +1438,18 @@ const DRIVER_MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'navegacion', emoji: '🗺️', title: 'Navegación al cliente', color: 'text-mint',
+    id: 'navegacion', icon: Route, title: 'Navegación al cliente',
     content: [
       { type: 'p', text: 'Dentro del detalle de cada pedido encontrarás dos botones de navegación:' },
       { type: 'table', rows: [
         ['Google Maps', 'Abre Google Maps con la dirección del cliente lista para navegar'],
         ['Waze',        'Abre Waze con la dirección del cliente lista para navegar'],
       ]},
-      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Activa el GPS compartido 📡 en la barra superior para que el cajero también te ubique aunque no tengas pedido activo.' },
+      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Activa el GPS compartido en la barra superior para que el cajero también te ubique aunque no tengas pedido activo.' },
     ],
   },
   {
-    id: 'efectivo', emoji: '💵', title: 'Pedidos en efectivo', color: 'text-mustard',
+    id: 'efectivo', icon: Banknote, title: 'Pedidos en efectivo',
     content: [
       { type: 'p', text: 'Antes de llegar donde el cliente, abre el detalle del pedido y revisa la sección "Pago":' },
       { type: 'table', rows: [
@@ -1423,7 +1460,7 @@ const DRIVER_MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'cuadre', emoji: '💰', title: 'Cuadre de turno', color: 'text-mustard',
+    id: 'cuadre', icon: Calculator, title: 'Cuadre de turno',
     content: [
       { type: 'p', text: 'Al terminar el turno, toca el botón "Cuadre" en la barra superior para ver el resumen del día:' },
       { type: 'table', rows: [
@@ -1434,25 +1471,25 @@ const DRIVER_MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'gps', emoji: '📡', title: 'GPS compartido', color: 'text-coal',
+    id: 'gps', icon: Radio, title: 'GPS compartido',
     content: [
       { type: 'p', text: 'La app tiene dos modos de compartir tu ubicación:' },
       { type: 'table', rows: [
         ['Automático',    'Cuando tienes un pedido "En camino", tu GPS se comparte automáticamente con el cliente'],
-        ['GPS manual 📡', 'Activa el botón GPS en la barra superior para que el cajero te ubique en todo momento, aunque no tengas pedido activo'],
+        ['GPS manual ', 'Activa el botón GPS en la barra superior para que el cajero te ubique en todo momento, aunque no tengas pedido activo'],
       ]},
       { type: 'tip', text: 'Desactiva el GPS manual cuando termines el turno para ahorrar batería.' },
     ],
   },
   {
-    id: 'comentarios', emoji: '💬', title: 'Comentarios en pedidos', color: 'text-coal',
+    id: 'comentarios', icon: MessageSquare, title: 'Comentarios en pedidos',
     content: [
       { type: 'p', text: 'Dentro del detalle de cada pedido puedes dejar comentarios visibles para el cajero: timbre roto, cliente no estaba, dirección incorrecta, etc.' },
       { type: 'tip', text: 'El cajero también puede dejarte notas en el pedido. Revisa la sección "Nota del cajero" antes de salir a entregar.' },
     ],
   },
   {
-    id: 'historial', emoji: '📅', title: 'Historial de entregas', color: 'text-coal',
+    id: 'historial', icon: Calendar, title: 'Historial de entregas',
     content: [
       { type: 'p', text: 'En la pestaña "Entregados" puedes ver todos tus pedidos del día. Usa el selector de fecha para consultar días anteriores.' },
       { type: 'tip', text: 'El historial muestra solo tus pedidos entregados, no los de otros domiciliarios.' },
@@ -1462,13 +1499,14 @@ const DRIVER_MANUAL_SECTIONS = [
 
 function DriverManualSection({ section }) {
   const [open, setOpen] = useState(false)
+  const Icon = section.icon
   return (
     <div className="card overflow-hidden p-0">
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{section.emoji}</span>
-          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+          <Icon size={18} className="text-cherry flex-shrink-0" aria-hidden="true" />
+          <span className="font-display text-base tracking-wide text-coal">{section.title}</span>
         </div>
         {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
       </button>
@@ -1478,7 +1516,7 @@ function DriverManualSection({ section }) {
             if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
             if (block.type === 'tip') return (
               <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
-                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <Lightbulb size={14} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <p className="font-body text-xs text-coal/70">{block.text}</p>
               </div>
             )
@@ -1687,7 +1725,7 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
           {clusters.length > 0 && (
             <div className="bg-mint/10 border border-mint/30 rounded-xl px-3 py-2.5">
               <p className="font-body text-xs font-bold text-mint uppercase tracking-wider mb-1.5">
-                🎯 Pedidos cercanos detectados
+                <Target size={14} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />Pedidos cercanos detectados
               </p>
               <div className="flex flex-col gap-0.5">
                 {clusters.map((c, i) => (
@@ -1767,7 +1805,7 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
           )}
           {optima && (
             <p className="font-body text-[11px] text-mint font-semibold text-center">
-              ✓ Orden calculado por calle con Google Maps
+              <Check size={12} className="inline-block mr-1 -mt-0.5" aria-hidden="true" />Orden calculado por calle con Google Maps
             </p>
           )}
 
