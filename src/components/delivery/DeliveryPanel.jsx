@@ -1188,8 +1188,8 @@ function DriverOrderDetail({ order, onClose }) {
             <div className="flex items-center gap-2">
               <MessageSquare size={15} className="text-tangelo" aria-hidden="true" />
               <p className="font-display text-sm tracking-wide text-coal">Notas con la caja</p>
-              <span className="ml-auto font-body text-[10px] uppercase tracking-wider text-coal/45">El cliente no las ve</span>
             </div>
+            <p className="font-body text-xs text-coal/50 -mt-1">Solo las ven la caja y tú; el cliente no.</p>
 
             {/* Existing comments */}
             {(order.comments?.length > 0) ? (
