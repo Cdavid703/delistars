@@ -7,6 +7,10 @@ import { db } from '../services/firebase'
 // es automático. Cada aparato reporta que sigue conectado; si el principal
 // deja de reportar, los demás lo ven y ofrecen "Usar este como principal".
 // Mientras no haya principal conectado, suenan todos (para no perder pedidos).
+//
+// Impresión (Fase 7, §19): aparte del principal, la caja elige qué aparato
+// imprime las comandas (el computador con la impresora). Ese aparato hace de
+// puente: toma los trabajos de la cola y los imprime (ver PuenteImpresion).
 const LATIDO_MS = 30000
 const VIVO_MS = 90000
 
@@ -46,6 +50,7 @@ export default function usePuestoCaja(sedeId, email) {
   }, [sedeId, unaSede])
 
   const esPrincipal = unaSede && puesto?.principal === aparatoId
+  const esImpresora = unaSede && puesto?.impresora === aparatoId
 
   // Latido: este aparato sigue conectado (y, si es el principal, lo dice).
   useEffect(() => {
@@ -54,11 +59,12 @@ export default function usePuestoCaja(sedeId, email) {
       setAhora(ahoraMs())
       setDoc(doc(db, 'caja_puestos', sedeId, 'aparatos', aparatoId), { nombre, email, latido: serverTimestamp() }).catch(() => {})
       if (esPrincipal) setDoc(doc(db, 'caja_puestos', sedeId), { latidoPrincipal: serverTimestamp() }, { merge: true }).catch(() => {})
+      if (esImpresora) setDoc(doc(db, 'caja_puestos', sedeId), { latidoImpresora: serverTimestamp() }, { merge: true }).catch(() => {})
     }
     latir()
     const t = setInterval(latir, LATIDO_MS)
     return () => clearInterval(t)
-  }, [sedeId, unaSede, email, aparatoId, nombre, esPrincipal])
+  }, [sedeId, unaSede, email, aparatoId, nombre, esPrincipal, esImpresora])
 
   const latido = puesto?.latidoPrincipal?.toMillis?.() ?? 0
   const principalActivo = unaSede && !!puesto?.principal && ahora - latido < VIVO_MS
@@ -66,7 +72,17 @@ export default function usePuestoCaja(sedeId, email) {
   const hacerPrincipal = () => setDoc(doc(db, 'caja_puestos', sedeId), {
     principal: aparatoId, principalNombre: `${nombre} · ${String(email || '').split('@')[0]}`,
     principalPor: email || null, principalDesde: serverTimestamp(), latidoPrincipal: serverTimestamp(),
-  })
+  }, { merge: true })
+
+  const latidoImp = puesto?.latidoImpresora?.toMillis?.() ?? 0
+  const impresoraActiva = unaSede && !!puesto?.impresora && ahora - latidoImp < VIVO_MS
+  const hacerImpresora = () => setDoc(doc(db, 'caja_puestos', sedeId), {
+    impresora: aparatoId, impresoraNombre: `${nombre} · ${String(email || '').split('@')[0]}`,
+    impresoraPor: email || null, impresoraDesde: serverTimestamp(), latidoImpresora: serverTimestamp(),
+  }, { merge: true })
+  const dejarImpresora = () => setDoc(doc(db, 'caja_puestos', sedeId), {
+    impresora: null, impresoraNombre: null, impresoraPor: email || null, impresoraDesde: serverTimestamp(), latidoImpresora: null,
+  }, { merge: true })
 
   return {
     disponible: unaSede,
@@ -77,6 +93,13 @@ export default function usePuestoCaja(sedeId, email) {
     // Suena el principal; si no hay uno conectado, suenan todos.
     suena: !unaSede || esPrincipal || !principalActivo,
     hacerPrincipal,
+    aparatoId,
+    esImpresora,
+    impresoraActiva,
+    impresoraNombre: puesto?.impresoraNombre || null,
+    hayImpresora: !!puesto?.impresora,
+    hacerImpresora,
+    dejarImpresora,
     cargando: unaSede && puesto === null,
   }
 }

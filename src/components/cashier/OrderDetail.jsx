@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore'
 import {
-  db, getNextOrderNumber, restoreLoyaltyRedemption, LOYALTY_REWARD,
+  db, getNextOrderNumber, restoreLoyaltyRedemption,
   acreditarSaldoDevolucion, saldoVerificado, crearSaldoSobrante, restaurarSaldo, actualizarPedido,
 } from '../../services/firebase'
 import { devolucionInicial, aplicarSaldo } from '../../utils/devolucion'
@@ -23,10 +23,11 @@ import {
   X, MapPin, Phone, User,
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
-  Printer, Hash, DollarSign, MessageSquare, Clock,
+  Hash, DollarSign, MessageSquare, Clock,
   Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check,
   CircleCheck, CircleX, Store, Banknote, MessageCircle
 } from 'lucide-react'
+import ComandaPedido from './ComandaPedido'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -39,7 +40,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 const fmt    = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
-const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;')
 // Solo dígitos: el cajero escribe el precio directo (sin flechitas de subir/bajar).
 const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
 
@@ -535,58 +535,6 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     }
   }
 
-  const handlePrint = () => {
-    const orderNum    = escHtml(order.orderNumber || '')
-    const clientName  = escHtml(order.name || order.clientName || '—')
-    const qp          = fmt(order.quotedPrice)
-    const dp          = fmt(order.deliveryPrice)
-    const tp          = fmt(order.totalPrice)
-    const paymentStr  = escHtml(order.payment || '—')
-    const items       = escHtml(order.items || '').replace(/\n/g, '<br/>')
-    const notesStr    = order.notes ? `<p><em>Indicaciones: ${escHtml(order.notes)}</em></p>` : ''
-    const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${escHtml(order.cashierNotes)}</em></p>` : ''
-    const loyaltyNote = order.loyaltyRedemption?.count > 0
-      ? `<div class="divider"></div><p class="bold center" style="border:2px solid #000;padding:6px">INCLUYE ${order.loyaltyRedemption.count}x ${escHtml(LOYALTY_REWARD.name).toUpperCase()} GRATIS<br/>(premio fidelización — NO cobrar)</p>`
-      : ''
-    const date        = new Date().toLocaleString('es-CO')
-
-    const win = window.open('', '_blank', 'width=420,height=700')
-    win.document.write(`<!DOCTYPE html><html><head><title>Pedido ${orderNum ? '#'+orderNum : ''}</title>
-    <style>
-      body{font-family:monospace;padding:20px;max-width:380px;margin:0 auto}
-      h2{text-align:center;border-bottom:2px dashed #000;padding-bottom:10px}
-      .row{display:flex;justify-content:space-between;margin:5px 0;font-size:13px}
-      .bold{font-weight:bold}.divider{border-top:1px dashed #999;margin:10px 0}
-      .total{font-size:16px;font-weight:bold}.center{text-align:center}
-      .items{background:#f5f5f5;padding:10px;margin:8px 0;font-size:13px;white-space:pre-wrap}
-      .num{font-size:22px;font-weight:bold;text-align:center;margin:5px 0}
-    </style></head><body>
-    <h2>DeliStars</h2>
-    ${orderNum ? `<div class="num">#${orderNum}</div>` : ''}
-    <p class="center" style="font-size:11px">${date}</p>
-    <div class="divider"></div>
-    <div class="row"><span class="bold">Cliente:</span><span>${clientName}</span></div>
-    <div class="row"><span class="bold">Tel:</span><span>${escHtml(order.phone || '—')}</span></div>
-    <div class="row"><span class="bold">Dirección:</span><span>${escHtml(order.fullAddress || '—')}</span></div>
-    ${order.barrio ? `<div class="row"><span class="bold">Barrio:</span><span>${escHtml(order.barrio)}</span></div>` : ''}
-    <div class="divider"></div>
-    <p class="bold">Pedido:</p>
-    <div class="items">${items}</div>
-    ${notesStr}
-    ${loyaltyNote}
-    <div class="divider"></div>
-    <div class="row"><span>Valor pedido:</span><span>${qp}</span></div>
-    <div class="row"><span>Domicilio:</span><span>${dp}</span></div>
-    <div class="divider"></div>
-    <div class="row total"><span>TOTAL:</span><span>${tp}</span></div>
-    <div class="row"><span class="bold">Pago:</span><span>${paymentStr}</span></div>
-    ${cajeroNote}
-    <div class="divider"></div>
-    <p class="center">¡Gracias por tu pedido!</p>
-    <script>window.onload=function(){window.print();}</script>
-    </body></html>`)
-    win.document.close()
-  }
 
   const sendComment = async () => {
     if (!commentText.trim()) return
@@ -710,15 +658,15 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <BellOff size={14} /> Silenciar
               </button>
             )}
-            <button onClick={handlePrint} title="Imprimir pedido" className="btn-icon text-coal/50 hover:text-coal">
-              <Printer size={18} />
-            </button>
             <button onClick={onClose} className="btn-icon"><X size={20} /></button>
           </div>
         </div>
 
         <div className="p-5 flex flex-col gap-4">
           <p className="font-body text-xs text-coal/40">{time}</p>
+
+          {/* Comanda de cocina (Fase 7, §19): la imprime el aparato marcado como impresora */}
+          {!['cancelled', 'rejected'].includes(order.status) && <ComandaPedido order={order} />}
 
           {etapaDe(order).excepcion === 'cancelacion_solicitada' && (
             <div className="bg-pepper/10 border-2 border-pepper rounded-2xl p-4 flex flex-col gap-3">

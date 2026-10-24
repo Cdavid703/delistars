@@ -199,10 +199,17 @@ service cloud.firestore {
     // Caja con varios aparatos por sede: uno principal suena, los demás solo
     // muestran el aviso. Lo elige la caja (nunca automático); cada aparato
     // reporta que sigue conectado.
+    // Trabajos de impresión de comandas (Fase 7, §19): solo los escribe el
+    // servidor; los leen la caja (y su puente de impresión) y administración.
+    match /impresiones/{trabajoId} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if false;
+    }
     match /caja_puestos/{sedeId} {
       allow read: if isAdmin() || isCashier();
       allow write: if (isAdmin() || isCashier())
-                   && request.resource.data.keys().hasOnly(['principal', 'principalNombre', 'principalPor', 'principalDesde', 'latidoPrincipal']);
+                   && request.resource.data.keys().hasOnly(['principal', 'principalNombre', 'principalPor', 'principalDesde', 'latidoPrincipal',
+                                                            'impresora', 'impresoraNombre', 'impresoraPor', 'impresoraDesde', 'latidoImpresora']);
     }
     match /caja_puestos/{sedeId}/aparatos/{aparatoId} {
       allow read: if isAdmin() || isCashier();

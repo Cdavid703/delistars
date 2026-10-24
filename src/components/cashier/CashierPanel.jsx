@@ -12,6 +12,7 @@ import EstadoDomiciliarios from './EstadoDomiciliarios'
 import CampanaAvisos from '../common/CampanaAvisos'
 import PuestoCaja from './PuestoCaja'
 import usePuestoCaja from '../../hooks/usePuestoCaja'
+import ImpresoraCaja from './ImpresoraCaja'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -670,6 +671,7 @@ export default function CashierPanel() {
 
       {/* Aparato principal de la caja (Fase 6): solo ese suena */}
       <PuestoCaja puesto={puesto} />
+      <ImpresoraCaja puesto={puesto} sedeId={sede?.id} />
 
       {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
       <EstadoDomiciliarios sedeId={sede?.id} />
