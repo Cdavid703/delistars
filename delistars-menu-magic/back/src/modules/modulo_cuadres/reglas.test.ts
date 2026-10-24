@@ -26,6 +26,8 @@ describe('cuadres de efectivo (§13.2, §13.3)', () => {
   it('el domiciliario propone una entrega con sus pedidos por cuadrar', () => {
     const e = planEntrega(domi, { sedeId: 'santa_lucia', monto: 42000, pedidos: ['a', 'b'] }, [pedido(), pedido()], T);
     expect(e).toMatchObject({ tipo: 'entrega', estado: 'propuesto', monto: 42000, esperadoPedidos: 42000, driverEmail: 'domi@x.co', pedidos: ['a', 'b'] });
+    expect(planEntrega(domi, { sedeId: 'santa_lucia', monto: 42000, pedidos: ['a', 'b'], parciales: ['p1'] }, [pedido(), pedido()], T).parciales).toEqual(['p1']);
+    expect(planEntrega(domi, { sedeId: 'santa_lucia', monto: 5000, parciales: ['p1'] }, [], T).parciales).toEqual([]);
     falla(() => planEntrega(caja, { sedeId: 'santa_lucia', monto: 1000 }, [], T), 'sin_permiso', 403);
     falla(() => planEntrega(domi, { sedeId: 'santa_lucia', monto: 0 }, [], T), 'monto', 422);
     falla(() => planEntrega(domi, { sedeId: 'santa_lucia', monto: 1000 }, [pedido({ driverEmail: 'otro@x.co' })], T), 'pedido', 422);

@@ -61,6 +61,13 @@ export function montoEfectivo(m) {
  *   enMano      lo que debería tener encima = fondos + cobrado − entregado
  *   porCuadrar  efectivo de pedidos que aún no se han cuadrado
  *   propuesto   entregas que él propuso y la caja no ha confirmado
+ *   parciales   entregas parciales (sin pedidos) ya recibidas que ninguna
+ *               entrega de cierre ha usado todavía; parcialesIds sus ids
+ *   faltaPorCuadrar  porCuadrar − parciales (lo que cierra los pedidos)
+ *
+ * Una entrega PARCIAL no lleva pedidos. La entrega que completa lo cobrado
+ * lleva los pedidos y los ids de las parciales que cuenta (`parciales`), para
+ * que la caja cierre los pedidos solo cuando llegó toda la plata.
  */
 export function cuentasDelTurno(pedidos, movimientos) {
   const cobrado = (pedidos || []).reduce((s, o) => s + efectivoCobrado(o), 0)
@@ -68,7 +75,14 @@ export function cuentasDelTurno(pedidos, movimientos) {
   const fondos = (movimientos || []).filter((m) => m.tipo === 'fondo').reduce((s, m) => s + montoEfectivo(m), 0)
   const entregado = (movimientos || []).filter((m) => m.tipo === 'entrega').reduce((s, m) => s + montoEfectivo(m), 0)
   const propuesto = (movimientos || []).filter((m) => m.tipo === 'entrega' && m.estado === 'propuesto').reduce((s, m) => s + (Number(m.monto) || 0), 0)
-  return { cobrado, fondos, entregado, enMano: fondos + cobrado - entregado, porCuadrar: porCuadrarMonto, propuesto }
+  const entregas = (movimientos || []).filter((m) => m.tipo === 'entrega')
+  const usadas = new Set(entregas.flatMap((m) => (m.estado === 'rechazado' ? [] : m.parciales || [])))
+  const abiertas = entregas.filter((m) => !(m.pedidos || []).length && montoEfectivo(m) > 0 && !usadas.has(m.id))
+  const parciales = abiertas.reduce((s, m) => s + montoEfectivo(m), 0)
+  return {
+    cobrado, fondos, entregado, enMano: fondos + cobrado - entregado, porCuadrar: porCuadrarMonto, propuesto,
+    parciales, parcialesIds: abiertas.map((m) => m.id).filter(Boolean), faltaPorCuadrar: Math.max(0, porCuadrarMonto - parciales),
+  }
 }
 
 /** Diferencia entre lo que se esperaba y lo que llegó: >0 sobró, <0 faltó. */

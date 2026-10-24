@@ -24,6 +24,7 @@ test('las cuentas del turno: fondos + cobrado − entregado, sin contar lo propu
   ]
   assert.deepEqual(cuentasDelTurno(pedidos, movimientos), {
     cobrado: 31000, fondos: 50000, entregado: 24000, enMano: 57000, porCuadrar: 21000, propuesto: 7000,
+    parciales: 24000, parcialesIds: [], faltaPorCuadrar: 0,
   })
   assert.equal(montoEfectivo({ tipo: 'entrega', estado: 'confirmado', monto: 10000 }), 10000)
   assert.equal(montoEfectivo({ tipo: 'entrega', estado: 'rechazado', monto: 10000 }), 0)
@@ -38,4 +39,17 @@ test('la diferencia dice si faltó o sobró, y los montos se validan', () => {
   assert.equal(montoValido(0), null)
   assert.equal(montoValido('abc'), null)
   assert.deepEqual(PENDIENTES, ['propuesto', 'rechazado', 'con_diferencia'])
+})
+
+test('las parciales descuentan de lo por cuadrar hasta que una entrega de cierre las usa', () => {
+  const pedidos = [pedido(), pedido({ totalPrice: 15000 })]
+  const parcial = { id: 'p1', tipo: 'entrega', estado: 'confirmado', monto: 10000, montoRecibido: 10000, pedidos: [] }
+  const antes = cuentasDelTurno(pedidos, [parcial])
+  assert.equal(antes.parciales, 10000)
+  assert.deepEqual(antes.parcialesIds, ['p1'])
+  assert.equal(antes.faltaPorCuadrar, 26000)
+  const cierre = { id: 'c1', tipo: 'entrega', estado: 'propuesto', monto: 26000, pedidos: ['a', 'b'], parciales: ['p1'] }
+  const despues = cuentasDelTurno(pedidos, [parcial, cierre])
+  assert.equal(despues.parciales, 0)
+  assert.equal(despues.propuesto, 26000)
 })

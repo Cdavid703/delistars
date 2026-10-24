@@ -41,6 +41,13 @@ export async function crearEntrega(u: Usuario, b: any) {
   const docs = ids.length ? await db.getAll(...ids.map((id) => db.doc(`orders/${id}`))) : [];
   const pedidos = docs.map((d) => { if (!d.exists) throw new ErrorPedido('pedido', 'Uno de los pedidos no existe', 404); return d.data() as Doc; });
   const doc = planEntrega(u, b, pedidos);
+  // Un pedido no puede ir en dos entregas a la vez (se contaría doble).
+  for (let i = 0; i < ids.length; i += 30) {
+    const abiertas = await db.collection('cuadres').where('pedidos', 'array-contains-any', ids.slice(i, i + 30)).get();
+    if (abiertas.docs.some((d) => d.data().tipo === 'entrega' && d.data().estado === 'propuesto')) {
+      throw new ErrorPedido('pedido', 'Uno de los pedidos ya está en una entrega que la caja no ha confirmado', 409);
+    }
+  }
   const ref = db.collection('cuadres').doc();
   const ahora = FieldValue.serverTimestamp();
   const batch = db.batch();
@@ -59,11 +66,12 @@ export async function crearEntrega(u: Usuario, b: any) {
 export const confirmarEntrega = (u: Usuario, id: string, b: any) => aplicar(id, u, 'confirmar', (m) => planConfirmarEntrega(m, u, b), async (tx, m) => {
   const db = firestore();
   const ahora = FieldValue.serverTimestamp();
-  for (const oid of (m.pedidos as string[]) || []) {
-    const ref = db.doc(`orders/${oid}`);
-    const snap = await tx.get(ref);
+  const refs = ((m.pedidos as string[]) || []).map((oid) => db.doc(`orders/${oid}`));
+  // En una transacción todas las lecturas van antes de cualquier escritura.
+  const snaps = refs.length ? await tx.getAll(...refs) : [];
+  for (const snap of snaps) {
     if (snap.exists && snap.data()?.status === 'pending_cuadre') {
-      tx.update(ref, { status: 'completed', completedAt: ahora, cuadreId: id, updatedAt: ahora });
+      tx.update(snap.ref, { status: 'completed', completedAt: ahora, cuadreId: id, updatedAt: ahora });
     }
   }
 });

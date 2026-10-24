@@ -91,10 +91,16 @@ function LadoDomiciliario({ sedeId, movs, pedidos, llamar, busy, error }) {
   const pendientes = pedidos.filter(porCuadrar)
   const fondosPorConfirmar = movs.filter(m => m.tipo === 'fondo' && m.estado === 'propuesto')
 
+  // Si con esta plata se completa lo cobrado, la entrega cierra los pedidos
+  // (y cuenta las parciales); si no, queda como parcial, sin pedidos.
+  const cierra = (n) => n >= c.faltaPorCuadrar
   const entregar = async () => {
-    const n = montoValido(monto || String(c.porCuadrar))
+    const n = montoValido(monto || String(c.faltaPorCuadrar))
     if (!n) return
-    if (await llamar('cuadres/entregas', { sedeId, monto: n, pedidos: pendientes.map(p => p.id) })) { setMonto(''); setAbrir(false) }
+    const cuerpo = cierra(n)
+      ? { sedeId, monto: n, pedidos: pendientes.map(p => p.id), parciales: c.parcialesIds }
+      : { sedeId, monto: n, pedidos: [], parciales: [] }
+    if (await llamar('cuadres/entregas', cuerpo)) { setMonto(''); setAbrir(false) }
   }
 
   return (
@@ -113,8 +119,8 @@ function LadoDomiciliario({ sedeId, movs, pedidos, llamar, busy, error }) {
           </div>
         </Movimiento>
       ))}
-      {c.porCuadrar > 0 && !abrir && c.propuesto === 0 && (
-        <button onClick={() => { setMonto(String(c.porCuadrar)); setAbrir(true) }} className="btn-mustard w-full">
+      {c.faltaPorCuadrar > 0 && !abrir && c.propuesto === 0 && (
+        <button onClick={() => { setMonto(String(c.faltaPorCuadrar)); setAbrir(true) }} className="btn-mustard w-full">
           <Banknote size={17} aria-hidden="true" /> Entregar efectivo a la caja
         </button>
       )}
@@ -123,7 +129,11 @@ function LadoDomiciliario({ sedeId, movs, pedidos, llamar, busy, error }) {
         <div className="bg-cream/70 rounded-xl p-3 flex flex-col gap-2">
           <label className="label-field">¿Cuánto le entregas a la caja?</label>
           <input className="input-field" inputMode="numeric" value={monto} onChange={e => setMonto(e.target.value)} />
-          <p className="font-body text-[11px] text-coal/55">Por cuadrar: {fmt(c.porCuadrar)} de {pendientes.length} pedido{pendientes.length !== 1 ? 's' : ''}. Puedes entregar una parte y el resto después.</p>
+          <p className="font-body text-[11px] text-coal/55">
+            Por cuadrar: {fmt(c.faltaPorCuadrar)} de {pendientes.length} pedido{pendientes.length !== 1 ? 's' : ''}
+            {c.parciales > 0 ? ` (ya entregaste ${fmt(c.parciales)} en parciales)` : ''}.
+            {montoValido(monto) && !cierra(montoValido(monto)) ? ' Con este valor queda como entrega parcial: el resto lo entregas después.' : ' Con este valor se cierran esos pedidos.'}
+          </p>
           <button onClick={entregar} disabled={busy || !montoValido(monto)} className="btn-primary w-full">{busy ? 'Enviando…' : 'Proponer esta entrega'}</button>
           <button onClick={() => setAbrir(false)} className="btn-ghost w-full">Cancelar</button>
         </div>

@@ -51,7 +51,8 @@ export function planEntrega(u: Usuario, b: Doc, pedidos: Doc[], ahora = Date.now
   const esperado = pedidos.reduce((s, p) => s + efectivoCobrado(p), 0);
   return {
     tipo: 'entrega', sedeId, driverEmail: correo(u), driverName: u.nombre || correo(u), monto: m, montoRecibido: null,
-    pedidos: ids, esperadoPedidos: esperado, estado: 'propuesto', diferencia: null, motivo: null, nota: b?.nota ? String(b.nota).trim().slice(0, 300) : null,
+    pedidos: ids, parciales: ids.length && Array.isArray(b?.parciales) ? b.parciales.map(String).slice(0, 20) : [],
+    esperadoPedidos: esperado, estado: 'propuesto', diferencia: null, motivo: null, nota: b?.nota ? String(b.nota).trim().slice(0, 300) : null,
     creadoPor: correo(u), creadoAt: ahora, confirmadoPor: null, confirmadoAt: null, correcciones: [], resolucion: null,
   };
 }
