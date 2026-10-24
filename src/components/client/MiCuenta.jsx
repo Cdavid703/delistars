@@ -35,7 +35,7 @@ export default function MiCuenta({ user, perfil, onCerrar }) {
   // celular no caben todos, y este es el sitio donde uno lo busca.
   const { logout } = useAuth()
   return createPortal(
-    <div className="fixed inset-0 z-[140] bg-gradient-soft overflow-y-auto">
+    <div className="fixed inset-0 z-[140] bg-gradient-soft overflow-y-auto animate-sheet-up">
       <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
         <p className="font-display text-xl text-coal tracking-wide">Mi cuenta</p>
         <button onClick={onCerrar} className="btn-icon" aria-label="Cerrar"><X size={20} /></button>

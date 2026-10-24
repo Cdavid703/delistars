@@ -46,10 +46,12 @@ export default function BotonSilencio({ className = '', oscuro = false }) {
       <button
         onClick={alternar}
         title="El navegador tiene el sonido bloqueado — toca para activarlo"
-        className={`btn btn-sm gap-1.5 rounded-full bg-pepper text-cream font-semibold ${className}`}
+        className={`btn btn-sm gap-1.5 rounded-full bg-pepper text-cream font-semibold px-3 ${className}`}
       >
-        <VolumeX size={14} aria-hidden="true" />
-        Sonido
+        <VolumeX size={16} aria-hidden="true" />
+        {/* En pantallas angostas el rojo basta: la palabra empujaba el último
+            icono del encabezado fuera de la pantalla. */}
+        <span className="hidden min-[400px]:inline">Sonido</span>
       </button>
     )
   }

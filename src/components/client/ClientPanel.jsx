@@ -876,7 +876,7 @@ export default function ClientPanel() {
             <a href="/" className="btn-secondary btn-sm">Ver el menú</a>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 stagger">
             {activeOrders.map(o => (
               <ClientOrderCard key={o.id} order={o} unreadCount={unreadChatMap[o.id] || 0} onClick={() => openOrderDetail(o.id)} />
             ))}
@@ -2025,9 +2025,9 @@ function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
           mayúsculas repetía lo mismo dos renglones más abajo. */}
       <div>
         <p className="font-body text-sm font-semibold text-cherry mb-1">{labelPaso(step, order)}</p>
-        <div className="w-full bg-smoked rounded-full h-2">
-          <div className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }} />
+        <div className="w-full bg-smoked rounded-full h-2 overflow-hidden">
+          <div className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-[width] duration-500"
+            style={{ width: `${progress}%`, transitionTimingFunction: 'var(--ease-out)' }} />
         </div>
       </div>
     </button>
@@ -2588,7 +2588,7 @@ function ClientOrderDetail({ order, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] overflow-y-auto scroll-custom">
+      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-5 py-5 rounded-t-3xl">
           <div className="flex items-center justify-between mb-3">
@@ -2599,7 +2599,8 @@ function ClientOrderDetail({ order, onClose }) {
           </div>
           <p className="font-body text-sm font-semibold text-cream mb-2 flex items-center gap-2"><StepIcon step={step} size={16} disco={false} /> {labelPaso(step, order)}</p>
           <div className="w-full bg-cream/20 rounded-full h-2">
-            <div className="bg-cream h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+            <div className="bg-cream h-2 rounded-full transition-[width] duration-500"
+              style={{ width: `${progress}%`, transitionTimingFunction: 'var(--ease-out)' }} />
           </div>
           {/* Hora estimada de llegada, no un promedio abstracto: el cliente
               quiere saber a qué hora come, no cuánto dura la mediana. */}
@@ -3291,7 +3292,7 @@ function ClientHistoryModal({ orders, onClose, onSelect, onReorder }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in">
+      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-sheet-up sm:animate-scale-in">
         <div className="sticky top-0 bg-gradient-to-r from-cherry to-tangelo px-5 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
           <div>
             <p className="font-display text-xl text-cream tracking-wide">Historial de pedidos</p>
@@ -3640,17 +3641,23 @@ function ClientHelpSection({ section }) {
   const [open, setOpen] = useState(false)
   const Icon = section.icon
   return (
-    <div className="card overflow-hidden p-0">
+    <div className="card overflow-hidden p-0 shrink-0">
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
         <div className="flex items-center gap-3">
           <Icon size={18} className="text-cherry flex-shrink-0" aria-hidden="true" />
           <span className="font-display text-base tracking-wide text-coal">{section.title}</span>
         </div>
-        {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
+        <ChevronDown size={18} aria-hidden="true"
+          className={`text-coal/40 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          style={{ transitionTimingFunction: 'var(--ease-out)' }} />
       </button>
-      {open && (
-        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3 animate-fade-in">
+      {/* Se despliega con la altura, no de golpe: la fila de arriba no salta y
+          se ve de dónde sale el texto. */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+        style={{ transitionTimingFunction: 'var(--ease-out)' }}>
+        <div className="overflow-hidden">
+        <div className="px-4 pb-4 flex flex-col gap-3 border-t border-coal/10 pt-3">
           {section.content.map((block, i) => {
             if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
             if (block.type === 'tip') return (
@@ -3682,7 +3689,8 @@ function ClientHelpSection({ section }) {
             return null
           })}
         </div>
-      )}
+        </div>
+      </div>
     </div>
   )
 }
