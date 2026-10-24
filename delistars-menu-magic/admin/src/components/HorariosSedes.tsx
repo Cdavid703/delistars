@@ -193,7 +193,7 @@ export default function HorariosSedes() {
                           </button>
                         </span>
                       ))}
-                      <button onClick={() => cambiar(s, (x) => { (x.semana[d] ??= []).push({ desde: '17:30', hasta: '23:30' }) })}
+                      <button onClick={() => cambiar(s, (x) => { (x.semana[d] ??= []).push({ desde: '17:00', hasta: '23:00' }) })}
                         className="text-gray-400 hover:text-primary" title="Agregar turno"><Plus className="w-4 h-4" /></button>
                     </div>
                   )
@@ -218,7 +218,7 @@ export default function HorariosSedes() {
                         </span>
                       ))}
                     <button onClick={() => cambiar(s, (x) => {
-                      x.excepciones[fecha] = x.excepciones[fecha].length ? [] : [{ desde: '17:30', hasta: '23:30' }]
+                      x.excepciones[fecha] = x.excepciones[fecha].length ? [] : [{ desde: '17:00', hasta: '23:00' }]
                     })} className="text-[11px] text-primary hover:underline">
                       {turnos.length ? 'Marcar cerrada' : 'Poner horario'}
                     </button>
@@ -244,7 +244,7 @@ export default function HorariosSedes() {
           <Save className="w-4 h-4" /> {guardando ? 'Guardando…' : 'Guardar horario'}
         </button>
         {sucio && <span className="text-xs text-amber-700">Hay cambios sin guardar.</span>}
-        {guardado === null && !sucio && <span className="text-xs text-muted-fg">Hoy rige el horario por defecto (todos los días 5:30 p. m. – 11:30 p. m.).</span>}
+        {guardado === null && !sucio && <span className="text-xs text-muted-fg">Hoy rige el horario por defecto (todos los días 5:00 p. m. – 11:00 p. m.).</span>}
       </div>
     </div>
   )

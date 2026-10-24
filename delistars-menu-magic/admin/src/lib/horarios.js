@@ -3,7 +3,7 @@
 //
 //   { santa_lucia: Horario, santa_teresita: Horario, actualizadoPor, actualizadoAt }
 //   Horario = {
-//     semana:      { lun: [{ desde: '17:30', hasta: '23:30' }], mar: [...], ..., dom: [...] },
+//     semana:      { lun: [{ desde: '17:00', hasta: '23:00' }], mar: [...], ..., dom: [...] },
 //     excepciones: { 'yyyy-mm-dd': [] | [{ desde, hasta }] },   // [] = cerrada ese día
 //     manual:      null | { modo: 'abierta' | 'cerrada', hasta: ISO | null, por }
 //   }
@@ -19,9 +19,9 @@ export const DIAS = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab']
 export const NOMBRE_DIA = { lun: 'Lunes', mar: 'Martes', mie: 'Miércoles', jue: 'Jueves', vie: 'Viernes', sab: 'Sábado', dom: 'Domingo' }
 export const SEDES_HORARIO = ['santa_lucia', 'santa_teresita']
 
-/** El horario de siempre (antes fijo en el scheduler): todos los días 5:30 p. m. a 11:30 p. m. */
+/** El horario de siempre (antes fijo en el scheduler): todos los días 5:00 p. m. a 11:00 p. m. */
 export const HORARIO_POR_DEFECTO = {
-  semana: Object.fromEntries(DIAS.map((d) => [d, [{ desde: '17:30', hasta: '23:30' }]])),
+  semana: Object.fromEntries(DIAS.map((d) => [d, [{ desde: '17:00', hasta: '23:00' }]])),
   excepciones: {},
   manual: null,
 }
@@ -117,7 +117,7 @@ const cuando = (ms, ahora) => {
   return `el ${NOMBRE_DIA[enColombia(ms).dia].toLowerCase()} a las ${hora(ms)}`
 }
 
-/** Texto corto para clientes y caja: "Abierta hasta las 11:30 p. m.", "Cerrada · abre hoy a las 5:30 p. m.". */
+/** Texto corto para clientes y caja: "Abierta hasta las 11:00 p. m.", "Cerrada · abre hoy a las 5:00 p. m.". */
 export function textoEstado(e, ahora = Date.now()) {
   if (!e) return ''
   if (e.abierta) return e.hasta ? `Abierta hasta las ${hora(e.hasta)}` : 'Abierta'
