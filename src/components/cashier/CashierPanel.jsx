@@ -6,6 +6,7 @@ import {
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
 import DevolucionesSaldo from './DevolucionesSaldo'
+import Reclamos from './Reclamos'
 import EstadoDomiciliarios from './EstadoDomiciliarios'
 import CampanaAvisos from '../common/CampanaAvisos'
 import PuestoCaja from './PuestoCaja'
@@ -45,6 +46,7 @@ const TABS = [
   { id: 'assign',    label: 'Asignar' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
+  { id: 'reclamos',  label: 'Reclamos' },
 ]
 
 const ACTIVE_STATUSES   = ['pending', 'assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
@@ -66,7 +68,9 @@ const alarm = crearAlarma()
 
 export default function CashierPanel() {
   const { user, sede, logout, selectSede } = useAuth()
+  const esAdminReclamos = useAuth().role === 'admin'
   const [tab,             setTab]            = useState('active')
+  const [reclamosAbiertos, setReclamosAbiertos] = useState(0)
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])
   const [showForm,        setShowForm]       = useState(false)
@@ -614,6 +618,9 @@ export default function CashierPanel() {
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-3`}>
             {t.label}
+            {t.id === 'reclamos' && reclamosAbiertos > 0 && (
+              <span key={reclamosAbiertos} className="ml-1 bg-tangelo text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop">{reclamosAbiertos}</span>
+            )}
             {t.id === 'active'  && pendingCount > 0 && (
               <span key={pendingCount} className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop">{pendingCount}</span>
             )}
@@ -739,7 +746,8 @@ export default function CashierPanel() {
 
       {/* Orders list */}
       <main className="flex-1 overflow-y-auto scroll-custom p-4 pb-24 flex flex-col gap-3 stagger">
-        {filteredOrders.length === 0 && !showForm && (
+        {tab === 'reclamos' && <Reclamos sedeId={sede?.id} esAdmin={esAdminReclamos} onAbiertos={setReclamosAbiertos} />}
+        {tab !== 'reclamos' && filteredOrders.length === 0 && !showForm && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             {tab === 'active' ? <ShoppingBag size={32} className="text-coal/25" aria-hidden="true" />
               : tab === 'assign' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />

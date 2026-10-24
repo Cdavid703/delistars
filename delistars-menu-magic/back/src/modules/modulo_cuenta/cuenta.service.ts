@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { firebaseApp, firestore } from '../../config/firestore';
+import { reembolsoEjecutado } from '../modulo_reclamos/reclamos.service';
 import { ErrorPedido } from '../modulo_pedidos/reglas/armado';
 import { SEDES } from '../modulo_pedidos/reglas/sedes';
 import type { Usuario } from '../../middlewares/require-user';
@@ -120,7 +121,11 @@ export async function marcarSaldoTransferido(u: Usuario, id: string) {
     if (d.estado === 'transferida') return { id, estado: 'transferida' };
     tx.update(ref, { estado: 'transferida', transferidaAt: FieldValue.serverTimestamp(), transferidaPor: u.email || u.uid });
     for (const cid of d.creditoIds || []) tx.update(db.doc(`customers/${d.uid}/credits/${cid}`), { estado: 'devuelto' });
-    return { id, estado: 'transferida' };
+    return { id, estado: 'transferida', reclamoId: (d.reclamoId as string) || null };
+  }).then(async (r) => {
+    // Devolución de un reclamo (§14.2): el reembolso del caso queda ejecutado.
+    if (r.reclamoId) await reembolsoEjecutado(r.reclamoId, u.email || u.uid);
+    return { id: r.id, estado: r.estado };
   });
 }
 

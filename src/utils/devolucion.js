@@ -13,6 +13,9 @@
 
 const MEDIOS_DIGITALES = ['Transferencia', 'Nequi', 'Mixto']
 
+/** A dónde puede pedir el cliente que le devuelvan la plata. */
+export const MEDIOS_DEVOLUCION = ['Nequi', 'Daviplata', 'Bancolombia', 'Otro banco']
+
 /** Plata que se le debe devolver al cliente (0 si no pagó nada digital). */
 export function montoDevolucion(order) {
   if (!order || !MEDIOS_DIGITALES.includes(order.payment)) return 0

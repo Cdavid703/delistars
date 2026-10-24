@@ -79,7 +79,7 @@ test('transiciones: solo etapas y excepciones que existen', () => {
 })
 
 test('las copias de los módulos compartidos en este repo son idénticas', () => {
-  for (const nombre of ['etapas', 'chat']) {
+  for (const nombre of ['etapas', 'chat', 'reclamos']) {
     const fuente = readFileSync(new URL(`../src/utils/${nombre}.js`, import.meta.url), 'utf8')
     const url = new URL(`../delistars-menu-magic/back/src/shared/${nombre}.js`, import.meta.url)
     if (existsSync(url)) assert.equal(readFileSync(url, 'utf8'), fuente, nombre)

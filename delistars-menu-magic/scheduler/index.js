@@ -943,6 +943,91 @@ function watchChatDomiciliario() {
   console.log('[scheduler] avisos del chat cliente ↔ domiciliario activos')
 }
 
+// ─── Reclamos (Fase 7, §14) ─────────────────────────────────────────────────
+// Cada cambio de estado del caso le avisa a quien le toca mover: caso nuevo →
+// la caja (comida) o administración (entrega); reembolso solicitado →
+// administración; propuesta lista → el cliente; el cliente responde → quien
+// atiende; cierre → el cliente. Transferencia elegida: la ve la caja en su
+// franja de devoluciones (watchDevoluciones).
+function watchReclamos() {
+  const seen = new Map() // id -> { estado, reembolso }
+  let baseline = true
+  const avisarAdmins = async (id, r, clave, title, body) => {
+    for (const email of ADMIN_EMAILS) {
+      await sendPushForStaff(id, { sedeId: r.sedeId, sedeName: r.sedeName, orderNumber: r.orderNumber }, {
+        rol: 'admin', soloA: email, clave, tipo: 'reclamo', title, body, url: 'https://delistars.com/domicilios/',
+      }).catch(() => {})
+    }
+  }
+  adminDb.collection('reclamos').orderBy('actualizadoAt', 'desc').limit(100)
+    .onSnapshot(async (snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') { seen.delete(chg.doc.id); continue }
+        const id = chg.doc.id
+        const r = chg.doc.data()
+        const prev = seen.get(id)
+        const ahora = { estado: r.estado, reembolso: r.reembolso?.estado || null }
+        seen.set(id, ahora)
+        if (baseline) continue
+        const n = r.orderNumber ? ` #${r.orderNumber}` : ''
+        const pesos = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
+        const pedidoFalso = { sedeId: r.sedeId, sedeName: r.sedeName, orderNumber: r.orderNumber, name: r.clientNombre }
+        try {
+          if (!prev) {
+            // Caso nuevo
+            const body = `${r.clientNombre || 'Un cliente'} (pedido${n}): ${r.motivo}. «${String(r.descripcion || '').slice(0, 90)}»`
+            if (r.atiende === 'caja') {
+              await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reclamo-nuevo`, tipo: 'reclamo', title: '⚠️ Reclamo nuevo de un cliente', body })
+            }
+            await avisarAdmins(id, r, 'reclamo-nuevo', r.atiende === 'caja' ? '⚠️ Reclamo nuevo (comida)' : '⚠️ Reclamo nuevo (entrega)', body)
+            continue
+          }
+          if (prev.reembolso !== ahora.reembolso && ahora.reembolso === 'solicitado') {
+            await avisarAdmins(id, r, `reembolso-${r.reembolso?.solicitadoAt || ''}`, '💸 Reembolso por autorizar',
+              `La caja pide devolver ${pesos(r.reembolso?.monto)} del pedido${n} (${r.clientNombre || 'cliente'}). Autorízalo o recházalo.`)
+          }
+          if (prev.reembolso !== ahora.reembolso && ahora.reembolso === 'rechazado' && r.atiende === 'caja') {
+            await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reembolso-no-${r.reembolso?.autorizadoAt || ''}`, tipo: 'reclamo',
+              title: '💸 Reembolso no autorizado', body: `Administración no autorizó el reembolso del pedido${n}. Propón otra solución.` })
+          }
+          if (prev.estado !== ahora.estado) {
+            if (ahora.estado === 'propuesta' && r.clientUid) {
+              const msg = { title: `💬 Te propusimos una solución${n}`, body: String(r.propuesta?.texto || '').slice(0, 120) || 'Entra al caso para verla.', tipo: 'reclamo' }
+              const url = enlacePedido(r.orderId)
+              if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'propuesta', r.propuesta?.at || ''), { ...msg, pedidoId: r.orderId, url })) {
+                await pushApp(r.clientUid, msg, url)
+                await pushWebCliente(r.clientUid, msg, r.orderId, 'propuesta de reclamo')
+              }
+            }
+            if (ahora.estado === 'en_revision' && prev.estado === 'propuesta') {
+              const body = `${r.clientNombre || 'El cliente'} dice que el problema del pedido${n} sigue. Revísalo.`
+              if (r.atiende === 'caja') await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reclamo-sigue-${r.propuestaRechazadaAt || ''}`, tipo: 'reclamo', title: '⚠️ El problema sigue', body })
+              await avisarAdmins(id, r, `reclamo-sigue-${r.propuestaRechazadaAt || ''}`, '⚠️ El problema sigue', body)
+            }
+            if (ahora.estado === 'resuelto') {
+              const body = `${r.clientNombre || 'El cliente'} aceptó la solución del pedido${n}${r.reembolso?.eleccion === 'transferencia' ? `. Pidió ${pesos(r.reembolso.monto)} por transferencia: está en Devoluciones.` : r.reembolso?.eleccion === 'saldo' ? `. ${pesos(r.reembolso.monto)} quedaron como saldo a favor.` : '.'}`
+              if (r.atiende === 'caja') await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: 'reclamo-resuelto', tipo: 'reclamo', title: '✅ Caso resuelto', body })
+              await avisarAdmins(id, r, 'reclamo-resuelto', '✅ Caso resuelto', body)
+            }
+            if (ahora.estado === 'cierre_administrativo' && r.clientUid) {
+              const msg = { title: `Caso cerrado${n}`, body: `Administración cerró tu caso: ${String(r.cierre?.motivo || '').slice(0, 100)}`, tipo: 'reclamo' }
+              const url = enlacePedido(r.orderId)
+              if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'cierre'), { ...msg, pedidoId: r.orderId, url })) {
+                await pushApp(r.clientUid, msg, url)
+                await pushWebCliente(r.clientUid, msg, r.orderId, 'cierre de reclamo')
+              }
+            }
+          }
+        } catch (e) { console.error('[scheduler] aviso reclamo error:', e?.message || e) }
+      }
+      baseline = false
+    }, (err) => {
+      console.error('[scheduler] watch reclamos error:', err?.message || err)
+      setTimeout(() => { try { watchReclamos() } catch (e) { console.error('[scheduler] reclamos reintento error:', e?.message || e) } }, 60000)
+    })
+  console.log('[scheduler] avisos de reclamos activos')
+}
+
 // ─── Devoluciones: aviso al celular de la caja ──────────────────────────────
 // Elegir la devolución no cambia el estado del pedido (sigue rechazado o
 // cancelado), así que watchOrdersForPush no lo ve. Además ese vigía solo mira
@@ -955,6 +1040,7 @@ function mensajeDevolucion(o, tipo) {
     return { rol: 'cashier', title: '💸 Devolución por transferencia', body: `${o.name || 'El cliente'} (pedido${n}) pidió que le transfieran ${monto}. Ábrelo para ver sus datos.` }
   }
   if (tipo === 'saldo_cuenta') {
+    if (o.origen === 'reclamo') return { rol: 'cashier', title: '💸 Devolución de un reclamo', body: `Hay que transferirle ${monto} a ${o.nombre || 'un cliente'} (pedido${o.orderNumber ? ` #${o.orderNumber}` : ''}). Ábrelo en la caja para ver sus datos.` }
     return { rol: 'cashier', title: '💸 Transferir saldo a favor', body: `${o.nombre || 'Un cliente'} eliminó su cuenta: hay que transferirle ${monto}. Ábrelo en la caja para ver sus datos.` }
   }
   if (tipo === 'cancelacion_solicitada') {
@@ -1037,6 +1123,8 @@ async function main() {
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
       try { watchChatDomiciliario() }
       catch (err) { console.error('[scheduler] avisos del chat del domiciliario deshabilitados:', err?.message || err) }
+      try { watchReclamos() }
+      catch (err) { console.error('[scheduler] avisos de reclamos deshabilitados:', err?.message || err) }
       try { watchDevoluciones() }
       catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
       try { watchSolicitudesAcceso() }

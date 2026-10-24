@@ -27,7 +27,7 @@ import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
 import {
-  devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo,
+  devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo, MEDIOS_DEVOLUCION,
 } from '../../utils/devolucion'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
@@ -51,6 +51,7 @@ import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
 import MiCuenta from './MiCuenta'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
+import ReclamoPedido from './ReclamoPedido'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
 import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
@@ -2244,7 +2245,6 @@ function CambioPropuesto({ order }) {
 // El pedido no siguió y ya lo había pagado por transferencia: elige si quiere
 // la plata de vuelta por transferencia o como saldo a favor (solo con cuenta
 // de Google, vale en la sede del pedido y no vence).
-const MEDIOS_DEVOLUCION = ['Nequi', 'Daviplata', 'Bancolombia', 'Otro banco']
 function DevolucionCliente({ order }) {
   const dev = order.devolucion
   const [opcion,  setOpcion]  = useState('')
@@ -3100,6 +3100,8 @@ function ClientOrderDetail({ order, onClose }) {
               <p className="font-body text-xs text-coal/50 mt-1">Gracias por tu pedido en DeliStars</p>
             </div>
           )}
+          {/* Reportar un problema y seguir el caso (§14): hasta 24 h después de la entrega */}
+          {isDelivered && <ReclamoPedido order={order} user={user} />}
 
           {order.status === 'rejected' && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 text-center">
@@ -3476,18 +3478,45 @@ function LoyaltyCelebrationModal({ rewards, onClose }) {
 
 // ─── Client help modal ────────────────────────────────────────────────────────
 // ─── Rating modal ────────────────────────────────────────────────────────────
+function Estrellas({ valor, onChange, etiqueta }) {
+  const [hover, setHover] = useState(0)
+  return (
+    <div>
+      <p className="font-body text-sm text-coal/70 text-center mb-2">{etiqueta}</p>
+      <div className="flex justify-center gap-1.5">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button key={n} type="button" onClick={() => onChange(n)} onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)}
+            aria-label={`${n} de 5`}
+            className={`transition-transform duration-150 [@media(hover:hover)]:hover:scale-110 active:scale-95 ${n <= (hover || valor) ? 'text-mustard' : 'text-coal/20'}`}>
+            <Star size={34} fill={n <= (hover || valor) ? 'currentColor' : 'none'} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+      {valor > 0 && (
+        <p className="text-center font-body text-xs text-coal/50 mt-1">
+          {['', 'Muy malo', 'Malo', 'Regular', 'Bueno', '¡Excelente!'][valor]}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Calificación doble (§14.1): la comida y la entrega por separado; quien
+// recogió en la sede no califica entrega. No se obliga: "Omitir" siempre está.
 function RatingModal({ order, onClose }) {
   const [stars,   setStars]   = useState(0)
-  const [hover,   setHover]   = useState(0)
+  const [entrega, setEntrega] = useState(0)
   const [comment, setComment] = useState('')
   const [saving,  setSaving]  = useState(false)
+  const conEntrega = order.deliveryMode !== 'pickup'
 
   const submit = async () => {
-    if (!stars) return
+    if (!stars && !entrega) return
     setSaving(true)
     try {
       await updateDoc(doc(db, 'orders', order.id), {
-        rating:        stars,
+        rating:        stars || null,
+        ratingEntrega: conEntrega ? (entrega || null) : null,
         ratingComment: comment.trim() || null,
         ratedAt:       serverTimestamp(),
       })
@@ -3506,29 +3535,8 @@ function RatingModal({ order, onClose }) {
           )}
         </div>
 
-        <div>
-          <p className="font-body text-sm text-coal/70 text-center mb-3">
-            ¿Cómo fue tu experiencia?
-          </p>
-          <div className="flex justify-center gap-2">
-            {[1, 2, 3, 4, 5].map(n => (
-              <button
-                key={n}
-                onClick={() => setStars(n)}
-                onMouseEnter={() => setHover(n)}
-                onMouseLeave={() => setHover(0)}
-                className="text-4xl transition-transform hover:scale-110 active:scale-95"
-              >
-                {n <= (hover || stars) ? '⭐' : '☆'}
-              </button>
-            ))}
-          </div>
-          {stars > 0 && (
-            <p className="text-center font-body text-xs text-coal/50 mt-1">
-              {['', 'Muy malo', 'Malo', 'Regular', 'Bueno', '¡Excelente!'][stars]}
-            </p>
-          )}
-        </div>
+        <Estrellas valor={stars} onChange={setStars} etiqueta="¿Qué tal la comida?" />
+        {conEntrega && <Estrellas valor={entrega} onChange={setEntrega} etiqueta="¿Y la entrega?" />}
 
         <textarea
           className="textarea-field h-20 scroll-custom text-sm"
@@ -3544,7 +3552,7 @@ function RatingModal({ order, onClose }) {
           </button>
           <button
             onClick={submit}
-            disabled={!stars || saving}
+            disabled={(!stars && !entrega) || saving}
             className="flex-1 btn-primary py-2.5"
           >
             {saving ? 'Guardando…' : 'Enviar calificación'}
