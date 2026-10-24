@@ -7,19 +7,20 @@ const t = (s) => Date.parse(s)
 const turno = (desde, hasta) => [{ desde, hasta }]
 const semana = (f) => Object.fromEntries(['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'].map((d) => [d, f(d)]))
 
-test('horario por defecto: abierta de 5:30 a 11:30 p. m. hora de Colombia', () => {
-  assert.equal(estadoSede(null, t('2026-10-18T17:29:00-05:00')).abierta, false)
-  const e = estadoSede(null, t('2026-10-18T17:30:00-05:00'))
+test('horario por defecto: abierta de 5:00 a 11:00 p. m. hora de Colombia', () => {
+  assert.equal(estadoSede(null, t('2026-10-18T16:59:00-05:00')).abierta, false)
+  const e = estadoSede(null, t('2026-10-18T17:00:00-05:00'))
   assert.equal(e.abierta, true)
-  assert.equal(textoEstado(e), 'Abierta hasta las 11:30 p. m.')
-  assert.equal(estadoSede(null, t('2026-10-18T23:30:00-05:00')).abierta, false)
+  assert.equal(textoEstado(e), 'Abierta hasta las 11:00 p. m.')
+  assert.equal(estadoSede(null, t('2026-10-18T22:59:00-05:00')).abierta, true)
+  assert.equal(estadoSede(null, t('2026-10-18T23:00:00-05:00')).abierta, false)
 })
 
 test('cerrada: dice cuándo abre (hoy, mañana o el día)', () => {
   const ahora = t('2026-10-18T10:00:00-05:00')
-  assert.equal(textoEstado(estadoSede(null, ahora), ahora), 'Cerrada · abre hoy a las 5:30 p. m.')
+  assert.equal(textoEstado(estadoSede(null, ahora), ahora), 'Cerrada · abre hoy a las 5:00 p. m.')
   const noche = t('2026-10-18T23:45:00-05:00')
-  assert.equal(textoEstado(estadoSede(null, noche), noche), 'Cerrada · abre mañana a las 5:30 p. m.')
+  assert.equal(textoEstado(estadoSede(null, noche), noche), 'Cerrada · abre mañana a las 5:00 p. m.')
   const soloSabado = { ...HORARIO_POR_DEFECTO, semana: semana((d) => (d === 'sab' ? turno('12:00', '22:00') : [])) }
   const domingo = t('2026-10-18T12:00:00-05:00') // 18 oct 2026 es domingo
   assert.equal(textoEstado(estadoSede(soloSabado, domingo), domingo), 'Cerrada · abre el sábado a las 12:00 p. m.')
