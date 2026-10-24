@@ -934,7 +934,12 @@ function watchChatDomiciliario() {
           }
         } catch (e) { console.error('[scheduler] aviso chat domiciliario error:', e?.message || e) }
       }
-    }, (err) => console.error('[scheduler] watch chat domiciliario error:', err?.message || err))
+    }, (err) => {
+      // Si la consulta falla (por ejemplo, el índice de grupo aún se está
+      // creando), se vuelve a intentar en un minuto en vez de quedarse muda.
+      console.error('[scheduler] watch chat domiciliario error:', err?.message || err)
+      setTimeout(() => { try { watchChatDomiciliario() } catch (e) { console.error('[scheduler] chat domiciliario reintento error:', e?.message || e) } }, 60000)
+    })
   console.log('[scheduler] avisos del chat cliente ↔ domiciliario activos')
 }
 
