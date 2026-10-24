@@ -529,7 +529,7 @@ export default function CashierPanel() {
                 <div className={`flex items-center gap-2 rounded-full px-4 py-2 w-fit text-xs font-semibold font-body ${
                   e.abierta ? 'bg-mint/15 text-mint' : 'bg-coal/10 text-coal/50'}`}>
                   <Power size={12} />
-                  {sedesHorario.length > 1 ? `${s.name}: ` : 'Pedidos de clientes: '}{textoEstado(e, ahoraMin)}
+                  {sedesHorario.length > 1 ? `${s.name}: ` : <span className="hidden sm:inline">Pedidos de clientes:&nbsp;</span>}{textoEstado(e, ahoraMin)}
                   {e.motivo === 'manual' && ' · a mano'}
                 </div>
                 <button disabled={ocupado} onClick={() => cambiarApertura(s.id, e.abierta ? 'cerrada' : 'abierta')}
@@ -664,8 +664,8 @@ export default function CashierPanel() {
         <div className="mx-4 mt-2 flex flex-col gap-1.5">
           {devolucionesPendientes.map(o => (
             <button key={o.id} onClick={() => openOrderDetail(o.id)}
-              className="w-full bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 text-left shadow-soft">
-              <Banknote size={20} className="text-mustard flex-shrink-0" aria-hidden="true" />
+              className="w-full bg-cherry text-cream rounded-xl px-3 py-2 flex items-center gap-3 text-left hover:bg-cherry/90 transition-colors">
+              <Banknote size={18} className="text-mustard flex-shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <p className="font-body text-sm font-bold">
                   Devolución pendiente{o.orderNumber ? ` · pedido #${o.orderNumber}` : ''}
@@ -685,12 +685,13 @@ export default function CashierPanel() {
       )}
 
       {/* Aparato principal de la caja (Fase 6): solo ese suena */}
-      <div className="grid xl:grid-cols-2 xl:items-start">
+      {/* Franja de estado: sonido, impresora y quién está en turno, en una fila.
+          Solo se pone naranja lo que hay que resolver. */}
+      <div className="mx-4 mt-2 flex flex-wrap items-center gap-2">
         <PuestoCaja puesto={puesto} />
+        {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
+        <EstadoDomiciliarios sedeId={sede?.id} />
       </div>
-
-      {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
-      <EstadoDomiciliarios sedeId={sede?.id} />
 
       {/* Saldo a favor de quien eliminó su cuenta: transferirlo */}
       <DevolucionesSaldo sedeId={sede?.id} />
@@ -700,10 +701,10 @@ export default function CashierPanel() {
           {ordersConMensajes.map(o => (
             <button key={o.id}
               onClick={() => o.status === 'quoted' && o.deliveryMode !== 'pickup' ? openAssign(o) : openOrderDetail(o.id)}
-              className="w-full bg-cherry/10 border border-cherry/30 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-cherry/20 transition-colors text-left">
-              <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0">
-                <MessageCircle size={18} className="text-cream" />
-              </div>
+              className="w-full bg-cherry/10 rounded-xl px-3 py-2 flex items-center gap-3 hover:bg-cherry/15 transition-colors text-left">
+              <span className="w-7 h-7 bg-cherry rounded-full flex items-center justify-center flex-shrink-0">
+                <MessageCircle size={14} className="text-cream" aria-hidden="true" />
+              </span>
               <div className="flex-1 min-w-0">
                 <p className="font-body text-sm font-semibold text-cherry">
                   {unreadChatMap[o.id] === 1 ? '1 mensaje nuevo' : `${unreadChatMap[o.id]} mensajes nuevos`}
