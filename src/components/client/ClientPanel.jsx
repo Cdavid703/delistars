@@ -10,10 +10,11 @@ import {
 } from '../../services/firebase'
 import { llamarPedidos, ErrorApi, nuevaClave } from '../../services/pedidosApi'
 import { campanaParaPedido } from '../../utils/campana'
-import { etapaDe } from '../../utils/etapas'
+import { etapaDe, ETAPAS, EXCEPCIONES } from '../../utils/etapas'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
+import estrellaCrema from '../../assets/logos/estrella-crema.svg'
 import RoleSwitcher from '../common/RoleSwitcher'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
@@ -637,8 +638,13 @@ export default function ClientPanel() {
           ))}
         </div>
         <div className="relative z-10 flex items-center justify-between mb-4">
-          <Logo variant="dark" size="sm" />
-          <div className="flex items-center gap-1">
+          {/* Marca sobre el rojo: la estrella en vector (crema) y el nombre en la
+              letra de la marca. Los PNG traían fondo negro y dejaban un recuadro. */}
+          <span className="inline-flex items-center gap-2">
+            <img src={estrellaCrema} alt="" className="h-9 w-auto" />
+            <span className="hidden min-[430px]:inline font-display text-2xl leading-none tracking-wide text-cream">DeliStars</span>
+          </span>
+          <div className="flex items-center gap-0 min-[400px]:gap-1 -mr-2">
             <BotonSilencio oscuro />
             <RoleSwitcher variant="dark" />
             {user && !user.isAnonymous && (
@@ -686,8 +692,19 @@ export default function ClientPanel() {
         </div>
       </div>
 
+      {/* Pedidos en curso: lo primero que se ve, encima de todo lo demás.
+          Debajo, la opción de recibir avisos de ese pedido en el celular. */}
+      {activeOrders.length > 0 && (
+        <div className="mx-4 -mt-8 relative z-10 flex flex-col gap-3 stagger">
+          {activeOrders.map(o => (
+            <ClientOrderCard key={o.id} order={o} unreadCount={unreadChatMap[o.id] || 0} onClick={() => openOrderDetail(o.id)} />
+          ))}
+          <PushOptIn uid={user?.uid} />
+        </div>
+      )}
+
       {/* Sede info */}
-      <div className="mx-4 -mt-8 relative z-10">
+      <div className={`mx-4 ${activeOrders.length > 0 ? 'mt-3' : '-mt-8'} relative z-10`}>
         <div className="card bg-white shadow-soft">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-cherry/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -851,23 +868,13 @@ export default function ClientPanel() {
         </div>
       </div>
 
-      {/* Avisos al celular — solo si hay un pedido en curso que seguir. Antes
-          esto vivía enterrado dentro del detalle del pedido y solo mientras
-          estaba "pendiente": casi nadie llegaba a verlo y por eso los clientes
-          no se enteraban de los cambios de estado. */}
-      {activeOrders.length > 0 && (
-        <div className="mx-4 mt-3">
-          <PushOptIn uid={user?.uid} />
-        </div>
-      )}
-
-      {/* Active orders */}
+      {/* Sin pedidos en curso: aquí empieza a seguirlos. Con pedidos, van arriba. */}
       <div className="px-4 mt-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="section-title">Mis pedidos activos</p>
+          <p className="section-title">{activeOrders.length ? 'Pedidos anteriores' : 'Mis pedidos'}</p>
           <button onClick={() => setShowHistory(true)} className="btn-ghost btn-sm">Ver historial</button>
         </div>
-        {activeOrders.length === 0 ? (
+        {activeOrders.length === 0 && (
           <div className="card-quiet flex flex-col items-center text-center gap-3 py-8 border-dashed">
             <span className="w-12 h-12 rounded-full bg-smoked flex items-center justify-center text-coal/50" aria-hidden="true">
               <ShoppingBag size={22} />
@@ -877,12 +884,6 @@ export default function ClientPanel() {
               <p className="font-body text-xs text-coal/60 mt-0.5">Cuando pidas, aquí lo sigues paso a paso.</p>
             </div>
             <a href="/" className="btn-secondary btn-sm">Ver el menú</a>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3 stagger">
-            {activeOrders.map(o => (
-              <ClientOrderCard key={o.id} order={o} unreadCount={unreadChatMap[o.id] || 0} onClick={() => openOrderDetail(o.id)} />
-            ))}
           </div>
         )}
       </div>
@@ -1983,57 +1984,73 @@ function PromosOptIn({ uid, email, className = '' }) {
   )
 }
 
+// Tarjeta del pedido en curso (lo primero que ve el cliente): la etapa en
+// grande, cuánto falta si va en camino, los pasos del pedido, quién lo lleva y
+// el total. Los pasos salen de la etapa real (etapaDe), no del status viejo.
 function ClientOrderCard({ order, onClick, unreadCount = 0 }) {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === pasoCliente(order.status))
   const step     = STATUS_STEPS[Math.max(0, stepIdx)]
-  const progress = getProgress(order.status)
   const hasQuote = order.totalPrice > 0 || !!order.quotedAt || order.payment === 'Saldo a favor'
+  const { etapa, excepcion } = etapaDe(order)
+  const pickup   = order.deliveryMode === 'pickup'
+  const pasos    = (pickup ? ETAPAS.recoger : ETAPAS.domicilio).filter(e => e.id !== 'entregado')
+  const actual   = Math.max(0, pasos.findIndex(e => e.id === etapa))
+  const eta      = calcularEta(order)
+  const titulo   = excepcion ? EXCEPCIONES[excepcion]?.texto : labelPaso(step, order)
+  const nProductos = String(order.items || '').split('\n').filter(l => /^\s*\d+\s*x/i.test(l)).length
 
   return (
-    <button onClick={onClick} className="order-card w-full text-left">
-      <div className="flex items-start justify-between gap-3 mb-3">
+    <button onClick={onClick}
+      className="w-full text-left bg-white rounded-3xl shadow-soft p-5 flex flex-col gap-4 transition-[transform,box-shadow] duration-200 [@media(hover:hover)]:hover:-translate-y-0.5 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/50"
+      style={{ transitionTimingFunction: 'var(--ease-out)' }}>
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {order.orderNumber && <p className="font-display text-xl text-cherry tabular">#{order.orderNumber}</p>}
-          <p className="font-body text-sm text-coal/65 line-clamp-1">{order.items}</p>
+          <p className="font-body text-xs font-semibold text-coal/50 tabular">
+            Pedido #{order.orderNumber || '—'} · {pickup ? 'Recoges en la sede' : 'A domicilio'}
+          </p>
+          <p className={`font-display text-3xl leading-none tracking-wide mt-1 ${excepcion ? 'text-pepper' : 'text-coal'}`}>{titulo}</p>
+          {eta && (
+            <p className="font-body text-sm text-coal/70 mt-1.5">
+              {eta.tarde ? 'Va un poco tarde · ' : ''}Llega {eta.faltan > 1 ? `en unos ${eta.faltan} min` : 'en cualquier momento'} · {horaCorta(eta.llegada)}
+            </p>
+          )}
         </div>
         <StepIcon step={step} />
       </div>
 
-      {/* Quote highlight */}
-      {hasQuote ? (
-        <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center justify-between">
-          <span className="font-body text-xs font-semibold text-tangelo inline-flex items-center gap-1.5">
-            <Wallet size={13} aria-hidden="true" />
-            {order.pagoAdelantado ? `Total · ${order.payment}` : order.payment ? 'Total cotizado' : 'Elige cómo pagar'}
-          </span>
-          <span className="font-display text-base text-tangelo tabular">{fmt(order.totalPrice)}</span>
-        </div>
-      ) : !CLOSED_STATUSES.includes(order.status) && (
-        <div className="mb-2 bg-tangelo/10 border border-tangelo/20 rounded-xl px-3 py-2 flex items-center gap-1.5">
-          <Clock size={13} className="text-tangelo" aria-hidden="true" />
-          <span className="font-body text-xs font-semibold text-tangelo">Domicilio por cotizar — aún no pagues</span>
+      {/* Pasos del pedido: lo hecho en color, el actual resaltado */}
+      {!excepcion && (
+        <div className="flex gap-1.5" aria-label={`Paso ${actual + 1} de ${pasos.length}`}>
+          {pasos.map((e, k) => (
+            <span key={e.id} title={e.texto}
+              className={`h-1.5 flex-1 rounded-full transition-colors duration-500 ${k < actual ? 'bg-cherry' : k === actual ? 'bg-gradient-to-r from-cherry to-tangelo animate-pulse' : 'bg-smoked'}`} />
+          ))}
         </div>
       )}
 
-      {/* Unread cashier message badge */}
       {unreadCount > 0 && (
-        <div className="mb-2 flex items-center gap-1.5 bg-tangelo/10 border border-tangelo/30 rounded-xl px-3 py-2">
-          <MessageSquare size={13} className="text-tangelo flex-shrink-0" />
-          <span className="font-body text-xs font-semibold text-tangelo">
-            {unreadCount === 1 ? '1 mensaje nuevo del cajero' : `${unreadCount} mensajes nuevos del cajero`}
-          </span>
-          <span className="ml-auto text-[10px] font-body text-tangelo/70 font-semibold">Toca para ver →</span>
-        </div>
+        <p className="flex items-center gap-1.5 rounded-xl bg-cherry/10 px-3 py-2 font-body text-xs font-semibold text-cherry">
+          <MessageSquare size={13} className="flex-shrink-0" aria-hidden="true" />
+          {unreadCount === 1 ? 'Te escribieron de la sede' : `${unreadCount} mensajes de la sede`}
+          <span className="ml-auto font-semibold">Ver</span>
+        </p>
       )}
 
-      {/* La etapa ya está escrita arriba de la barra: el distintivo en
-          mayúsculas repetía lo mismo dos renglones más abajo. */}
-      <div>
-        <p className="font-body text-sm font-semibold text-cherry mb-1">{labelPaso(step, order)}</p>
-        <div className="w-full bg-smoked rounded-full h-2 overflow-hidden">
-          <div className="bg-gradient-to-r from-cherry to-tangelo h-2 rounded-full transition-[width] duration-500"
-            style={{ width: `${progress}%`, transitionTimingFunction: 'var(--ease-out)' }} />
-        </div>
+      <div className="flex items-center gap-x-4 gap-y-1 flex-wrap border-t border-coal/10 pt-3 font-body text-xs text-coal/65">
+        {nProductos > 0 && <span>{nProductos} {nProductos === 1 ? 'producto' : 'productos'}</span>}
+        {order.driverName && ['in_transit', 'arrived'].includes(order.status) && (
+          <span className="inline-flex items-center gap-1 text-mint font-semibold"><Bike size={13} aria-hidden="true" /> {order.driverName.split(' ')[0]} lo lleva</span>
+        )}
+        <span className="ml-auto flex items-center gap-2">
+          {hasQuote ? (
+            <>
+              <span>{order.payment || 'Elige cómo pagar'}</span>
+              <span className="font-display text-xl leading-none text-coal tabular">{fmt(order.totalPrice)}</span>
+            </>
+          ) : !CLOSED_STATUSES.includes(order.status) && (
+            <span className="inline-flex items-center gap-1 font-semibold text-tangelo"><Clock size={13} aria-hidden="true" /> Domicilio por cotizar · aún no pagues</span>
+          )}
+        </span>
       </div>
     </button>
   )
@@ -2620,6 +2637,59 @@ function ClientOrderDetail({ order, onClose }) {
         </div>
 
         <div className="p-5 flex flex-col gap-4">
+          {/* Orden por prioridad para el cliente: lo que pide su respuesta,
+              lo que tiene que hacer, el seguimiento y después el resto. */}
+          {/* La sede propone un cambio (Fase 7, §9.2): aceptar o rechazar */}
+          {excepcionActual === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
+            <CambioPropuesto order={order} />
+          )}
+
+          {/* Pidió cancelar: la caja lo está revisando */}
+          {solicitudCancelacion && (
+            <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-4">
+              <p className="font-display text-base tracking-wide text-coal">⏳ Pediste cancelar este pedido</p>
+              <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
+                {['en_camino', 'llego'].includes(etapaActual)
+                  ? 'Como ya va en camino, lo decide administración y te confirman aquí mismo.'
+                  : 'La sede lo está revisando y te confirma aquí mismo.'}
+                {order.excepcionMotivo ? <> Tu motivo: «{order.excepcionMotivo}».</> : null}
+              </p>
+            </div>
+          )}
+
+          {order.status === 'rejected' && (
+            <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 text-center">
+              <CircleX size={32} className="text-pepper mx-auto mb-2" aria-hidden="true" />
+              <p className="font-display text-lg tracking-wide text-pepper">Pedido rechazado</p>
+              {order.rejectionReason && (
+                <p className="font-body text-sm text-coal/70 mt-2">Motivo: {order.rejectionReason}</p>
+              )}
+              <p className="font-body text-xs text-coal/50 mt-3">
+                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
+              </p>
+            </div>
+          )}
+
+          {order.status === 'cancelled' && (
+            <div className="bg-coal/5 border border-coal/20 rounded-2xl p-4 text-center">
+              <Ban size={32} className="text-coal/50 mx-auto mb-2" aria-hidden="true" />
+              <p className="font-display text-lg tracking-wide text-coal/70">Pedido cancelado</p>
+              <p className="font-body text-xs text-coal/50 mt-3">
+                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
+              </p>
+            </div>
+          )}
+
+          {order.devolucion && <DevolucionCliente order={order} />}
+
+          {isDelivered && (
+            <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 text-center">
+              <CircleCheck size={32} className="text-mint mx-auto mb-2" aria-hidden="true" />
+              <p className="font-display text-lg tracking-wide text-mint">¡Pedido entregado!</p>
+              <p className="font-body text-xs text-coal/50 mt-1">Gracias por tu pedido en DeliStars</p>
+            </div>
+          )}
+
           {/* Aviso grande: falta cotizar el domicilio (antes de la cotización) */}
           {!hasQuote && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-5 flex flex-col gap-3">
@@ -2673,68 +2743,6 @@ function ClientOrderDetail({ order, onClose }) {
             <AvisoInvitado siguiendo compacto />
           )}
 
-          {order.devolucion && <DevolucionCliente order={order} />}
-
-          {/* El pedido lleva premio de fidelización: se lo confirmamos en grande */}
-          {order.loyaltyRedemption?.count > 0 && (
-            <div className="bg-mint rounded-2xl p-4">
-              <p className="font-display text-lg tracking-wide text-cream flex items-center gap-2">
-                <Gift size={18} aria-hidden="true" /> Este pedido incluye tu premio
-              </p>
-              <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
-                {order.loyaltyRedemption.count > 1 ? `${order.loyaltyRedemption.count}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta, <strong>GRATIS</strong>.
-                {CLOSED_STATUSES.includes(order.status) && ' Como el pedido no siguió, el premio volvió a tu cuenta.'}
-              </p>
-            </div>
-          )}
-
-          {/* Pagó al enviar: solo falta que la caja lo acepte */}
-          {order.pagoAdelantado && order.status === 'pending' && (
-            <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-3xl leading-none">⏳</span>
-                <p className="font-display text-xl tracking-wide text-mint">Esperando que la caja acepte</p>
-              </div>
-              <p className="font-body text-sm text-coal/80 leading-relaxed">
-                <strong>¡Pedido recibido!</strong>{order.createdAt?.toDate ? ` Enviado a las ${format(order.createdAt.toDate(), 'h:mm a')}.` : ''} Ya
-                llegó a la caja con tu pago. Apenas lo acepten empieza la preparación.
-                Normalmente toma pocos minutos.
-              </p>
-              <PushOptIn uid={user?.uid} />
-            </div>
-          )}
-
-          {/* Quote section */}
-          {hasQuote && (
-            <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
-              <p className="font-display text-base tracking-wide text-tangelo">
-                {order.pagoAdelantado ? 'Valor de tu pedido' : 'Cotización del cajero'}
-              </p>
-              <div className="flex justify-between font-body text-sm">
-                <span className="text-coal/60">Valor pedido:</span>
-                <span className="font-semibold">{fmt(order.quotedPrice)}</span>
-              </div>
-              <div className="flex justify-between font-body text-sm">
-                <span className="text-coal/60">Domicilio:</span>
-                <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
-              </div>
-              {Number(order.saldoAplicado?.usado) > 0 && (
-                <div className="flex justify-between font-body text-sm text-mint font-semibold">
-                  <span>Saldo a favor:</span>
-                  <span>−{fmt(order.saldoAplicado.usado)}</span>
-                </div>
-              )}
-              <div className="border-t border-tangelo/20 pt-2 flex justify-between">
-                <span className="font-body font-bold text-coal">TOTAL:</span>
-                <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
-              </div>
-              <div className="flex justify-between font-body text-sm">
-                <span className="text-coal/60">Forma de pago:</span>
-                <span className="font-semibold">{order.payment || 'Por elegir'}</span>
-              </div>
-            </div>
-          )}
-
           {/* Selector de método de pago — aparece tras la cotización de la caja */}
           {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
@@ -2779,6 +2787,186 @@ function ClientOrderDetail({ order, onClose }) {
               </button>
             </div>
           )}
+
+          {/* Transfer / Nequi receipt upload */}
+          {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) &&
+           !['completed', 'rejected', 'cancelled'].includes(order.status) && (
+            <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
+              <p className="font-display text-sm tracking-wide text-coal">
+                {order.payment === 'Mixto' ? 'Comprobante de tu parte por transferencia' : `Comprobante de ${order.payment}`}
+              </p>
+
+              {/* Desglose del pago mixto: efectivo + transferencia */}
+              {order.payment === 'Mixto' && (
+                <div className="bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1.5">
+                  <p className="font-body text-xs text-coal/70 font-semibold">Tu pago se divide así:</p>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">En efectivo (al recibir):</span>
+                    <span className="font-semibold">{fmt(Number(order.mixtoEfectivo) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between font-body text-sm">
+                    <span className="text-coal/60">Por transferencia / QR:</span>
+                    <span className="font-semibold text-tangelo">{fmt(Number(order.mixtoTransferencia) || 0)}</span>
+                  </div>
+                  <p className="font-body text-[11px] text-coal/50">
+                    Transfiere la parte digital con el QR de abajo y sube el comprobante. El resto lo pagas en efectivo al domiciliario.
+                  </p>
+                </div>
+              )}
+
+              {/* QR + cuenta/llave para transferir */}
+              {/* Si ya mandó el comprobante no hace falta volver a mostrar el QR */}
+              {!order.transferValidated && !order.transferReceiptUrl && <DatosTransferencia sedeId={order.sedeId} />}
+
+              {order.transferValidated ? (
+                <div className="flex items-center gap-2 text-mint">
+                  <CircleCheck size={17} className="flex-shrink-0" aria-hidden="true" />
+                  <p className="font-body text-sm font-semibold">Pago validado por el cajero</p>
+                </div>
+              ) : order.transferReceiptUrl ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-tangelo">
+                    <Paperclip size={14} className="text-coal/50 flex-shrink-0" aria-hidden="true" />
+                    <p className="font-body text-xs font-semibold">Comprobante enviado — esperando validación</p>
+                  </div>
+                  <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
+                    className="font-body text-xs text-cherry underline underline-offset-2 truncate">
+                    {order.transferReceiptName || 'Ver archivo'}
+                  </a>
+                  <label className="cursor-pointer text-xs font-body text-coal/50 underline underline-offset-2 w-fit">
+                    Cambiar archivo
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
+                  </label>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <p className="font-body text-xs text-coal/60">
+                    Sube la foto o PDF de tu comprobante para que el cajero confirme el pago.
+                  </p>
+                  <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors
+                    ${uploadProgress !== null ? 'border-tangelo/40 bg-tangelo/5' : 'border-coal/20 hover:border-tangelo/50 hover:bg-tangelo/5'}`}>
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
+                    {uploadProgress !== null ? (
+                      <span className="font-body text-sm text-tangelo">Subiendo {uploadProgress}%…</span>
+                    ) : (
+                      <span className="font-body text-sm text-coal/60 flex items-center gap-2">
+                        <Upload size={16} aria-hidden="true" /> Subir comprobante (imagen o PDF)
+                      </span>
+                    )}
+                  </label>
+                  {uploadError && <p className="font-body text-xs text-pepper">{uploadError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ETA / driver status */}
+          {['accepted', 'preparing', 'in_transit', 'arrived'].includes(order.status) && (
+            <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-base tracking-wide">
+                {order.status === 'in_transit' ? 'Tu pedido está en camino' :
+                 order.status === 'arrived'    ? 'El domiciliario llegó' :
+                 order.deliveryMode === 'pickup' ? 'Tu pedido está en preparación' :
+                                                 'Aceptado por el domiciliario y en preparación'}
+              </p>
+              {/* La espera larga vive aquí (mediana de 31 min entre asignado y
+                  en camino), así que es donde más falta hace la hora concreta. */}
+              {eta && !eta.tarde && eta.faltan > 0 && (
+                <div className="bg-white/70 rounded-xl px-3 py-2.5">
+                  <p className="font-body text-xs text-coal/60">
+                    {eta.enVivo ? 'Llegada según dónde va el domiciliario'
+                      : eta.porRuta ? 'Llegada según la ruta hasta tu casa' : 'Llegada estimada'}
+                  </p>
+                  <p className="font-display text-2xl text-cherry leading-tight">{horaCorta(eta.llegada)}</p>
+                  <p className="font-body text-xs text-coal/55">faltan ~{eta.faltan} min</p>
+                </div>
+              )}
+              {eta?.tarde && (
+                <p className="font-body text-xs text-mustard leading-relaxed">
+                  Se está demorando más de lo normal. Si necesitas algo, escríbenos aquí por el chat.
+                </p>
+              )}
+              {['accepted', 'preparing'].includes(order.status) && (
+                <p className="font-body text-xs text-coal/55 leading-relaxed">
+                  Te avisamos apenas salga hacia tu dirección.
+                </p>
+              )}
+              {order.driverName && (
+                <p className="font-body text-sm text-coal/70">
+                  Domiciliario: <span className="font-semibold text-coal">{order.driverName}</span>
+                </p>
+              )}
+              {order.driverPhone && (() => {
+                const digits  = order.driverPhone.replace(/\D/g, '')
+                const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
+                return (
+                  <div className="flex gap-2 mt-1">
+                    <a href={`tel:${order.driverPhone}`}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors">
+                      <Phone size={15} aria-hidden="true" /> Llamar
+                    </a>
+                    <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-sm font-semibold hover:bg-[#25D366]/20 transition-colors">
+                      <MessageCircle size={15} aria-hidden="true" /> WhatsApp
+                    </a>
+                  </div>
+                )
+              })()}
+              {elapsed !== null && order.status !== 'arrived' && (
+                <p className="font-body text-sm text-coal/60">
+                  Hace {elapsed < 1 ? 'menos de 1 min' : `${elapsed} min${elapsed !== 1 ? 's' : ''}`}
+                </p>
+              )}
+              {order.status === 'in_transit' && (
+                order.driverLat ? (
+                  <div className="flex flex-col gap-2">
+                    <Suspense fallback={<div className="h-[240px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
+                      <LiveDriverMap
+                        driverLat={order.driverLat} driverLng={order.driverLng}
+                        destLat={order.addrLat} destLng={order.addrLng}
+                      />
+                    </Suspense>
+                    <p className="font-body text-[11px] text-coal/50 text-center">El mapa se actualiza solo: la moto es tu domiciliario y la casa, tu dirección.</p>
+                    <button onClick={openDriverMap} className="btn-secondary btn-sm w-full">
+                      <Navigation size={14} /> Abrir en Google Maps
+                    </button>
+                  </div>
+                ) : (
+                  <p className="font-body text-xs text-coal/50">Obteniendo ubicación del domiciliario…</p>
+                )
+              )}
+            </div>
+          )}
+
+          {/* Timeline */}
+          <div className="flex flex-col gap-2">
+            {STATUS_STEPS.filter((s, i, arr) => {
+              // En recoger en sede no hay domiciliario: ocultamos esos pasos
+              if (order.deliveryMode === 'pickup' && ['assigned','in_transit','arrived'].includes(s.key)) return false
+              const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
+              if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
+              // Rechazado y cancelado no son pasos que faltan: solo se ven si
+              // el pedido terminó así. Listarlos siempre asustaba de gratis.
+              if (['rejected','cancelled'].includes(s.key)) return s.key === pasoCliente(order.status)
+              return true
+            }).map((s, i) => {
+              const currentIdx = STATUS_STEPS.findIndex(x => x.key === pasoCliente(order.status))
+              const done = CLOSED_STATUSES.includes(order.status)
+                ? s.key === pasoCliente(order.status)
+                : currentIdx >= 0 && currentIdx >= STATUS_STEPS.findIndex(x => x.key === s.key)
+              const actual = s.key === pasoCliente(order.status)
+              return (
+                <div key={s.key} className="flex items-center gap-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 font-body text-xs ${
+                    done ? 'bg-cherry text-cream' : 'bg-smoked text-coal/30'
+                  }`}>{done ? <Check size={13} aria-hidden="true" /> : (i+1)}</div>
+                  <span className={`font-body text-sm ${
+                    actual ? 'text-cherry font-bold' : done ? 'text-coal font-semibold' : 'text-coal/40'
+                  }`}>{labelPaso(s, order)}</span>
+                </div>
+              )
+            })}
+          </div>
 
           {/* Calculadora de cambio — solo para efectivo con cotización */}
           {hasQuote && order.payment === 'Efectivo' && !isDelivered && (
@@ -2877,197 +3065,76 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* El pedido lleva premio de fidelización: se lo confirmamos en grande */}
+          {order.loyaltyRedemption?.count > 0 && (
+            <div className="bg-mint rounded-2xl p-4">
+              <p className="font-display text-lg tracking-wide text-cream flex items-center gap-2">
+                <Gift size={18} aria-hidden="true" /> Este pedido incluye tu premio
+              </p>
+              <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
+                {order.loyaltyRedemption.count > 1 ? `${order.loyaltyRedemption.count}x ` : ''}Hamburguesa Especial + Perro Grande con tocineta, <strong>GRATIS</strong>.
+                {CLOSED_STATUSES.includes(order.status) && ' Como el pedido no siguió, el premio volvió a tu cuenta.'}
+              </p>
+            </div>
+          )}
+
+          {/* Pagó al enviar: solo falta que la caja lo acepte */}
+          {order.pagoAdelantado && order.status === 'pending' && (
+            <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-5 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl leading-none">⏳</span>
+                <p className="font-display text-xl tracking-wide text-mint">Esperando que la caja acepte</p>
+              </div>
+              <p className="font-body text-sm text-coal/80 leading-relaxed">
+                <strong>¡Pedido recibido!</strong>{order.createdAt?.toDate ? ` Enviado a las ${format(order.createdAt.toDate(), 'h:mm a')}.` : ''} Ya
+                llegó a la caja con tu pago. Apenas lo acepten empieza la preparación.
+                Normalmente toma pocos minutos.
+              </p>
+              <PushOptIn uid={user?.uid} />
+            </div>
+          )}
+
           {/* Cashier note to client */}
           {order.cashierNotes && (
             <div className="bg-mustard/10 border border-mustard/20 rounded-2xl p-4 flex items-start gap-3">
               <MessageSquare size={18} className="text-mustard flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-display text-sm tracking-wide text-coal mb-1">Nota del cajero</p>
+                <p className="font-display text-sm tracking-wide text-coal mb-1">Nota de la sede</p>
                 <p className="font-body text-sm text-coal/80">{order.cashierNotes}</p>
               </div>
             </div>
           )}
 
-          {/* Transfer / Nequi receipt upload */}
-          {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) &&
-           !['completed', 'rejected', 'cancelled'].includes(order.status) && (
-            <div className={`rounded-2xl p-4 flex flex-col gap-3 border ${order.transferValidated ? 'bg-mint/5 border-mint/30' : 'bg-tangelo/5 border-tangelo/20'}`}>
-              <p className="font-display text-sm tracking-wide text-coal">
-                {order.payment === 'Mixto' ? 'Comprobante de tu parte por transferencia' : `Comprobante de ${order.payment}`}
+          {/* Quote section */}
+          {hasQuote && (
+            <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-2">
+              <p className="font-display text-base tracking-wide text-tangelo">
+                Valor de tu pedido
               </p>
-
-              {/* Desglose del pago mixto: efectivo + transferencia */}
-              {order.payment === 'Mixto' && (
-                <div className="bg-mustard/10 border border-mustard/30 rounded-xl p-3 flex flex-col gap-1.5">
-                  <p className="font-body text-xs text-coal/70 font-semibold">Tu pago se divide así:</p>
-                  <div className="flex justify-between font-body text-sm">
-                    <span className="text-coal/60">En efectivo (al recibir):</span>
-                    <span className="font-semibold">{fmt(Number(order.mixtoEfectivo) || 0)}</span>
-                  </div>
-                  <div className="flex justify-between font-body text-sm">
-                    <span className="text-coal/60">Por transferencia / QR:</span>
-                    <span className="font-semibold text-tangelo">{fmt(Number(order.mixtoTransferencia) || 0)}</span>
-                  </div>
-                  <p className="font-body text-[11px] text-coal/50">
-                    Transfiere la parte digital con el QR de abajo y sube el comprobante. El resto lo pagas en efectivo al domiciliario.
-                  </p>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Valor pedido:</span>
+                <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+              </div>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Domicilio:</span>
+                <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
+              </div>
+              {Number(order.saldoAplicado?.usado) > 0 && (
+                <div className="flex justify-between font-body text-sm text-mint font-semibold">
+                  <span>Saldo a favor:</span>
+                  <span>−{fmt(order.saldoAplicado.usado)}</span>
                 </div>
               )}
-
-              {/* QR + cuenta/llave para transferir */}
-              {/* Si ya mandó el comprobante no hace falta volver a mostrar el QR */}
-              {!order.transferValidated && !order.transferReceiptUrl && <DatosTransferencia sedeId={order.sedeId} />}
-
-              {order.transferValidated ? (
-                <div className="flex items-center gap-2 text-mint">
-                  <CircleCheck size={17} className="flex-shrink-0" aria-hidden="true" />
-                  <p className="font-body text-sm font-semibold">Pago validado por el cajero</p>
-                </div>
-              ) : order.transferReceiptUrl ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 text-tangelo">
-                    <Paperclip size={14} className="text-coal/50 flex-shrink-0" aria-hidden="true" />
-                    <p className="font-body text-xs font-semibold">Comprobante enviado — esperando validación</p>
-                  </div>
-                  <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
-                    className="font-body text-xs text-cherry underline underline-offset-2 truncate">
-                    {order.transferReceiptName || 'Ver archivo'}
-                  </a>
-                  <label className="cursor-pointer text-xs font-body text-coal/50 underline underline-offset-2 w-fit">
-                    Cambiar archivo
-                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
-                  </label>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <p className="font-body text-xs text-coal/60">
-                    Sube la foto o PDF de tu comprobante para que el cajero confirme el pago.
-                  </p>
-                  <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors
-                    ${uploadProgress !== null ? 'border-tangelo/40 bg-tangelo/5' : 'border-coal/20 hover:border-tangelo/50 hover:bg-tangelo/5'}`}>
-                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleUploadReceipt} />
-                    {uploadProgress !== null ? (
-                      <span className="font-body text-sm text-tangelo">Subiendo {uploadProgress}%…</span>
-                    ) : (
-                      <span className="font-body text-sm text-coal/60 flex items-center gap-2">
-                        <Upload size={16} aria-hidden="true" /> Subir comprobante (imagen o PDF)
-                      </span>
-                    )}
-                  </label>
-                  {uploadError && <p className="font-body text-xs text-pepper">{uploadError}</p>}
-                </div>
-              )}
+              <div className="border-t border-tangelo/20 pt-2 flex justify-between">
+                <span className="font-body font-bold text-coal">TOTAL:</span>
+                <span className="font-display text-xl text-tangelo">{fmt(order.totalPrice)}</span>
+              </div>
+              <div className="flex justify-between font-body text-sm">
+                <span className="text-coal/60">Forma de pago:</span>
+                <span className="font-semibold">{order.payment || 'Por elegir'}</span>
+              </div>
             </div>
           )}
-
-          {/* Timeline */}
-          <div className="flex flex-col gap-2">
-            {STATUS_STEPS.filter((s, i, arr) => {
-              // En recoger en sede no hay domiciliario: ocultamos esos pasos
-              if (order.deliveryMode === 'pickup' && ['assigned','in_transit','arrived'].includes(s.key)) return false
-              const deliveredKeys = ['delivered_paid','pending_cuadre','completed']
-              if (deliveredKeys.includes(s.key)) return i === arr.findIndex(x => deliveredKeys.includes(x.key))
-              // Rechazado y cancelado no son pasos que faltan: solo se ven si
-              // el pedido terminó así. Listarlos siempre asustaba de gratis.
-              if (['rejected','cancelled'].includes(s.key)) return s.key === pasoCliente(order.status)
-              return true
-            }).map((s, i) => {
-              const currentIdx = STATUS_STEPS.findIndex(x => x.key === pasoCliente(order.status))
-              const done = CLOSED_STATUSES.includes(order.status)
-                ? s.key === pasoCliente(order.status)
-                : currentIdx >= 0 && currentIdx >= STATUS_STEPS.findIndex(x => x.key === s.key)
-              const actual = s.key === pasoCliente(order.status)
-              return (
-                <div key={s.key} className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 font-body text-xs ${
-                    done ? 'bg-cherry text-cream' : 'bg-smoked text-coal/30'
-                  }`}>{done ? <Check size={13} aria-hidden="true" /> : (i+1)}</div>
-                  <span className={`font-body text-sm ${
-                    actual ? 'text-cherry font-bold' : done ? 'text-coal font-semibold' : 'text-coal/40'
-                  }`}>{labelPaso(s, order)}</span>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* ETA / driver status */}
-          {['accepted', 'preparing', 'in_transit', 'arrived'].includes(order.status) && (
-            <div className="bg-cherry/5 border border-cherry/20 rounded-2xl p-4 flex flex-col gap-2">
-              <p className="font-display text-base tracking-wide">
-                {order.status === 'in_transit' ? 'Tu pedido está en camino' :
-                 order.status === 'arrived'    ? 'El domiciliario llegó' :
-                 order.deliveryMode === 'pickup' ? 'Tu pedido está en preparación' :
-                                                 'Aceptado por el domiciliario y en preparación'}
-              </p>
-              {/* La espera larga vive aquí (mediana de 31 min entre asignado y
-                  en camino), así que es donde más falta hace la hora concreta. */}
-              {eta && !eta.tarde && eta.faltan > 0 && (
-                <div className="bg-white/70 rounded-xl px-3 py-2.5">
-                  <p className="font-body text-xs text-coal/60">
-                    {eta.enVivo ? 'Llegada según dónde va el domiciliario'
-                      : eta.porRuta ? 'Llegada según la ruta hasta tu casa' : 'Llegada estimada'}
-                  </p>
-                  <p className="font-display text-2xl text-cherry leading-tight">{horaCorta(eta.llegada)}</p>
-                  <p className="font-body text-xs text-coal/55">faltan ~{eta.faltan} min</p>
-                </div>
-              )}
-              {eta?.tarde && (
-                <p className="font-body text-xs text-mustard leading-relaxed">
-                  Se está demorando más de lo normal. Si necesitas algo, escríbenos aquí por el chat.
-                </p>
-              )}
-              {['accepted', 'preparing'].includes(order.status) && (
-                <p className="font-body text-xs text-coal/55 leading-relaxed">
-                  Te avisamos apenas salga hacia tu dirección.
-                </p>
-              )}
-              {order.driverName && (
-                <p className="font-body text-sm text-coal/70">
-                  Domiciliario: <span className="font-semibold text-coal">{order.driverName}</span>
-                </p>
-              )}
-              {order.driverPhone && (() => {
-                const digits  = order.driverPhone.replace(/\D/g, '')
-                const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
-                return (
-                  <div className="flex gap-2 mt-1">
-                    <a href={`tel:${order.driverPhone}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry font-body text-sm font-semibold hover:bg-cherry/20 transition-colors">
-                      <Phone size={15} aria-hidden="true" /> Llamar
-                    </a>
-                    <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-sm font-semibold hover:bg-[#25D366]/20 transition-colors">
-                      <MessageCircle size={15} aria-hidden="true" /> WhatsApp
-                    </a>
-                  </div>
-                )
-              })()}
-              {elapsed !== null && order.status !== 'arrived' && (
-                <p className="font-body text-sm text-coal/60">
-                  Hace {elapsed < 1 ? 'menos de 1 min' : `${elapsed} min${elapsed !== 1 ? 's' : ''}`}
-                </p>
-              )}
-              {order.status === 'in_transit' && (
-                order.driverLat ? (
-                  <div className="flex flex-col gap-2">
-                    <Suspense fallback={<div className="h-[240px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
-                      <LiveDriverMap
-                        driverLat={order.driverLat} driverLng={order.driverLng}
-                        destLat={order.addrLat} destLng={order.addrLng}
-                      />
-                    </Suspense>
-                    <p className="font-body text-[11px] text-coal/50 text-center">El mapa se actualiza solo: la moto es tu domiciliario y la casa, tu dirección.</p>
-                    <button onClick={openDriverMap} className="btn-secondary btn-sm w-full">
-                      <Navigation size={14} /> Abrir en Google Maps
-                    </button>
-                  </div>
-                ) : (
-                  <p className="font-body text-xs text-coal/50">Obteniendo ubicación del domiciliario…</p>
-                )
-              )}
-            </div>
-          )}
-
 
           {/* Order items */}
           <div className="card">
@@ -3096,46 +3163,15 @@ function ClientOrderDetail({ order, onClose }) {
             {order.barrio && <p className="font-body text-xs text-coal/50 mt-0.5">Barrio: {order.barrio}</p>}
           </div>
 
-          {isDelivered && (
-            <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 text-center">
-              <CircleCheck size={32} className="text-mint mx-auto mb-2" aria-hidden="true" />
-              <p className="font-display text-lg tracking-wide text-mint">¡Pedido entregado!</p>
-              <p className="font-body text-xs text-coal/50 mt-1">Gracias por tu pedido en DeliStars</p>
-            </div>
-          )}
-
-          {order.status === 'rejected' && (
-            <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 text-center">
-              <CircleX size={32} className="text-pepper mx-auto mb-2" aria-hidden="true" />
-              <p className="font-display text-lg tracking-wide text-pepper">Pedido rechazado</p>
-              {order.rejectionReason && (
-                <p className="font-body text-sm text-coal/70 mt-2">Motivo: {order.rejectionReason}</p>
-              )}
-              <p className="font-body text-xs text-coal/50 mt-3">
-                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
-              </p>
-            </div>
-          )}
-
-          {order.status === 'cancelled' && (
-            <div className="bg-coal/5 border border-coal/20 rounded-2xl p-4 text-center">
-              <Ban size={32} className="text-coal/50 mx-auto mb-2" aria-hidden="true" />
-              <p className="font-display text-lg tracking-wide text-coal/70">Pedido cancelado</p>
-              <p className="font-body text-xs text-coal/50 mt-3">
-                Puedes hacer un nuevo pedido o escribirnos por WhatsApp.
-              </p>
-            </div>
-          )}
-
           {/* Chat con el cajero */}
           {!['rejected','cancelled'].includes(order.status) && (
             <div className="card border-2 border-cherry/30 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <MessageSquare size={16} className="text-cherry" />
-                <p className="font-display text-base tracking-wide text-coal">Chat con el cajero</p>
+                <p className="font-display text-base tracking-wide text-coal">Chat con la sede</p>
                 {(order.clientMessages || []).filter(m => m.role === 'cashier').length > 0 && (
                   <span className="ml-auto inline-flex items-center gap-1 bg-cherry/10 text-cherry rounded-full px-2 py-0.5 text-[10px] font-body font-bold uppercase tracking-wider">
-                    {(order.clientMessages || []).filter(m => m.role === 'cashier').length} del cajero
+                    {(order.clientMessages || []).filter(m => m.role === 'cashier').length} de la sede
                   </span>
                 )}
               </div>
@@ -3152,7 +3188,7 @@ function ClientOrderDetail({ order, onClose }) {
                   ))}
                 </div>
               ) : (
-                <p className="font-body text-xs text-coal/40">Puedes escribirle al cajero aquí si tienes alguna duda</p>
+                <p className="font-body text-xs text-coal/40">Escríbenos aquí si tienes alguna duda sobre tu pedido</p>
               )}
 
               {chatCajaCerrado ? (
@@ -3164,7 +3200,7 @@ function ClientOrderDetail({ order, onClose }) {
                   <div className="flex gap-2">
                     <textarea
                       className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                      placeholder="Escríbele al cajero…"
+                      placeholder="Escríbele a la sede…"
                       value={clientMsgText}
                       maxLength={MAX_TEXTO}
                       onChange={e => setClientMsgText(e.target.value)}
@@ -3229,24 +3265,6 @@ function ClientOrderDetail({ order, onClose }) {
             </div>
           )}
 
-          {/* La sede propone un cambio (Fase 7, §9.2): aceptar o rechazar */}
-          {excepcionActual === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
-            <CambioPropuesto order={order} />
-          )}
-
-          {/* Pidió cancelar: la caja lo está revisando */}
-          {solicitudCancelacion && (
-            <div className="bg-tangelo/10 border-2 border-tangelo/40 rounded-2xl p-4">
-              <p className="font-display text-base tracking-wide text-coal">⏳ Pediste cancelar este pedido</p>
-              <p className="font-body text-xs text-coal/70 mt-1 leading-relaxed">
-                {['en_camino', 'llego'].includes(etapaActual)
-                  ? 'Como ya va en camino, lo decide administración y te confirman aquí mismo.'
-                  : 'La sede lo está revisando y te confirma aquí mismo.'}
-                {order.excepcionMotivo ? <> Tu motivo: «{order.excepcionMotivo}».</> : null}
-              </p>
-            </div>
-          )}
-
           {/* Cancelar: directo en Enviado; después, se le pide a la sede */}
           {canClientCancel && (
             <div className="flex flex-col gap-1.5 pt-1">
@@ -3267,6 +3285,7 @@ function ClientOrderDetail({ order, onClose }) {
               </p>
             </div>
           )}
+
         </div>
       </div>
     </div>
@@ -3570,7 +3589,7 @@ const CLIENT_HELP_SECTIONS = [
         'Agrega indicaciones adicionales si las tienes (sin cebolla, timbre 2B, etc.).',
         'Selecciona cómo vas a pagar: Efectivo, Transferencia o Nequi.',
         'Si pagas por Transferencia o Nequi, escanea el código QR que aparece en pantalla para hacer el pago.',
-        'Toca "Enviar pedido" y espera la cotización del cajero.',
+        'Toca "Enviar pedido" y espera la cotización de la sede.',
       ]},
     ],
   },
@@ -3586,7 +3605,7 @@ const CLIENT_HELP_SECTIONS = [
     content: [
       { type: 'p', text: 'Toca tu pedido activo para ver el estado en tiempo real:' },
       { type: 'table', rows: [
-        ['Pedido enviado',        'Esperando cotización del cajero'],
+        ['Pedido enviado',        'Esperando cotización de la sede'],
         ['Cotización recibida',   'Revisa el precio en el detalle del pedido'],
         ['Domiciliario asignado', 'Ya tienen un repartidor para ti'],
         ['Domiciliario aceptó',   'El repartidor confirmó que va'],
