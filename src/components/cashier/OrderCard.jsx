@@ -1,7 +1,7 @@
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import StatusBadge from '../common/StatusBadge'
-import { MapPin, Phone, Clock, User, Bike, MessageCircle, Check, Receipt } from 'lucide-react'
+import { MapPin, Phone, Clock, User, Bike, MessageCircle, Check, Receipt, Gift, CircleCheck, CircleX, AlertCircle, Plus, Banknote } from 'lucide-react'
 
 // Chulito de "facturado" (ingresado al sistema de facturación). Se puede prender
 // y apagar sin abrir el pedido; por eso corta la propagación del clic de la
@@ -59,7 +59,9 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* Premio de fidelización canjeado — muy visible, para que no se cobre */}
       {order.loyaltyRedemption?.count > 0 && (
         <div className="mb-2 bg-mint rounded-xl px-3 py-2.5 shadow-soft">
-          <p className="font-display text-sm tracking-wide text-cream">🎁 USA PREMIO DE FIDELIZACIÓN</p>
+          <p className="font-display text-sm tracking-wide text-cream flex items-center gap-2">
+            <Gift size={15} aria-hidden="true" /> USA PREMIO DE FIDELIZACIÓN
+          </p>
           <p className="font-body text-xs font-semibold text-cream/95 mt-0.5">
             {order.loyaltyRedemption.count}x Hamburguesa Especial + Perro Grande con tocineta — GRATIS, NO cobrar
           </p>
@@ -68,8 +70,8 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
 
       {/* Unread chat banner — very visible, at the top */}
       {unreadCount > 0 && (
-        <div className="mb-2 flex items-center gap-1.5 bg-cherry/10 border border-cherry/30 rounded-xl px-3 py-2 animate-pulse">
-          <MessageCircle size={13} className="text-cherry flex-shrink-0" />
+        <div className="mb-2 flex items-center gap-1.5 bg-cherry/10 border border-cherry/30 rounded-xl px-3 py-2">
+          <MessageCircle size={13} className="text-cherry flex-shrink-0" aria-hidden="true" />
           <span className="font-body text-xs font-semibold text-cherry">
             {unreadCount === 1 ? '1 mensaje nuevo del cliente' : `${unreadCount} mensajes nuevos del cliente`}
           </span>
@@ -80,8 +82,9 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* Llegó completo: el cliente vio el total y eligió pago. Solo aceptar. */}
       {order.pagoAdelantado && order.status === 'pending' && (
         <div className="mb-2 flex items-center gap-1.5 bg-mint/15 border border-mint/40 rounded-xl px-3 py-2">
+          <CircleCheck size={13} className="text-mint flex-shrink-0" aria-hidden="true" />
           <span className="font-body text-xs font-bold text-mint">
-            ✅ Pedido completo · {order.payment} — solo aceptar
+            Pedido completo · {order.payment} — solo aceptar
           </span>
         </div>
       )}
@@ -89,8 +92,9 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* Domicilio confirmado sin nadie en turno (Fase 5): asignarlo a mano */}
       {order.sinDomiciliario && !order.driverEmail && order.deliveryMode !== 'pickup' && order.status === 'quoted' && (
         <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
+          <Bike size={13} className="text-tangelo flex-shrink-0" aria-hidden="true" />
           <span className="font-body text-xs font-semibold text-coal">
-            🛵 Nadie en turno — asígnalo a mano
+            Nadie en turno — asígnalo a mano
           </span>
         </div>
       )}
@@ -98,20 +102,23 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* Cambio propuesto (Fase 7): esperando al cliente o rechazado */}
       {order.excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente' && (
         <div className="mb-2 flex items-center gap-1.5 bg-tangelo/15 border border-tangelo/50 rounded-xl px-3 py-2">
-          <span className="font-body text-xs font-semibold text-coal">⏳ Cambio propuesto — esperando al cliente</span>
+          <Clock size={13} className="text-tangelo flex-shrink-0" aria-hidden="true" />
+          <span className="font-body text-xs font-semibold text-coal">Cambio propuesto — esperando al cliente</span>
         </div>
       )}
       {!order.excepcion && order.cambioPropuesto?.estado === 'rechazado' && (
         <div className="mb-2 flex items-center gap-1.5 bg-pepper/10 border border-pepper/40 rounded-xl px-3 py-2">
-          <span className="font-body text-xs font-semibold text-pepper">❌ El cliente rechazó el cambio — queda el original</span>
+          <CircleX size={13} className="text-pepper flex-shrink-0" aria-hidden="true" />
+          <span className="font-body text-xs font-semibold text-pepper">El cliente rechazó el cambio — queda el original</span>
         </div>
       )}
 
       {/* El cliente pidió cancelar: la caja lo resuelve en el detalle */}
       {order.excepcion === 'cancelacion_solicitada' && (
         <div className="mb-2 flex items-center gap-1.5 bg-pepper/15 border border-pepper/50 rounded-xl px-3 py-2">
+          <AlertCircle size={13} className="text-pepper flex-shrink-0" aria-hidden="true" />
           <span className="font-body text-xs font-semibold text-pepper">
-            ⚠️ El cliente pidió cancelar — ábrelo para resolver
+            El cliente pidió cancelar — ábrelo para resolver
           </span>
         </div>
       )}
@@ -119,8 +126,9 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* El cliente agregó productos después de enviarlo: hay que recotizar */}
       {order.needsRequote && (
         <div className="mb-2 flex items-center gap-1.5 bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2">
+          <Plus size={13} className="text-mustard flex-shrink-0" aria-hidden="true" />
           <span className="font-body text-xs font-semibold text-coal">
-            ➕ El cliente agregó productos — vuelve a cotizar
+            El cliente agregó productos — vuelve a cotizar
           </span>
         </div>
       )}
@@ -133,7 +141,7 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
           )}
           <StatusBadge status={order.status} />
           {unreadCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 bg-cherry rounded-full text-[10px] font-bold text-cream px-1.5 animate-bounce">
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 bg-cherry rounded-full text-[10px] font-bold text-cream px-1.5">
               {unreadCount}
             </span>
           )}
@@ -183,7 +191,9 @@ export default function OrderCard({ order, onClick, compact = false, unreadCount
       {/* Cash pending cuadre label */}
       {order.status === 'pending_cuadre' && (
         <div className="mt-2 bg-mustard/10 border border-mustard/30 rounded-lg px-3 py-1.5">
-          <p className="text-xs font-semibold text-mustard font-body">💰 Pendiente cuadre de caja</p>
+          <p className="text-xs font-semibold text-mustard font-body flex items-center gap-1.5">
+            <Banknote size={13} aria-hidden="true" /> Pendiente cuadre de caja
+          </p>
         </div>
       )}
 

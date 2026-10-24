@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, query, where, onSnapshot } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
+import { Banknote } from 'lucide-react'
 
 // Saldo a favor de clientes que pidieron eliminar su cuenta (Fase 4, P-25): la
 // caja de la sede se lo transfiere y lo marca hecho. La cuenta se borra cuando
@@ -33,7 +34,7 @@ export default function DevolucionesSaldo({ sedeId }) {
       {lista.map(d => (
         <div key={d.id} className="w-full bg-cherry text-cream rounded-2xl px-4 py-3 shadow-soft">
           <button onClick={() => setAbierta(abierta === d.id ? null : d.id)} className="w-full flex items-center gap-3 text-left">
-            <span className="text-2xl">💸</span>
+            <Banknote size={20} className="text-mustard flex-shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <p className="font-body text-sm font-bold">Transferir saldo a favor · ${Number(d.monto).toLocaleString('es-CO')}</p>
               <p className="font-body text-xs text-cream/85 truncate">{d.nombre || 'Cliente'} eliminó su cuenta: hay que devolverle su saldo</p>

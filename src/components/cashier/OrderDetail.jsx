@@ -23,7 +23,8 @@ import {
   CreditCard, Bike, Navigation, ExternalLink,
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Printer, Hash, DollarSign, MessageSquare, Clock,
-  Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check
+  Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check,
+  CircleCheck, CircleX, Store, Banknote, MessageCircle
 } from 'lucide-react'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -399,7 +400,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
         status:          'rejected',
         rejectionReason: motivo,
         // El motivo queda también en los comentarios del pedido (historial).
-        comments: arrayUnion({ role: 'cashier', name: quien, text: `❌ Pedido rechazado. Motivo: ${motivo}`, ts: ahora }),
+        comments: arrayUnion({ role: 'cashier', name: quien, text: `Pedido rechazado. Motivo: ${motivo}`, ts: ahora }),
         ...(devolucion ? {
           devolucion,
           clientMessages: arrayUnion({
@@ -544,7 +545,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     const notesStr    = order.notes ? `<p><em>Indicaciones: ${escHtml(order.notes)}</em></p>` : ''
     const cajeroNote  = order.cashierNotes ? `<p><em>Nota: ${escHtml(order.cashierNotes)}</em></p>` : ''
     const loyaltyNote = order.loyaltyRedemption?.count > 0
-      ? `<div class="divider"></div><p class="bold center" style="border:2px solid #000;padding:6px">🎁 INCLUYE ${order.loyaltyRedemption.count}x ${escHtml(LOYALTY_REWARD.name).toUpperCase()} GRATIS<br/>(premio fidelización — NO cobrar)</p>`
+      ? `<div class="divider"></div><p class="bold center" style="border:2px solid #000;padding:6px">INCLUYE ${order.loyaltyRedemption.count}x ${escHtml(LOYALTY_REWARD.name).toUpperCase()} GRATIS<br/>(premio fidelización — NO cobrar)</p>`
       : ''
     const date        = new Date().toLocaleString('es-CO')
 
@@ -559,7 +560,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       .items{background:#f5f5f5;padding:10px;margin:8px 0;font-size:13px;white-space:pre-wrap}
       .num{font-size:22px;font-weight:bold;text-align:center;margin:5px 0}
     </style></head><body>
-    <h2>⭐ DeliStars ⭐</h2>
+    <h2>DeliStars</h2>
     ${orderNum ? `<div class="num">#${orderNum}</div>` : ''}
     <p class="center" style="font-size:11px">${date}</p>
     <div class="divider"></div>
@@ -672,7 +673,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     className="text-[10px] font-body font-semibold text-tangelo underline underline-offset-2"
                     title="Editar número de pedido"
                   >
-                    ✏️
+                    <Pencil size={13} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -688,11 +689,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 />
                 <button onClick={saveOrderNumber} disabled={savingOrderNum || !editOrderNum.trim()}
                   className="text-xs font-body font-semibold text-mint bg-mint/10 px-2 py-1 rounded-lg hover:bg-mint/20">
-                  {savingOrderNum ? '…' : '✓'}
+                  {savingOrderNum ? '…' : <Check size={14} aria-hidden="true" />}
                 </button>
                 <button onClick={() => setEditingOrderNum(false)}
                   className="text-xs font-body text-coal/40 hover:text-coal/60">
-                  ✕
+                  <X size={14} aria-hidden="true" />
                 </button>
               </div>
             )}
@@ -765,7 +766,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           )}
           {!etapaDe(order).excepcion && order.cambioPropuesto?.estado === 'rechazado' && (
             <div className="bg-pepper/10 border border-pepper/40 rounded-2xl p-4 flex flex-col gap-2">
-              <p className="font-display text-base tracking-wide text-pepper">❌ El cliente rechazó el cambio</p>
+              <p className="font-display text-base tracking-wide text-pepper flex items-center gap-2"><CircleX size={17} aria-hidden="true" /> El cliente rechazó el cambio</p>
               <p className="font-body text-xs text-coal/70">Queda el pedido original. Revisa si lo puedes preparar así; si no, cancélalo con motivo.</p>
               <button onClick={() => updateDoc(doc(db, 'orders', order.id), { 'cambioPropuesto.estado': 'rechazado_visto' }).catch(() => {})}
                 className="font-body text-xs text-coal/60 underline underline-offset-2 self-start">Entendido</button>
@@ -804,17 +805,17 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {order.loyaltyRedemption?.count > 0 && (
             <div className="bg-mint rounded-2xl p-5 shadow-lg">
               <p className="font-display text-xl tracking-wide text-cream">
-                🎁 EL CLIENTE USA SU PREMIO DE FIDELIZACIÓN
+                EL CLIENTE USA SU PREMIO DE FIDELIZACIÓN
               </p>
               <div className="bg-cream/15 rounded-xl px-4 py-3 mt-2">
                 <p className="font-body text-xs uppercase tracking-wider text-cream/80 font-bold">
                   Agregar al pedido, GRATIS{order.loyaltyRedemption.count > 1 ? ` (x${order.loyaltyRedemption.count})` : ''}:
                 </p>
                 <p className="font-body text-base font-bold text-cream mt-1">
-                  🍔 {order.loyaltyRedemption.count}x Hamburguesa Especial
+                  {order.loyaltyRedemption.count}x Hamburguesa Especial
                 </p>
                 <p className="font-body text-base font-bold text-cream">
-                  🌭 {order.loyaltyRedemption.count}x Perro Grande con tocineta
+                  {order.loyaltyRedemption.count}x Perro Grande con tocineta
                 </p>
               </div>
               <p className="font-body text-sm text-cream/95 mt-2 leading-relaxed">
@@ -834,7 +835,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               return (
                 <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors w-fit">
-                  📱 WhatsApp cliente
+                  <MessageCircle size={14} aria-hidden="true" /> WhatsApp cliente
                 </a>
               )
             })()}
@@ -854,7 +855,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3 flex items-start gap-2">
                 <MapPin size={16} className="text-mint flex-shrink-0 mt-0.5" />
                 <p className="font-body text-sm text-coal/80">
-                  🏪 <strong>Recoge en sede</strong>{orderSede?.name ? ` — ${orderSede.name}` : (order.sedeName ? ` — ${order.sedeName}` : '')}
+                  <strong>Recoge en sede</strong>{orderSede?.name ? ` — ${orderSede.name}` : (order.sedeName ? ` — ${order.sedeName}` : '')}
                 </p>
               </div>
             </Section>
@@ -893,7 +894,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     onClick={() => { setAddrDraft(order.fullAddress || ''); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
                     className="text-xs font-body font-semibold text-tangelo underline underline-offset-2 mt-2 block"
                   >
-                    ✏️ Editar dirección
+                    <Pencil size={13} aria-hidden="true" /> Editar dirección
                   </button>
                 )}
               </>
@@ -924,7 +925,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                       <button key={i} type="button"
                         onClick={() => { setAddrDraft(s); setAddrSuggestions([]) }}
                         className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
-                        📍 {s}
+                        {s}
                       </button>
                     ))}
                   </div>
@@ -941,7 +942,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     Cancelar
                   </button>
                   <button onClick={saveAddr} disabled={savingAddr || !addrDraft.trim()} className="btn-primary flex-1 btn-sm">
-                    {savingAddr ? 'Guardando…' : '✓ Guardar'}
+                    {savingAddr ? 'Guardando…' : 'Guardar'}
                   </button>
                 </div>
               </div>
@@ -958,7 +959,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </button>
               ) : (
                 <>
-                  <p className="font-display text-base tracking-wide text-coal">✏️ Proponer un cambio</p>
+                  <p className="font-display text-base tracking-wide text-coal flex items-center gap-2"><Pencil size={16} aria-hidden="true" /> Proponer un cambio</p>
                   <p className="font-body text-xs text-coal/60">
                     El cliente ve su pedido original y cómo quedaría, y acepta o rechaza. Hasta que responda no se puede preparar.
                   </p>
@@ -1006,8 +1007,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 empiezan con "+" son las nuevas y hay que volver a cotizar. */}
             {order.needsRequote && (
               <div className="bg-mustard/20 border border-mustard/50 rounded-xl p-3 mb-2">
-                <p className="font-body text-sm text-coal font-semibold">
-                  ⚠️ El cliente agregó productos (líneas con “+”). Recalcula el valor y vuelve a cotizar.
+                <p className="font-body text-sm text-coal font-semibold flex items-start gap-2">
+                  <AlertTriangle size={15} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>El cliente agregó productos (líneas con “+”). Recalcula el valor y vuelve a cotizar.</span>
                 </p>
               </div>
             )}
@@ -1046,8 +1048,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </div>
 
                 {!order.payment && (
-                  <p className="font-body text-xs text-mustard mt-2 leading-relaxed">
-                    ⚠️ Este pedido no tiene forma de pago. Pregúntale al cliente y regístrala
+                  <p className="font-body text-xs text-mustard mt-2 leading-relaxed flex items-start gap-1.5">
+                    <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
+                    Este pedido no tiene forma de pago. Pregúntale al cliente y regístrala
                     aquí — si se le cerró la sesión, él no puede hacerlo.
                   </p>
                 )}
@@ -1061,13 +1064,13 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   <div className="mt-2 bg-smoked/50 rounded-xl p-3 flex flex-col gap-1">
                     {order.mixtoEfectivo > 0 && (
                       <div className="flex justify-between text-sm font-body">
-                        <span className="text-coal/60">💵 Efectivo:</span>
+                        <span className="text-coal/60">Efectivo:</span>
                         <span className="font-semibold text-coal">{fmt(order.mixtoEfectivo)}</span>
                       </div>
                     )}
                     {order.mixtoTransferencia > 0 && (
                       <div className="flex justify-between text-sm font-body">
-                        <span className="text-coal/60">📲 Transferencia:</span>
+                        <span className="text-coal/60">Transferencia:</span>
                         <span className="font-semibold text-coal">{fmt(order.mixtoTransferencia)}</span>
                       </div>
                     )}
@@ -1089,12 +1092,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="label-field">💵 En efectivo</label>
+                        <label className="label-field">En efectivo</label>
                         <input className="input-field" inputMode="numeric" value={payMixtoEf}
                           onChange={e => setPayMixtoEf(onlyDigits(e.target.value))} placeholder="0" />
                       </div>
                       <div>
-                        <label className="label-field">📲 En transferencia</label>
+                        <label className="label-field">En transferencia</label>
                         <input className="input-field" inputMode="numeric" value={payMixtoTr}
                           onChange={e => setPayMixtoTr(onlyDigits(e.target.value))} placeholder="0" />
                       </div>
@@ -1115,7 +1118,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     className="btn-secondary btn-sm flex-1">Cancelar</button>
                   <button onClick={savePayment} disabled={savingPay}
                     className="btn-primary btn-sm flex-1">
-                    {savingPay ? 'Guardando…' : '✓ Guardar'}
+                    {savingPay ? 'Guardando…' : 'Guardar'}
                   </button>
                 </div>
               </div>
@@ -1133,7 +1136,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <FileCheck size={16} className={order.transferValidated ? 'text-mint' : 'text-mustard'} />
                 <p className="font-display text-sm tracking-wide text-coal">Comprobante de transferencia</p>
                 {order.transferValidated && (
-                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-mint bg-mint/10 px-2 py-0.5 rounded-full">✓ Validado</span>
+                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-mint bg-mint/10 px-2 py-0.5 rounded-full">Validado</span>
                 )}
               </div>
               <a href={order.transferReceiptUrl} target="_blank" rel="noreferrer"
@@ -1144,7 +1147,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <button onClick={validateTransfer} disabled={validatingTransfer}
                   className="btn-mint btn-sm w-full">
                   <CheckCircle size={14} />
-                  {validatingTransfer ? 'Validando…' : 'Confirmar pago recibido ✓'}
+                  {validatingTransfer ? 'Validando…' : <><Check size={15} aria-hidden="true" /> Confirmar pago recibido</>}
                 </button>
               )}
             </div>
@@ -1155,14 +1158,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             <div className="card bg-tangelo/5 border border-tangelo/20">
               <div className="flex items-center justify-between mb-3">
                 <p className="font-display text-base tracking-wide">
-                  {order.pagoAdelantado ? '💰 Valor del pedido (el cliente ya lo vio)' : '💰 Cotización enviada'}
+                  {order.pagoAdelantado ? 'Valor del pedido (el cliente ya lo vio)' : 'Cotización enviada'}
                 </p>
                 {!['rejected','cancelled','completed'].includes(order.status) && !editingPrice && (
                   <button
                     onClick={() => { setEditQuotedPrice(String(order.quotedPrice ?? '')); setEditDeliveryPrice(String(order.deliveryPrice ?? '')); setEditingPrice(true) }}
                     className="text-xs font-body font-semibold text-tangelo underline underline-offset-2"
                   >
-                    ✏️ Editar precio
+                    <Pencil size={13} aria-hidden="true" /> Editar precio
                   </button>
                 )}
               </div>
@@ -1187,7 +1190,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   <div className="flex gap-2">
                     <button onClick={() => setEditingPrice(false)} className="btn-secondary flex-1 btn-sm">Cancelar</button>
                     <button onClick={saveEditedPrice} disabled={loading} className="btn-primary flex-1 btn-sm">
-                      {loading ? 'Guardando…' : '✓ Guardar precio'}
+                      {loading ? 'Guardando…' : 'Guardar precio'}
                     </button>
                   </div>
                 </div>
@@ -1219,7 +1222,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* ── PEDIDO COMPLETO: el cliente ya pagó o eligió pago al enviar ── */}
           {order.status === 'pending' && !rejecting && order.pagoAdelantado && !ajustarValores && (
             <div className="bg-mint/10 border-2 border-mint/40 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">✅ Pedido completo — listo para aceptar</p>
+              <p className="font-display text-lg text-coal tracking-wide flex items-center gap-2"><CircleCheck size={19} className="text-mint" aria-hidden="true" /> Pedido completo — listo para aceptar</p>
               <p className="font-body text-xs text-coal/70 leading-relaxed">
                 El cliente vio el total y ya eligió cómo paga
                 {order.payment === 'Efectivo' && order.cashBillAmount != null && (
@@ -1261,8 +1264,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </div>
               )}
               {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) && !order.transferValidated && (
-                <p className="font-body text-[11px] text-[#8a5a00]">
-                  ⚠️ La transferencia aún no está marcada como recibida. Revisa el comprobante y confírmala arriba.
+                <p className="font-body text-[11px] text-[#8a5a00] flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  La transferencia aún no está marcada como recibida. Revisa el comprobante y confírmala arriba.
                 </p>
               )}
               <div className="flex gap-2">
@@ -1290,7 +1294,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               {/* En "Recoger en sede" no hay domicilio que cotizar: el pedido
                   solo se confirma para preparación. */}
               <p className="font-display text-lg text-coal tracking-wide">
-                {pickup ? '🏪 Confirmar pedido para preparación' : '📋 Cotizar pedido al cliente'}
+                {pickup ? 'Confirmar pedido para preparación' : 'Cotizar pedido al cliente'}
               </p>
               {pickup && (
                 <p className="font-body text-xs text-coal/60">
@@ -1388,8 +1392,9 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                             </>}
                       </p>
                       {desajuste && (
-                        <p className="font-body text-[11px] font-semibold text-[#8a5a00] mt-1">
-                          ⚠️ No cuadra con lo que trae el pedido ({fmt(order.deliveryPrice)}). Revísalo antes de cerrar.
+                        <p className="font-body text-[11px] font-semibold text-[#8a5a00] mt-1 flex items-start gap-1.5">
+                          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
+                          No cuadra con lo que trae el pedido ({fmt(order.deliveryPrice)}). Revísalo antes de cerrar.
                         </p>
                       )}
                     </div>
@@ -1409,7 +1414,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               {order.saldoAplicado?.ids?.length > 0 && (
                 <div className="bg-mint/10 border border-mint/40 rounded-xl px-4 py-2.5">
                   <p className="font-body text-xs text-coal/80">
-                    💚 El cliente usa <strong>{fmt(order.saldoAplicado.monto)}</strong> de saldo a favor.
+                    El cliente usa <strong>{fmt(order.saldoAplicado.monto)}</strong> de saldo a favor.
                     Se descuenta solo al enviar: cobrará{' '}
                     <strong>{fmt(aplicarSaldo(localTotal, order.saldoAplicado.monto).aPagar)}</strong>.
                   </p>
@@ -1436,23 +1441,24 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               </div>
 
               {/* Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setRejecting(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border-2 border-pepper/40 text-pepper font-semibold text-sm hover:bg-pepper/10 transition-colors"
-                >
-                  <XCircle size={16} /> Rechazar
-                </button>
-                <button onClick={sendQuote} disabled={loading || !localOrderNumber.trim()} className="btn-primary flex-1">
-                  <CheckCircle2 size={16} />
+              <div className="flex flex-col gap-2">
+                <button onClick={sendQuote} disabled={loading || !localOrderNumber.trim()} className="btn-primary w-full">
+                  <CheckCircle2 size={16} aria-hidden="true" />
                   {loading ? 'Enviando…'
                     : order.pagoAdelantado ? 'Guardar y aceptar pedido'
                     : pickup ? 'Confirmar pedido' : 'Enviar cotización al cliente'}
                 </button>
+                <button
+                  onClick={() => setRejecting(true)}
+                  className="btn btn-sm w-full justify-center border border-pepper/40 text-pepper [@media(hover:hover)]:hover:bg-pepper/10"
+                >
+                  <XCircle size={15} aria-hidden="true" /> Rechazar
+                </button>
               </div>
               {order.pagoAdelantado && (
-                <p className="font-body text-[11px] text-[#8a5a00] leading-relaxed">
-                  ⚠️ El cliente ya pagó o eligió pago con el valor anterior ({fmt(order.totalPrice)}).
+                <p className="font-body text-[11px] text-[#8a5a00] leading-relaxed flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  El cliente ya pagó o eligió pago con el valor anterior ({fmt(order.totalPrice)}).
                   Si cambias el total, avísale por el chat
                   {['Transferencia', 'Nequi', 'Mixto'].includes(order.payment) ? ' para cobrar o devolver la diferencia' : ''}.
                 </p>
@@ -1463,30 +1469,29 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Rejection form */}
           {order.status === 'pending' && rejecting && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-pepper tracking-wide">❌ Rechazar pedido</p>
+              <p className="font-display text-lg text-pepper tracking-wide flex items-center gap-2"><CircleX size={19} aria-hidden="true" /> Rechazar pedido</p>
               <p className="font-body text-xs text-coal/60">Escribe el motivo del rechazo. El cliente lo verá en su panel.</p>
               <div className="flex flex-col gap-1">
                 <button onClick={() => setRejectReason('Fuera del área de cobertura (más de 5 km de la sede)')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
-                  → Fuera de cobertura (&gt;5 km)
+                  className="btn btn-sm justify-start border border-coal/15 text-coal/70 [@media(hover:hover)]:hover:border-pepper/40">
+                  Fuera de cobertura (&gt;5 km)
                 </button>
                 <button onClick={() => setRejectReason('No tenemos disponibilidad en este momento')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
-                  → Sin disponibilidad
+                  className="btn btn-sm justify-start border border-coal/15 text-coal/70 [@media(hover:hover)]:hover:border-pepper/40">
+                  Sin disponibilidad
                 </button>
                 <button onClick={() => setRejectReason('Dirección incompleta o no encontrada')}
-                  className="text-left text-xs font-body text-coal/60 hover:text-pepper underline">
-                  → Dirección no encontrada
+                  className="btn btn-sm justify-start border border-coal/15 text-coal/70 [@media(hover:hover)]:hover:border-pepper/40">
+                  Dirección no encontrada
                 </button>
               </div>
               <textarea className="textarea-field h-20 scroll-custom" placeholder="Motivo del rechazo…"
                 value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
-              <div className="flex gap-2">
-                <button onClick={() => setRejecting(false)} className="btn-secondary flex-1">Cancelar</button>
-                <button onClick={rejectOrder} disabled={loading || !rejectReason.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-pepper text-cream font-semibold text-sm hover:bg-pepper/90 disabled:opacity-50 transition-colors">
-                  {loading ? 'Rechazando…' : '❌ Confirmar rechazo'}
+              <div className="flex flex-col gap-2">
+                <button onClick={rejectOrder} disabled={loading || !rejectReason.trim()} className="btn-danger w-full">
+                  {loading ? 'Rechazando…' : 'Confirmar rechazo'}
                 </button>
+                <button onClick={() => setRejecting(false)} className="btn-ghost w-full">Cancelar</button>
               </div>
             </div>
           )}
@@ -1508,7 +1513,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               "aceptar"). Nunca en "recoger en sede": ahí no hay domiciliario. */}
           {!pickup && ['assigned', 'accepted', 'preparing'].includes(order.status) && order.driverEmail && onReassign && (
             <div className="bg-tangelo/10 border border-tangelo/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-base tracking-wide text-tangelo">🔄 Reasignar domiciliario</p>
+              <p className="font-display text-base tracking-wide text-tangelo flex items-center gap-2"><Bike size={17} aria-hidden="true" /> Reasignar domiciliario</p>
               <p className="font-body text-xs text-coal/60">
                 {order.status === 'assigned'
                   ? 'El domiciliario aún no ha aceptado. Avísale por WhatsApp o cámbialo.'
@@ -1521,7 +1526,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 const digits   = rawPhone.replace(/\D/g, '')
                 const waPhone  = digits.length >= 10 ? `57${digits.slice(-10)}` : ''
                 const msg = encodeURIComponent(
-                  `Hola ${order.driverName || 'domiciliario'} 👋 Tienes un pedido${order.orderNumber ? ` #${order.orderNumber}` : ''} asignado en DeliStars. Ábrelo en la app. ¡Gracias! 🛵`
+                  `Hola ${order.driverName || 'domiciliario'}, tienes un pedido${order.orderNumber ? ` #${order.orderNumber}` : ''} asignado en DeliStars. Ábrelo en la app. ¡Gracias! `
                 )
                 const waUrl = waPhone
                   ? `https://wa.me/${waPhone}?text=${msg}`
@@ -1529,7 +1534,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 return (
                   <a href={waUrl} target="_blank" rel="noreferrer"
                     className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 border-[#25D366]/50 text-[#25D366] bg-[#25D366]/5 font-semibold text-sm font-body hover:bg-[#25D366]/15 transition-colors">
-                    📱 {waPhone ? 'Avisar por WhatsApp' : 'Enviar WhatsApp (elige contacto)'}
+                    <MessageCircle size={14} aria-hidden="true" /> {waPhone ? 'Avisar por WhatsApp' : 'Enviar WhatsApp (elige contacto)'}
                   </a>
                 )
               })()}
@@ -1545,21 +1550,21 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Gestión del pedido a domicilio: el cajero marca preparación y/o asigna domiciliario */}
           {!pickup && ['quoted','assigned','accepted','preparing'].includes(order.status) && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">🚦 Gestión del pedido</p>
+              <p className="font-display text-lg text-coal tracking-wide">Gestión del pedido</p>
               <p className="font-body text-sm text-coal/70">
                 Configura el avance del domicilio. El cliente lo verá al instante.
               </p>
               {order.status === 'preparing'
                 ? (etapaDe(order).etapa === 'listo'
-                    ? <p className="font-body text-sm text-mint font-semibold">✅ Listo: esperando al domiciliario</p>
+                    ? <p className="font-body text-sm text-mint font-semibold">Listo: esperando al domiciliario</p>
                     : (
                       <button onClick={markListo} disabled={loading} className="btn-primary w-full">
-                        {loading ? 'Procesando…' : '✅ Marcar listo'}
+                        {loading ? 'Procesando…' : 'Marcar listo'}
                       </button>
                     ))
                 : (
                   <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
-                    {loading ? 'Procesando…' : '🍳 Marcar en preparación'}
+                    {loading ? 'Procesando…' : 'Marcar en preparación'}
                   </button>
                 )}
               {['quoted','preparing'].includes(order.status) && onReassign && (
@@ -1573,20 +1578,20 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Recoger en sede — entregar y cobrar (no hay domiciliario) */}
           {pickup && ['quoted', 'preparing'].includes(order.status) && (
             <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">🏪 Recoge en sede</p>
+              <p className="font-display text-lg text-coal tracking-wide flex items-center gap-2"><Store size={18} aria-hidden="true" /> Recoge en sede</p>
               <p className="font-body text-sm text-coal/70">
                 Cuando el cliente recoja su pedido y pague, márcalo como entregado.
               </p>
               {order.status === 'quoted' && (
                 <button onClick={markPreparing} disabled={loading} className="btn-mustard w-full">
-                  {loading ? 'Procesando…' : '🍳 Marcar en preparación'}
+                  {loading ? 'Procesando…' : 'Marcar en preparación'}
                 </button>
               )}
               {order.status === 'preparing' && (etapaDe(order).etapa === 'listo'
-                ? <p className="font-body text-sm text-mint font-semibold">✅ Listo para recoger: el cliente ya fue avisado</p>
+                ? <p className="font-body text-sm text-mint font-semibold">Listo para recoger: el cliente ya fue avisado</p>
                 : (
                   <button onClick={markListo} disabled={loading} className="btn-mustard w-full">
-                    {loading ? 'Procesando…' : '✅ Marcar listo para recoger'}
+                    {loading ? 'Procesando…' : 'Marcar listo para recoger'}
                   </button>
                 ))}
               {order.totalPrice > 0 && (
@@ -1596,7 +1601,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 </div>
               )}
               <button onClick={markCashReceived} disabled={loading} className="btn-primary w-full">
-                {loading ? 'Procesando…' : '✅ Entregado y pagado'}
+                {loading ? 'Procesando…' : 'Entregado y pagado'}
               </button>
             </div>
           )}
@@ -1604,7 +1609,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Cash cuadre action */}
           {order.status === 'pending_cuadre' && (
             <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="font-display text-lg text-coal tracking-wide">💰 Cuadre de caja</p>
+              <p className="font-display text-lg text-coal tracking-wide flex items-center gap-2"><Banknote size={18} aria-hidden="true" /> Cuadre de caja</p>
               <p className="font-body text-sm text-coal/70">
                 El domiciliario ya entregó el pedido. Marca como recibido cuando te entregue el dinero.
               </p>
@@ -1616,7 +1621,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               )}
               <button onClick={markCashReceived} disabled={loading} className="btn-mustard w-full">
                 <DollarSign size={16} />
-                {loading ? 'Procesando…' : 'Dinero recibido ✓'}
+                {loading ? 'Procesando…' : <><Check size={15} aria-hidden="true" /> Dinero recibido</>}
               </button>
             </div>
           )}
@@ -1626,7 +1631,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           {/* Rejection info */}
           {order.status === 'rejected' && order.rejectionReason && (
             <div className="bg-pepper/10 border border-pepper/30 rounded-2xl p-4">
-              <p className="font-display text-base text-pepper tracking-wide mb-1">❌ Pedido rechazado</p>
+              <p className="font-display text-base text-pepper tracking-wide mb-1 flex items-center gap-2"><CircleX size={17} aria-hidden="true" /> Pedido rechazado</p>
               <p className="font-body text-sm text-coal/80">Motivo: {order.rejectionReason}</p>
             </div>
           )}
@@ -1643,7 +1648,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 {[...order.comments].sort((a,b) => a.ts - b.ts).map((c, i) => (
                   <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20' : 'bg-mint/10 border border-mint/20'}`}>
                     <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-tangelo' : 'text-mint'}`}>
-                      {c.role === 'cashier' ? '🧾 Cajero' : '🛵 Domiciliario'} · {c.name}
+                      {c.role === 'cashier' ? 'Cajero' : 'Domiciliario'} · {c.name}
                     </p>
                     <p className="font-body text-sm text-coal">{c.text}</p>
                   </div>
@@ -1735,7 +1740,7 @@ function BloqueDevolucion({ order, user }) {
     'devolucion.resueltaPor': user?.email || 'caja',
     clientMessages: arrayUnion({
       role: 'cashier', name: user?.displayName || 'Cajero', ts: Date.now(),
-      text: `✅ Ya te transferimos $${Number(dev.monto).toLocaleString('es-CO')} a ${dev.datos?.medio || 'tu cuenta'}.`,
+      text: `Ya te transferimos $${Number(dev.monto).toLocaleString('es-CO')} a ${dev.datos?.medio || 'tu cuenta'}.`,
     }),
     updatedAt: serverTimestamp(),
   }))
@@ -1748,7 +1753,7 @@ function BloqueDevolucion({ order, user }) {
       {dev && (
         <>
           <p className="font-display text-lg tracking-wide text-coal">
-            💸 Devolución de {fmt(dev.monto)}
+            <Banknote size={17} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />Devolución de {fmt(dev.monto)}
           </p>
           {dev.estado === 'por_elegir' && (
             <p className="font-body text-sm text-coal/75">
@@ -1782,10 +1787,10 @@ function BloqueDevolucion({ order, user }) {
             </>
           )}
           {dev.estado === 'transferida' && (
-            <p className="font-body text-sm text-mint font-semibold">✅ Devuelto por transferencia{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
+            <p className="font-body text-sm text-mint font-semibold">Devuelto por transferencia{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
           )}
           {dev.estado === 'acreditada' && (
-            <p className="font-body text-sm text-mint font-semibold">✅ Acreditado como saldo a favor{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
+            <p className="font-body text-sm text-mint font-semibold">Acreditado como saldo a favor{dev.resueltaPor ? ` · ${dev.resueltaPor}` : ''}</p>
           )}
         </>
       )}

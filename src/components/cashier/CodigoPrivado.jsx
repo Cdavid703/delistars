@@ -63,7 +63,7 @@ export default function CodigoPrivado({ order }) {
               </a>
             ) : (
               <button onClick={copiar} className="py-2.5 rounded-xl bg-coal text-cream font-body text-sm font-bold">
-                {copiado ? 'Copiado ✓' : 'Copiar mensaje'}
+                {copiado ? 'Copiado' : 'Copiar mensaje'}
               </button>
             )}
             <button onClick={generar} disabled={busy}
@@ -73,7 +73,7 @@ export default function CodigoPrivado({ order }) {
           </div>
           {waPhone && (
             <button onClick={copiar} className="font-body text-xs text-coal/60 underline underline-offset-2 inline-flex items-center gap-1 self-center">
-              <Copy size={12} /> {copiado ? 'Copiado ✓' : 'Copiar el mensaje'}
+              <Copy size={12} aria-hidden="true" /> {copiado ? 'Copiado' : 'Copiar el mensaje'}
             </button>
           )}
         </>

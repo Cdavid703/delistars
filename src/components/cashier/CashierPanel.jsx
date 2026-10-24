@@ -30,7 +30,8 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X,
-  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check
+  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
+  Banknote, ShoppingBag, CircleCheck, Ban, FileText, ClipboardList, Tag, Lightbulb
 } from 'lucide-react'
 
 /** Medianoche siguiente en Colombia (UTC-5), en ISO: fin del "por hoy". */
@@ -41,7 +42,7 @@ function finDelDiaColombia() {
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
-  { id: 'assign',    label: 'Asignar domicilio' },
+  { id: 'assign',    label: 'Asignar' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
 ]
@@ -355,7 +356,7 @@ export default function CashierPanel() {
     if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && !isPickup(o) && isToday(o.createdAt)
     if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status) && isToday(o.createdAt)
     if (tab === 'completed') {
-      // Los cancelados por el cliente también se listan aquí (con su ❌) para
+      // Los cancelados por el cliente también se listan aquí (como cancelado) para
       // que no "desaparezcan" sin rastro; se excluyen de las sumas del día.
       if (!COMPLETE_STATUSES.includes(o.status) && o.status !== 'cancelled') return false
       const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
@@ -411,7 +412,7 @@ export default function CashierPanel() {
         phone: newDriverPhone.trim() || null,
         addedBy: user.email, addedAt: serverTimestamp(),
       })
-      setDriverMsg(`✅ ${email} agregado como domiciliario`)
+      setDriverMsg(`${email} agregado como domiciliario`)
       setNewDriverEmail(''); setNewDriverName(''); setNewDriverPhone('')
       const snap = await getDocs(collection(db, 'roles_drivers'))
       const fd = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -420,7 +421,7 @@ export default function CashierPanel() {
         ...DEFAULT_DRIVERS.filter(e => !fids.includes(e)).map(e => ({ id: e, name: DEFAULT_DRIVER_NAMES[e] || e })),
         ...fd,
       ])
-    } catch { setDriverMsg('❌ Error al agregar domiciliario') }
+    } catch { setDriverMsg('No se pudo agregar el domiciliario') }
   }
 
   const handleUpdatePhone = async (driver) => {
@@ -439,7 +440,7 @@ export default function CashierPanel() {
       ])
       setEditingDriver(null)
       setEditPhone('')
-    } catch { setDriverMsg('❌ Error al actualizar teléfono') }
+    } catch { setDriverMsg('No se pudo actualizar el teléfono') }
   }
 
   return (
@@ -458,7 +459,7 @@ export default function CashierPanel() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-0.5 flex-wrap justify-end">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
           <button onClick={() => setShowCuadreTurno(true)} title="Cuadre de turno"
             className="btn-icon text-coal/60 hover:text-mustard flex items-center gap-1 px-2">
             <Calculator size={18} />
@@ -533,7 +534,8 @@ export default function CashierPanel() {
       {/* Driver management panel */}
       {addDriver && (
         <div className="mx-4 mt-3 card border border-mint/30 animate-fade-in">
-          <p className="font-display text-base tracking-wide text-coal mb-3">🚴 Gestionar domiciliarios</p>
+          <p className="font-display text-base tracking-wide text-coal mb-3 flex items-center gap-2">
+            <Bike size={18} className="text-mint" aria-hidden="true" /> Gestionar domiciliarios</p>
 
           {/* Existing drivers list */}
           {drivers.length > 0 && (
@@ -613,7 +615,7 @@ export default function CashierPanel() {
             className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-3`}>
             {t.label}
             {t.id === 'active'  && pendingCount > 0 && (
-              <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">{pendingCount}</span>
+              <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
             )}
             {t.id === 'active'  && totalUnreadChat > 0 && (
               <span className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
@@ -639,7 +641,7 @@ export default function CashierPanel() {
           {devolucionesPendientes.map(o => (
             <button key={o.id} onClick={() => openOrderDetail(o.id)}
               className="w-full bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 text-left shadow-soft">
-              <span className="text-2xl">💸</span>
+              <Banknote size={20} className="text-mustard flex-shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <p className="font-body text-sm font-bold">
                   Devolución pendiente{o.orderNumber ? ` · pedido #${o.orderNumber}` : ''}
@@ -673,7 +675,7 @@ export default function CashierPanel() {
             <button key={o.id}
               onClick={() => o.status === 'quoted' && o.deliveryMode !== 'pickup' ? openAssign(o) : openOrderDetail(o.id)}
               className="w-full bg-cherry/10 border border-cherry/30 rounded-2xl px-4 py-3 flex items-center gap-3 hover:bg-cherry/20 transition-colors text-left">
-              <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
+              <div className="w-9 h-9 bg-cherry rounded-full flex items-center justify-center flex-shrink-0">
                 <MessageCircle size={18} className="text-cream" />
               </div>
               <div className="flex-1 min-w-0">
@@ -718,7 +720,7 @@ export default function CashierPanel() {
         const total = filteredOrders.reduce((s, o) => s + (o.totalPrice || 0), 0)
         return (
           <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
-            <span className="font-body text-xs font-semibold text-coal/70">💵 Efectivo pendiente de recibir:</span>
+            <span className="font-body text-xs font-semibold text-coal/70">Efectivo pendiente de recibir:</span>
             <span className="font-display text-lg text-mustard">{fmt(total)}</span>
           </div>
         )
@@ -736,12 +738,13 @@ export default function CashierPanel() {
       )}
 
       {/* Orders list */}
-      <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3">
+      <main className="flex-1 overflow-y-auto scroll-custom p-4 pb-24 flex flex-col gap-3">
         {filteredOrders.length === 0 && !showForm && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <p className="font-display text-4xl">
-              {tab === 'active' ? '🍔' : tab === 'assign' ? '🛵' : tab === 'cuadre' ? '💰' : '✅'}
-            </p>
+            {tab === 'active' ? <ShoppingBag size={32} className="text-coal/25" aria-hidden="true" />
+              : tab === 'assign' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />
+              : tab === 'cuadre' ? <Banknote size={32} className="text-coal/25" aria-hidden="true" />
+              : <CircleCheck size={32} className="text-coal/25" aria-hidden="true" />}
             <p className="font-body text-coal/40">
               {tab === 'active'    ? 'No hay pedidos activos' :
                tab === 'assign'   ? 'No hay pedidos cotizados pendientes de asignar' :
@@ -761,11 +764,12 @@ export default function CashierPanel() {
         ))}
       </main>
 
-      {/* FAB: new order */}
+      {/* Barra fija: el botón flotante tapaba el final de la última tarjeta */}
       {!showForm && (
-        <div className="fixed bottom-6 right-4 z-30">
-          <button onClick={() => setShowForm(true)} className="btn-primary shadow-glow gap-2 pr-5">
-            <Plus size={20} /> Nuevo pedido
+        <div className="fixed bottom-0 inset-x-0 z-30 bg-cream/90 backdrop-blur-md border-t border-coal/10 px-4 pt-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+          <button onClick={() => setShowForm(true)} className="btn-primary w-full max-w-lg mx-auto">
+            <Plus size={20} aria-hidden="true" /> Nuevo pedido
           </button>
         </div>
       )}
@@ -864,14 +868,16 @@ export default function CashierPanel() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center animate-fade-in">
           <div className="absolute inset-0 bg-cherry animate-pulse opacity-90" />
           <div className="relative z-10 mx-4 bg-cream rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-4 animate-scale-in">
-            <div className="text-6xl animate-bounce">🔔</div>
+            <BellRing size={48} className="text-cherry" aria-hidden="true" />
             <p className="font-display text-3xl text-cherry tracking-widest text-center">¡NUEVO PEDIDO!</p>
             <p className="font-body text-sm text-coal/70 text-center">Pedido recibido de un cliente. Atender de inmediato.</p>
             {!puesto.suena && <p className="font-body text-[11px] text-coal/45 text-center -mt-2">Suena en el aparato principal. «Visto» lo calla en todos.</p>}
             <div className="w-full bg-smoked/60 rounded-2xl p-4">
               <p className="font-body text-sm font-semibold text-coal">{newOrderAlert.name || newOrderAlert.clientName || 'Cliente'}</p>
               <p className="font-body text-xs text-coal/60 mt-0.5 line-clamp-2">{newOrderAlert.items}</p>
-              <p className="font-body text-xs text-coal/50 mt-1">📍 {newOrderAlert.fullAddress}</p>
+              <p className="font-body text-xs text-coal/50 mt-1 flex items-center gap-1.5">
+                <MapPin size={12} className="flex-shrink-0" aria-hidden="true" /> {newOrderAlert.fullAddress}
+              </p>
             </div>
             <div className="flex gap-3 w-full">
               <button onClick={dismissAlert}
@@ -890,14 +896,14 @@ export default function CashierPanel() {
       {cancelAlert && (
         <div className="fixed inset-x-0 top-0 z-[95] p-3 animate-fade-in">
           <div className="mx-auto max-w-lg bg-coal text-cream rounded-2xl shadow-2xl p-4 flex items-start gap-3">
-            <span className="text-2xl leading-none">🚫</span>
+            <Ban size={20} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <p className="font-display text-base tracking-wide">
                 Pedido{cancelAlert.orderNumber ? ` #${cancelAlert.orderNumber}` : ''} CANCELADO por el cliente
               </p>
               <p className="font-body text-xs text-cream/70 mt-0.5">
                 {cancelAlert.name || cancelAlert.clientName || 'Cliente'} canceló antes del despacho.
-                No hay que prepararlo — queda en "Entregados" con su ❌.
+                No hay que prepararlo — queda en "Entregados" como cancelado.
               </p>
             </div>
             <div className="flex flex-col gap-1.5 flex-shrink-0">
@@ -1001,9 +1007,9 @@ function EntregadosSummary({ orders, sedeName, fecha }) {
         <p className="font-display text-base tracking-wide text-coal">Resumen del día</p>
         <button
           onClick={() => exportarPDF(orders, fecha, sedeName)}
-          className="flex items-center gap-1.5 text-xs font-body font-semibold text-cherry border border-cherry/30 rounded-lg px-3 py-1.5 hover:bg-cherry/10 transition-colors"
+          className="btn btn-sm border border-cherry/30 text-cherry [@media(hover:hover)]:hover:bg-cherry/10"
         >
-          📄 Exportar PDF
+          <FileText size={15} aria-hidden="true" /> Exportar PDF
         </button>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
@@ -1132,7 +1138,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
               <p className={`font-body text-xs ${isOnRoute ? 'text-mint' : driver.locData ? 'text-mustard' : 'text-coal/40'}`}>
                 {isOnRoute
                   ? `${driver.orders.length} pedido${driver.orders.length !== 1 ? 's' : ''} en curso`
-                  : driver.locData ? '📡 Compartiendo ubicación' : 'Sin actividad'}
+                  : driver.locData ? 'Compartiendo ubicación' : 'Sin actividad'}
               </p>
             </div>
           </div>
@@ -1160,8 +1166,8 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
                     {o.orderNumber && <span className="font-display text-sm text-cherry">#{o.orderNumber}</span>}
                     <StatusBadge status={o.status} />
                   </div>
-                  <p className="font-body text-xs text-coal/70 truncate">👤 {o.name}</p>
-                  <p className="font-body text-xs text-coal/50 truncate mt-0.5">📍 {o.fullAddress}</p>
+                  <p className="font-body text-xs text-coal/70 truncate">{o.name}</p>
+                  <p className="font-body text-xs text-coal/50 truncate mt-0.5">{o.fullAddress}</p>
                 </div>
               ))}
             </div>
@@ -1171,7 +1177,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
           {hasPos ? (
             <div className="flex flex-col gap-2">
               <p className="font-body text-xs text-coal/40 text-center">
-                📡 Ubicación actualizada {useLocData ? fmtAgoMs(locTsMs) : fmtAgo(latestOrderPos?.driverUpdatedAt)}
+                Ubicación actualizada {useLocData ? fmtAgoMs(locTsMs) : fmtAgo(latestOrderPos?.driverUpdatedAt)}
               </p>
               <div className="flex gap-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
@@ -1188,7 +1194,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
             </div>
           ) : (
             <div className="bg-coal/5 rounded-xl px-4 py-3 text-center">
-              <p className="font-body text-xs text-coal/50">📍 Sin ubicación aún</p>
+              <p className="font-body text-xs text-coal/50">Sin ubicación aún</p>
               <p className="font-body text-[10px] text-coal/30 mt-0.5">
                 GPS se activa al iniciar entrega o al activar GPS en la app
               </p>
@@ -1238,7 +1244,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
                     <p className={`font-body text-xs truncate ${isOnRoute ? 'text-mint' : hasGps ? 'text-mustard' : 'text-coal/40'}`}>
                       {isOnRoute
                         ? `${driver.orders.length} pedido${driver.orders.length !== 1 ? 's' : ''} en curso`
-                        : hasGps ? '📡 Compartiendo GPS' : 'Sin actividad'}
+                        : hasGps ? 'Compartiendo GPS' : 'Sin actividad'}
                     </p>
                   </div>
                   {driver.phone && <Phone size={13} className="text-coal/30 flex-shrink-0" />}
@@ -1304,13 +1310,13 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
 
           {/* Total pedidos */}
           <div className="card">
-            <p className="font-display text-base tracking-wide mb-1">📦 Pedidos completados hoy</p>
+            <p className="font-display text-base tracking-wide mb-1">Pedidos completados hoy</p>
             <p className="font-body text-2xl font-bold text-coal">{filtered.length} pedidos</p>
           </div>
 
           {/* Cash */}
           <div className="card border border-mustard/30">
-            <p className="font-display text-base tracking-wide mb-2">💵 Efectivo a entregar en caja</p>
+            <p className="font-display text-base tracking-wide mb-2">Efectivo a entregar en caja</p>
             {cashOrders.length === 0 ? (
               <p className="font-body text-sm text-coal/50">No hay pedidos en efectivo</p>
             ) : (
@@ -1332,7 +1338,7 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
 
           {/* Fee groups */}
           <div className="card border border-mint/30">
-            <p className="font-display text-base tracking-wide mb-3">🛵 Valor de domicilios</p>
+            <p className="font-display text-base tracking-wide mb-3">Valor de domicilios</p>
             {Object.keys(feeGroups).length === 0 ? (
               <p className="font-body text-sm text-coal/50">Sin datos de domicilios aún</p>
             ) : (
@@ -1364,11 +1370,11 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
 // ─── Manual de usuario ────────────────────────────────────────────────────────
 const MANUAL_SECTIONS = [
   {
-    id: 'flujo', emoji: '📋', title: 'Flujo de un pedido', color: 'text-cherry',
+    id: 'flujo', icon: ClipboardList, title: 'Flujo de un pedido',
     content: [
       { type: 'steps', items: [
         'El cliente hace el pedido → aparece en "Activos" como PENDIENTE.',
-        'Si dice "✅ Pedido completo": el cliente ya vio el total y eligió cómo paga (billete o comprobante). Revisa y toca "Aceptar pedido".',
+        'Si dice "Pedido completo": el cliente ya vio el total y eligió cómo paga (billete o comprobante). Revisa y toca "Aceptar pedido".',
         'Si no (dirección sin ubicar, pidió revisar el domicilio o pedido escrito a mano): llena número, precio y domicilio y toca "Enviar cotización al cliente".',
         'Las transferencias se marcan aparte con "Confirmar pago recibido" al ver el comprobante.',
         'Ve a la pestaña "Asignar domicilio", selecciona el pedido y completa el envío al domiciliario.',
@@ -1378,7 +1384,7 @@ const MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'plataforma', emoji: '⚡', title: 'Interruptor de plataforma', color: 'text-mint',
+    id: 'plataforma', icon: Power, title: 'Interruptor de plataforma',
     content: [
       { type: 'table', rows: [
         ['Verde parpadeando', 'Plataforma ACTIVA — clientes pueden pedir'],
@@ -1388,7 +1394,7 @@ const MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'alarma', emoji: '🔔', title: 'Notificación de nuevo pedido', color: 'text-cherry',
+    id: 'alarma', icon: BellRing, title: 'Notificación de nuevo pedido',
     content: [
       { type: 'table', rows: [
         ['"Ver pedido"', 'Silencia la alarma y abre el detalle'],
@@ -1397,7 +1403,7 @@ const MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'cuadre_turno', emoji: '💰', title: 'Cuadre de turno', color: 'text-mustard',
+    id: 'cuadre_turno', icon: Banknote, title: 'Cuadre de turno',
     content: [
       { type: 'p', text: 'Usa el botón "Cuadre" en el encabezado para ver el resumen del turno.' },
       { type: 'table', rows: [
@@ -1407,18 +1413,18 @@ const MANUAL_SECTIONS = [
     ],
   },
   {
-    id: 'estados', emoji: '🏷️', title: 'Estados de los pedidos', color: 'text-coal',
+    id: 'estados', icon: Tag, title: 'Estados de los pedidos',
     content: [
       { type: 'table', rows: [
-        ['📋 PENDIENTE',   'Pedido nuevo: por aceptar (si llegó completo) o por cotizar'],
-        ['💰 COTIZADO',    'Cajero envió precio, esperando pago del cliente'],
-        ['🛵 ASIGNADO',    'Domiciliario asignado, esperando que acepte'],
-        ['✅ ACEPTADO',     'Domiciliario confirmó que va a entregar'],
-        ['🏃 EN CAMINO',   'Domiciliario en ruta al cliente'],
-        ['📍 LLEGÓ',       'Domiciliario llegó al destino'],
-        ['💰 PDTE. CUADRE','Efectivo pendiente de recibir del domiciliario'],
-        ['☑️ COMPLETADO',  'Cuadre confirmado, pedido cerrado'],
-        ['❌ RECHAZADO',   'Pedido rechazado por el cajero'],
+        ['PENDIENTE',   'Pedido nuevo: por aceptar (si llegó completo) o por cotizar'],
+        ['COTIZADO',    'Cajero envió precio, esperando pago del cliente'],
+        ['ASIGNADO',    'Domiciliario asignado, esperando que acepte'],
+        ['ACEPTADO',     'Domiciliario confirmó que va a entregar'],
+        ['EN CAMINO',   'Domiciliario en ruta al cliente'],
+        ['LLEGÓ',       'Domiciliario llegó al destino'],
+        ['PDTE. CUADRE','Efectivo pendiente de recibir del domiciliario'],
+        ['COMPLETADO',  'Cuadre confirmado, pedido cerrado'],
+        ['RECHAZADO',   'Pedido rechazado por el cajero'],
       ]},
     ],
   },
@@ -1426,13 +1432,14 @@ const MANUAL_SECTIONS = [
 
 function ManualSection({ section }) {
   const [open, setOpen] = useState(false)
+  const Icon = section.icon
   return (
     <div className="card overflow-hidden p-0">
       <button onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between gap-3 px-4 py-4 text-left hover:bg-smoked/50 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{section.emoji}</span>
-          <span className={`font-display text-base tracking-wide ${section.color}`}>{section.title}</span>
+          <Icon size={18} className="text-cherry flex-shrink-0" aria-hidden="true" />
+          <span className="font-display text-base tracking-wide text-coal">{section.title}</span>
         </div>
         {open ? <ChevronUp size={18} className="text-coal/40 flex-shrink-0" /> : <ChevronDown size={18} className="text-coal/40 flex-shrink-0" />}
       </button>
@@ -1442,7 +1449,7 @@ function ManualSection({ section }) {
             if (block.type === 'p') return <p key={i} className="font-body text-sm text-coal/80 leading-relaxed">{block.text}</p>
             if (block.type === 'tip') return (
               <div key={i} className="flex items-start gap-2 bg-mustard/10 border border-mustard/20 rounded-xl px-3 py-2">
-                <span className="text-mustard text-sm flex-shrink-0">💡</span>
+                <Lightbulb size={14} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <p className="font-body text-xs text-coal/70">{block.text}</p>
               </div>
             )

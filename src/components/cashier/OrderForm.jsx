@@ -91,7 +91,7 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
       {/* Identificación */}
       <div className="bg-mint/10 border border-mint/30 rounded-xl px-3 py-2">
         <p className="font-body text-xs text-coal/70">
-          🔢 El <strong>N° de pedido</strong> se asigna automáticamente al guardar, siguiendo la
+          El <strong>N° de pedido</strong> se asigna automáticamente al guardar, siguiendo la
           numeración del día de esta sede.
         </p>
       </div>
@@ -151,7 +151,7 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
 
       {/* Precios */}
       <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
-        <p className="font-display text-sm tracking-wide text-coal">💰 Precios</p>
+        <p className="font-display text-sm tracking-wide text-coal">Precios</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="of-quotedPrice" className="label-field">Valor pedido</label>
@@ -210,7 +210,7 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
 
       {/* Domiciliario */}
       <div>
-        <label htmlFor="of-driver" className="label-field">🚴 Domiciliario *</label>
+        <label htmlFor="of-driver" className="label-field">Domiciliario *</label>
         <select id="of-driver" name="driverId" value={driverId}
           onChange={e => setDriverId(e.target.value)} className="input-field">
           <option value="">— Selecciona domiciliario —</option>
@@ -226,7 +226,7 @@ export default function OrderForm({ drivers, onSubmit, onCancel }) {
           Cancelar
         </button>
         <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
-          {loading ? 'Enviando…' : '🚀 Enviar pedido'}
+          {loading ? 'Enviando…' : 'Enviar pedido'}
         </button>
       </div>
 

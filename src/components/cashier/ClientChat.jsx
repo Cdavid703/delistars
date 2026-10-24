@@ -56,7 +56,7 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
           {[...msgs].sort((a, b) => a.ts - b.ts).map((m, i) => (
             <div key={i} className={`rounded-xl px-3 py-2 ${m.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 ml-4' : 'bg-cherry/5 border border-cherry/20 mr-4'}`}>
               <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
-                {m.role === 'cashier' ? '🧾 Cajero' : '🛍️ Cliente'} · {m.name}
+                {m.role === 'cashier' ? 'Cajero' : 'Cliente'} · {m.name}
               </p>
               <p className="font-body text-sm text-coal">{m.text}</p>
             </div>

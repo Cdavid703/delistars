@@ -139,7 +139,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
                 <p className="font-body text-xs font-semibold text-coal">{order.payment}</p>
               ) : (
                 <p className="font-body text-xs font-semibold text-mustard">
-                  ⚠️ Sin forma de pago — regístrala en el detalle del pedido antes de despachar
+                  <AlertCircle size={13} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />Sin forma de pago — regístrala en el detalle del pedido antes de despachar
                 </p>
               )}
             </div>
@@ -174,7 +174,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
 
           {/* Prices */}
           <div className="card">
-            <p className="font-display text-base tracking-wide mb-3">💰 Precios</p>
+            <p className="font-display text-base tracking-wide mb-3">Precios</p>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="label-field">Valor pedido</label>
@@ -196,7 +196,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
           {/* Cash handling */}
           {cashOnDelivery && (
             <div className="card border border-mustard/30">
-              <p className="font-display text-base tracking-wide mb-3">💵 Manejo de efectivo</p>
+              <p className="font-display text-base tracking-wide mb-3">Manejo de efectivo</p>
               <div className="flex gap-3 mb-3">
                 <button
                   onClick={() => setPayExact(true)}
@@ -204,7 +204,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
                     payExact ? 'border-mint bg-mint/10 text-mint' : 'border-coal/20 text-coal/50'
                   }`}
                 >
-                  ✓ Paga exacto
+                  Paga exacto
                 </button>
                 <button
                   onClick={() => setPayExact(false)}
@@ -212,7 +212,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
                     !payExact ? 'border-mustard bg-mustard/10 text-coal' : 'border-coal/20 text-coal/50'
                   }`}
                 >
-                  💸 Necesita cambio
+                  Necesita cambio
                 </button>
               </div>
               {!payExact && (
@@ -237,7 +237,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
           {mismoLado.length > 0 && (
             <div className="bg-mint/10 border border-mint/40 rounded-xl px-4 py-3">
               <p className="font-body text-xs font-bold text-coal mb-1.5">
-                🧭 Van para el mismo lado — mándalos con el mismo domiciliario
+                Van para el mismo lado — mándalos con el mismo domiciliario
               </p>
               <div className="flex flex-col gap-1.5">
                 {mismoLado.map(({ order: o, metros, deCamino }) => {
@@ -265,7 +265,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
 
           {/* Driver assignment */}
           <div>
-            <label className="label-field">🚴 Domiciliario *</label>
+            <label className="label-field">Domiciliario *</label>
             <select className="input-field" value={driverId} onChange={e => setDriverId(e.target.value)}>
               <option value="">— Selecciona domiciliario —</option>
               {drivers.map(d => (
@@ -276,7 +276,7 @@ export default function AssignDeliveryDetail({ order, drivers, onClose, unreadCl
             </select>
             {driverId && turnos[String(driverId).toLowerCase()]?.estado !== 'activo' && (
               <p className="font-body text-xs text-tangelo mt-1.5">
-                ⚠️ No está en turno: le llega el aviso igual. Confírmale por WhatsApp que puede tomarlo.
+                <AlertCircle size={13} className="inline-block mr-1.5 -mt-0.5" aria-hidden="true" />No está en turno: le llega el aviso igual. Confírmale por WhatsApp que puede tomarlo.
               </p>
             )}
           </div>
