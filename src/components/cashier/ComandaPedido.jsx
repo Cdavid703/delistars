@@ -38,7 +38,7 @@ export default function ComandaPedido({ order }) {
     } catch (e) { setError(e.message); setClave(nuevaClave()) } finally { setBusy(false) }
   }
 
-  const necesitaRevision = trabajo?.id === impresionId && (trabajo.estado === 'error' || trabajo.estado === 'pendiente_reintento' || ambiguo(trabajo))
+  const necesitaRevision = !!trabajo && !!impresionId && trabajo.id === impresionId && (trabajo.estado === 'error' || trabajo.estado === 'pendiente_reintento' || ambiguo(trabajo))
   const puedeImprimir = estado === 'sin_imprimir' || estado === 'desactualizada'
 
   return (
