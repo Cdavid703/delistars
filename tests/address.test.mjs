@@ -5,7 +5,7 @@
 // estas pruebas fijan cuál es cuál.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../src/utils/address.js'
+import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf, textoDireccion, barrioDeGoogle } from '../src/utils/address.js'
 
 const dir = (extra = {}) => ({
   tipoVia: 'Calle', viaNum: '44', viaLetra: '', viaOrient: '',
@@ -54,4 +54,18 @@ test('el complemento se anexa después de la dirección', () => {
     fullAddressOf(dir({ viaLetra: 'B', complemento: ' Apto 501 ' })),
     'Calle 44 B #70-23, Apto 501',
   )
+})
+
+test('la dirección escrita en un solo campo manda; las viejas se arman por partes', () => {
+  assert.equal(textoDireccion({ texto: ' Calle 44B #70A-23 ' }), 'Calle 44B #70A-23')
+  assert.equal(fullAddressOf({ texto: 'Calle 44B #70A-23', complemento: 'Apto 502' }), 'Calle 44B #70A-23, Apto 502')
+  assert.equal(textoDireccion(dir()), 'Calle 44 #70-23')
+  assert.equal(textoDireccion({ formatted: 'Cra 80 #45-10' }), 'Cra 80 #45-10')
+  assert.equal(textoDireccion({}), '')
+})
+
+test('el barrio sale de la dirección de Google cuando viene', () => {
+  assert.equal(barrioDeGoogle('Cl. 44B #70a-23, San Javier, Medellín, Antioquia, Colombia'), 'San Javier')
+  assert.equal(barrioDeGoogle('Cl. 44B #70a-23, Medellín, Antioquia'), '')
+  assert.equal(barrioDeGoogle('Medellín, Antioquia'), '')
 })

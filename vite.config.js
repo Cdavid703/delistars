@@ -18,6 +18,11 @@ export default defineConfig({
   base: '/domicilios/',
   server: {
     port: 5173,
+    // Solo en desarrollo: la API (/api/v1) la sirve el servidor de pruebas, así
+    // buscar direcciones, cotizar rutas y los pedidos funcionan desde el portátil.
+    proxy: {
+      '/api': { target: globalThis.process?.env?.VITE_API_PROXY || 'https://pruebas.delistars.com', changeOrigin: true, secure: true },
+    },
     hmr: {
       // Permite hot reload a través del gateway nginx
       host: 'localhost',

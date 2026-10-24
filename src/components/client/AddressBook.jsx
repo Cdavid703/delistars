@@ -1,22 +1,14 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
-import { MapPin, Plus, Check, X, Trash2, Pencil, House, Briefcase, Heart, Users, AlertCircle } from 'lucide-react'
-import { LETRAS, buildFormatted, geocodeQuery, fullAddressOf } from '../../utils/address'
+import { MapPin, Plus, Check, X, Trash2, Pencil, House, Briefcase, Heart, Users, AlertCircle, Search } from 'lucide-react'
+import { geocodeQuery, fullAddressOf, textoDireccion, barrioDeGoogle } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
 import { ubicarDireccion } from '../../services/recorrido'
 import { kmLineaRecta } from '../../utils/tarifaDomicilio'
-import BarrioPicker from '../common/BarrioPicker'
 
 // Mapa diferido: solo se descarga Leaflet cuando el cliente abre "ajustar pin".
 const MapPicker = lazy(() => import('./MapPicker'))
-
-// ─── Nomenclatura oficial colombiana (menús cerrados = sin typos) ──────────────
-const VIA_TIPOS = [
-  'Calle', 'Carrera', 'Diagonal', 'Transversal',
-  'Avenida', 'Avenida Calle', 'Avenida Carrera', 'Circular', 'Autopista',
-]
-const ORIENTACIONES = ['', 'Sur', 'Este']
 
 // El emoji se sigue guardando con la dirección (las que ya existen lo traen),
 // pero en pantalla se dibuja el icono: así la lista no depende de cómo pinte
@@ -34,7 +26,8 @@ const iconoDeEtiqueta = (etiqueta) =>
 
 const EMPTY = {
   id: '', label: 'Casa', emoji: '🏠',
-  tipoVia: 'Calle', viaNum: '', viaLetra: '', viaOrient: '',
+  texto: '',
+  tipoVia: '', viaNum: '', viaLetra: '', viaOrient: '',
   cruceNum: '', cruceLetra: '', placa: '',
   complemento: '', barrio: '', referencia: '',
   lat: null, lng: null, formatted: '',
@@ -42,62 +35,92 @@ const EMPTY = {
   pinFuente: null, pinPrecision: null,
 }
 
-const onlyDigits = v => (v || '').toString().replace(/[^\d]/g, '')
-
 // Precisiones de Google que ya dan la casa (o el conjunto por su nombre).
 const PRECISAS = ['ROOFTOP', 'RANGE_INTERPOLATED', 'LUGAR']
 
-// Geocodifica la dirección armada para obtener el pin exacto (best-effort).
-// Primero Google (entiende la placa y suele dar la casa exacta; con la
-// referencia busca también el conjunto o edificio por su nombre); si no
-// responde, Photon como antes. Devuelve { lat, lng, fuente, precision }.
-async function geocode(p, sede) {
-  const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
-  const google = await ubicarDireccion(q, p.referencia?.trim())
-  if (google?.length) {
-    return { lat: google[0].lat, lng: google[0].lng, fuente: 'google', precision: google[0].precision }
-  }
+// Respaldo gratuito cuando el servidor (Google) no responde: devuelve la forma
+// de `ubicarDireccion` con precisión desconocida, así el cliente afina el pin.
+async function buscarEnPhoton(q, centro) {
   try {
-    const lat = sede?.coords?.lat ?? 6.24, lon = sede?.coords?.lng ?? -75.58
-    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lat=${lat}&lon=${lon}`)
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(`${q}, Medellín`)}&limit=3&lat=${centro.lat}&lon=${centro.lng}&lang=es`
+    const res = await fetch(url)
     if (!res.ok) return null
     const data = await res.json()
-    const c = data.features?.[0]?.geometry?.coordinates
-    return c ? { lat: c[1], lng: c[0], fuente: 'photon', precision: null } : null
+    return (data.features || []).slice(0, 3).map(f => ({
+      lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
+      direccion: [f.properties?.name, f.properties?.street && f.properties?.housenumber ? `${f.properties.street} ${f.properties.housenumber}` : f.properties?.street, f.properties?.district, f.properties?.city]
+        .filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(', '),
+      precision: 'APPROXIMATE',
+    }))
   } catch { return null }
 }
 
-// ─── Formulario estructurado (agregar/editar una dirección) ────────────────────
+// ─── Formulario (agregar/editar una dirección) ────────────────────────────────
+// Un solo campo: el cliente escribe su dirección como la dice, Google la ubica
+// y el pin se afina en el mapa. Antes se pedían calle, carrera, letra, cruce,
+// placa y barrio por separado (24 oct 2026: demasiado para pedir una comida).
+const PRECISION_TEXTO = { ROOFTOP: 'Casa exacta', RANGE_INTERPOLATED: 'Sobre la cuadra', LUGAR: 'Lugar encontrado por la referencia' }
+
 function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejarComoEstaba = null }) {
   useBackClose(true, onCancel) // "atrás" cierra el formulario, no sale de la app
-  const [p, setP]           = useState(initial || EMPTY)
+  const [p, setP] = useState(() => initial ? { ...EMPTY, ...initial, texto: textoDireccion(initial) } : EMPTY)
   const [customLabel, setCustom] = useState(
     initial && !LABEL_PRESETS.some(l => l.label === initial.label) ? initial.label : '',
   )
   const [errors, setErrors]     = useState([])
   const [saving, setSaving]     = useState(false)
-  // Revisión de un pin viejo: el mapa abre de una con el punto de Google.
-  const [showMap, setShowMap]   = useState(!!aviso)
-  const [locating, setLocating] = useState(false)
+  const [buscando, setBuscando] = useState(false)
+  const [opciones, setOpciones] = useState(null)   // null = sin buscar; [] = Google no la encontró
+  // Revisión de un pin viejo (o edición de una que ya tiene pin): el mapa abre de una.
+  const [showMap, setShowMap]   = useState(!!aviso || (initial?.lat != null))
+  const [yaAviseImpreciso, setYaAviseImpreciso] = useState(false)
 
   const set = (k, v) => setP(f => ({ ...f, [k]: v }))
-  // Cambiar un campo que afecta la geolocalización invalida la coordenada y el
-  // pin anteriores (se recalcularán al volver a abrir el mapa / guardar).
-  const setAddr = (k, v) => {
-    setP(f => ({ ...f, [k]: v, lat: null, lng: null, pinFuente: null, pinPrecision: null }))
+  // Cambiar la dirección invalida el pin anterior: hay que volver a buscar.
+  const setTexto = (v) => {
+    setP(f => ({ ...f, texto: v, lat: null, lng: null, pinFuente: null, pinPrecision: null }))
+    setOpciones(null)
     setShowMap(false)
   }
-  const preview = buildFormatted(p)
+  const centroSede = { lat: sede?.coords?.lat ?? 6.2447, lng: sede?.coords?.lng ?? -75.5916 }
 
-  // Geocodifica la dirección armada y abre el mapa para afinar el pin.
-  const openMap = async () => {
-    setLocating(true)
-    const coords = (p.lat != null && p.lng != null)
-      ? { lat: p.lat, lng: p.lng, fuente: p.pinFuente, precision: p.pinPrecision }
-      : await geocode(p, sede)
-    if (coords) setP(f => ({ ...f, lat: coords.lat, lng: coords.lng,
-      pinFuente: coords.fuente ?? null, pinPrecision: coords.precision ?? null }))
-    setLocating(false)
+  const elegir = (l) => {
+    setP(f => ({ ...f, lat: l.lat, lng: l.lng, pinFuente: 'google', pinPrecision: l.precision,
+      barrio: f.barrio || barrioDeGoogle(l.direccion) }))
+    setOpciones(null)
+    setShowMap(true)
+    setErrors([])
+  }
+
+  // Google busca la dirección escrita (y la referencia, si la hay: en conjuntos
+  // y lomas suele dar mejor el nombre que la nomenclatura). Si el servidor no
+  // responde, OpenStreetMap (Photon) da al menos la cuadra, como respaldo.
+  const buscar = async () => {
+    const q = p.texto.trim()
+    if (q.length < 5) { setErrors(['Escribe tu dirección, por ejemplo: Calle 44B #70A-23']); return null }
+    setErrors([])
+    setBuscando(true)
+    let lugares = await ubicarDireccion(q, p.referencia?.trim())
+    if (lugares === null) lugares = await buscarEnPhoton(q, centroSede)
+    lugares = lugares || []
+    setBuscando(false)
+    const lista = lugares.slice(0, 4)
+    if (lista.length === 0) {
+      setOpciones([])
+      // Sin resultado no se bloquea: el pin arranca en la sede y el cliente lo lleva a su casa.
+      setP(f => ({ ...f, lat: f.lat ?? centroSede.lat, lng: f.lng ?? centroSede.lng, pinFuente: f.lat != null ? f.pinFuente : null, pinPrecision: null }))
+      setShowMap(true)
+      return []
+    }
+    if (lista.length === 1 || PRECISAS.includes(lista[0].precision)) { elegir(lista[0]); return lista }
+    setOpciones(lista)
+    return lista
+  }
+
+  // Sin Google, o Google no la encontró: el cliente la pone a mano.
+  const ubicarAMano = () => {
+    setP(f => ({ ...f, lat: f.lat ?? centroSede.lat, lng: f.lng ?? centroSede.lng, pinFuente: f.lat != null ? f.pinFuente : null, pinPrecision: null }))
+    setOpciones(null)
     setShowMap(true)
   }
 
@@ -106,53 +129,57 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
     else { setCustom(''); setP(f => ({ ...f, label: preset.label, emoji: preset.emoji })) }
   }
   const isOtra = !LABEL_PRESETS.slice(0, 4).some(l => l.label === p.label)
+  const pinListo = p.lat != null && p.lng != null && (p.pinFuente === 'mapa' || p.pinFuente === 'google' || p.pinFuente === 'photon')
 
   const handleSave = async () => {
     const errs = []
-    if (!p.label.trim())    errs.push('Ponle un nombre a la dirección (Casa, Trabajo…)')
-    if (!p.viaNum.trim())   errs.push('Falta el número de la vía (ej: Calle 44)')
-    if (!p.cruceNum.trim()) errs.push('Falta el número después del # (ej: #70)')
-    if (!p.placa.trim())    errs.push('Falta el número de la placa (ej: -23)')
+    if (!p.label.trim())          errs.push('Ponle un nombre a la dirección (Casa, Trabajo…)')
+    if (p.texto.trim().length < 5) errs.push('Escribe tu dirección, por ejemplo: Calle 44B #70A-23')
     if (errs.length) { setErrors(errs); return }
     setErrors([])
-    setSaving(true)
-    // Si el cliente ya ajustó el pin en el mapa, se respeta esa coordenada;
-    // si no, se geocodifica la dirección armada como respaldo.
-    const yaTeniaPin = p.lat != null && p.lng != null
-    const coords = yaTeniaPin
-      ? { lat: p.lat, lng: p.lng, fuente: p.pinFuente, precision: p.pinPrecision }
-      : await geocode(p, sede)
-    // Pin adivinado (mitad de la calle o el barrio): se le pide al cliente que
-    // lo ponga en su casa antes de guardar. De ese punto sale el precio del
-    // domicilio. La segunda vez se guarda como esté.
-    if (!yaTeniaPin && coords && !PRECISAS.includes(coords.precision)) {
-      setP(f => ({ ...f, lat: coords.lat, lng: coords.lng, pinFuente: coords.fuente, pinPrecision: coords.precision }))
-      setShowMap(true)
-      setErrors(['Encontramos tu calle, pero no la casa exacta. Mueve el pin hasta tu casa en el mapa y vuelve a guardar.'])
+    // Todavía no se ha ubicado: se busca aquí mismo y se sigue si Google la dio exacta.
+    if (!pinListo) {
+      setSaving(true)
+      const lista = await buscar()
       setSaving(false)
+      const l = lista?.[0]
+      if (!(lista?.length === 1 || (l && PRECISAS.includes(l.precision)))) {
+        setErrors([lista?.length ? 'Elige cuál de estas es tu dirección.' : 'No encontramos esa dirección. Lleva el pin del mapa hasta tu casa y guarda.'])
+        return
+      }
+      // Dio exacta: se guarda con ese pin (elegir() ya lo puso en el estado).
+      return onSave(armar({ ...p, lat: l.lat, lng: l.lng, pinFuente: 'google', pinPrecision: l.precision, barrio: p.barrio || barrioDeGoogle(l.direccion) }))
+    }
+    // Pin de Google aproximado (la cuadra o el barrio) y el cliente no lo movió:
+    // se le pide una vez que lo ponga en su puerta. De ahí sale el precio del domicilio.
+    if (p.pinFuente === 'google' && !PRECISAS.includes(p.pinPrecision) && !yaAviseImpreciso) {
+      setYaAviseImpreciso(true)
+      setShowMap(true)
+      setErrors(['Encontramos la zona pero no la casa exacta. Mueve el pin hasta tu puerta y vuelve a guardar.'])
       return
     }
-    const place = {
-      ...p,
-      id:        p.id || `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      label:     (isOtra ? (customLabel || p.label) : p.label).trim(),
-      lat:       coords?.lat ?? null,
-      lng:       coords?.lng ?? null,
-      pinFuente:    coords?.fuente ?? null,
-      pinPrecision: coords?.precision ?? null,
-      formatted: buildFormatted(p),
-    }
-    setSaving(false)
-    onSave(place)
+    onSave(armar(p))
   }
+
+  const armar = (q) => ({
+    ...q,
+    id:        q.id || `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    label:     (isOtra ? (customLabel || q.label) : q.label).trim(),
+    texto:     q.texto.trim(),
+    formatted: q.texto.trim(),
+    // La dirección ahora es el texto: la nomenclatura por partes deja de mandar.
+    tipoVia: '', viaNum: '', viaLetra: '', viaOrient: '', cruceNum: '', cruceLetra: '', placa: '',
+    lat: q.lat ?? null, lng: q.lng ?? null,
+    pinFuente: q.pinFuente ?? null, pinPrecision: q.pinPrecision ?? null,
+  })
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
-      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom">
-        <div className="sticky top-0 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
-          <p className="font-display text-lg text-coal tracking-wide">{initial ? 'Editar dirección' : 'Nueva dirección'}</p>
-          <button onClick={onCancel} className="text-coal/40 hover:text-coal/70"><X size={20} /></button>
+      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
+        <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
+          <p className="font-display text-xl text-coal tracking-wide">{initial ? 'Editar dirección' : 'Nueva dirección'}</p>
+          <button type="button" onClick={onCancel} className="btn-icon" aria-label="Cerrar"><X size={20} aria-hidden="true" /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">
@@ -177,100 +204,93 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
             )}
           </div>
 
-          {/* Vía principal */}
+          {/* Dirección: un solo campo */}
           <div>
-            <label className="label-field">Vía</label>
-            <div className="grid grid-cols-[1.4fr_1fr_0.9fr_1fr] gap-2">
-              <select className="input-field" value={p.tipoVia} onChange={e => setAddr('tipoVia', e.target.value)}>
-                {VIA_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <input className="input-field" inputMode="numeric" value={p.viaNum}
-                onChange={e => setAddr('viaNum', onlyDigits(e.target.value))} placeholder="44" />
-              <select className="input-field" value={p.viaLetra} onChange={e => setAddr('viaLetra', e.target.value)}>
-                {LETRAS.map(l => <option key={l} value={l}>{l || '–'}</option>)}
-              </select>
-              <select className="input-field" value={p.viaOrient} onChange={e => setAddr('viaOrient', e.target.value)}>
-                {ORIENTACIONES.map(o => <option key={o} value={o}>{o || '–'}</option>)}
-              </select>
+            <label className="label-field" htmlFor="dir-texto">Dirección</label>
+            <div className="flex gap-2">
+              <input id="dir-texto" className="input-field flex-1" value={p.texto} autoComplete="street-address" enterKeyHint="search"
+                onChange={e => setTexto(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }}
+                placeholder="Calle 44B #70A-23" />
+              <button type="button" onClick={buscar} disabled={buscando || p.texto.trim().length < 5}
+                className="btn-primary px-4 flex-shrink-0" aria-label="Buscar la dirección">
+                {buscando ? <span className="font-body text-sm">…</span> : <Search size={18} aria-hidden="true" />}
+              </button>
             </div>
-            <div className="flex gap-1 mt-1 px-1">
-              <span className="text-[10px] text-coal/35 font-body w-[1.4fr] flex-[1.4]">tipo</span>
-              <span className="text-[10px] text-coal/35 font-body flex-1">número</span>
-              <span className="text-[10px] text-coal/35 font-body flex-[0.9]">letra</span>
-              <span className="text-[10px] text-coal/35 font-body flex-1">orient.</span>
-            </div>
+            <p className="font-body text-[11px] text-coal/50 mt-1">Escríbela como la dices y la buscamos en el mapa.</p>
           </div>
 
-          {/* Cruce + placa */}
-          <div>
-            <label className="label-field">Número (cruce y placa)</label>
-            <div className="flex items-center gap-2">
-              <span className="font-display text-lg text-coal/40">#</span>
-              <input className="input-field flex-1" inputMode="numeric" value={p.cruceNum}
-                onChange={e => setAddr('cruceNum', onlyDigits(e.target.value))} placeholder="70" />
-              <select className="input-field w-20" value={p.cruceLetra} onChange={e => setAddr('cruceLetra', e.target.value)}>
-                {LETRAS.map(l => <option key={l} value={l}>{l || '–'}</option>)}
-              </select>
-              <span className="font-display text-lg text-coal/40">–</span>
-              <input className="input-field flex-1" inputMode="numeric" value={p.placa}
-                onChange={e => setAddr('placa', onlyDigits(e.target.value))} placeholder="23" />
+          {/* Varias coincidencias: que elija */}
+          {opciones && opciones.length > 1 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="font-body text-xs font-semibold text-coal/70">¿Cuál es la tuya?</p>
+              {opciones.map((l, i) => (
+                <button key={i} type="button" onClick={() => elegir(l)}
+                  className="text-left card-quiet py-2.5 px-3 flex items-start gap-2 [@media(hover:hover)]:hover:border-cherry/40">
+                  <MapPin size={15} className="text-cherry flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block font-body text-sm text-coal">{l.nombre ? `${l.nombre} · ` : ''}{l.direccion}</span>
+                    <span className="block font-body text-[11px] text-coal/50">{PRECISION_TEXTO[l.precision] || 'Aproximada'}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-          </div>
+          )}
 
-          {/* Barrio */}
-          <div>
-            <label className="label-field">Barrio</label>
-            <BarrioPicker
-              value={p.barrio}
-              onChange={b => setAddr('barrio', b)}
-              barrios={sede?.barrios || []}
-            />
-          </div>
+          {/* Google no la encontró */}
+          {opciones && opciones.length === 0 && (
+            <p className="font-body text-xs text-coal/70 bg-mustard/10 border border-mustard/30 rounded-xl px-3 py-2">
+              No encontramos esa dirección. No pasa nada: lleva el pin del mapa hasta tu casa.
+            </p>
+          )}
 
-          {/* Complemento + referencia */}
-          <div>
-            <label className="label-field">Complemento <span className="text-[10px] text-coal/40 normal-case font-normal">(apto, torre, interior…)</span></label>
-            <input className="input-field" value={p.complemento}
-              onChange={e => set('complemento', e.target.value)} placeholder="Apto 502, Torre 3" autoComplete="off" />
-          </div>
-          <div>
-            <label className="label-field">Indicaciones para el domiciliario</label>
-            <input className="input-field" value={p.referencia}
-              onChange={e => set('referencia', e.target.value)} placeholder="Portón verde, al lado de la tienda" autoComplete="off" />
+          {/* Mapa para afinar el pin */}
+          {showMap ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="font-body text-[11px] text-coal/55">Arrastra el pin (o toca el mapa) hasta tu puerta.</p>
+              <Suspense fallback={<div className="h-[220px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
+                <MapPicker key={`${p.lat}-${p.lng}-${p.pinFuente === 'mapa' ? 'm' : 'g'}`.replace(/\.\d{4,}/g, (x) => x.slice(0, 5))}
+                  initialLat={p.lat} initialLng={p.lng}
+                  onChange={(lat, lng) => setP(f => ({ ...f, lat, lng, pinFuente: 'mapa', pinPrecision: null }))} />
+              </Suspense>
+              <p className={`font-body text-[11px] flex items-center gap-1 ${p.pinFuente === 'mapa' || PRECISAS.includes(p.pinPrecision) ? 'text-mint' : 'text-coal/55'}`}>
+                {p.pinFuente === 'mapa'
+                  ? <><Check size={12} aria-hidden="true" /> Pin puesto por ti: el domiciliario llega justo aquí.</>
+                  : PRECISAS.includes(p.pinPrecision)
+                    ? <><Check size={12} aria-hidden="true" /> {PRECISION_TEXTO[p.pinPrecision] || 'Ubicada'}. Si no es tu puerta, mueve el pin.</>
+                    : 'Pin aproximado: muévelo hasta tu casa.'}
+              </p>
+            </div>
+          ) : (
+            <button type="button" onClick={ubicarAMano} className="btn-link text-xs self-start">
+              <MapPin size={13} aria-hidden="true" /> Prefiero ubicarla yo en el mapa
+            </button>
+          )}
+
+          {/* Lo que sí ayuda al domiciliario, opcional y corto */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label-field" htmlFor="dir-compl">Apto, torre, casa <span className="text-[10px] text-coal/40 normal-case font-normal">(opcional)</span></label>
+              <input id="dir-compl" className="input-field" value={p.complemento}
+                onChange={e => set('complemento', e.target.value)} placeholder="Apto 502, Torre 3" autoComplete="off" />
+            </div>
+            <div>
+              <label className="label-field" htmlFor="dir-ref">Indicaciones <span className="text-[10px] text-coal/40 normal-case font-normal">(opcional)</span></label>
+              <input id="dir-ref" className="input-field" value={p.referencia}
+                onChange={e => set('referencia', e.target.value)} placeholder="Portón verde, timbre 2B" autoComplete="off" />
+            </div>
           </div>
 
           {/* Vista previa */}
-          {preview && preview !== '#-' && (
+          {p.texto.trim() && (
             <div className="bg-mint/10 border border-mint/30 rounded-xl px-4 py-3">
               <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider mb-0.5">Así queda tu dirección</p>
               <p className="font-body text-sm font-semibold text-coal">
-                {preview}{p.complemento?.trim() ? `, ${p.complemento.trim()}` : ''}
+                {p.texto.trim()}{p.complemento?.trim() ? `, ${p.complemento.trim()}` : ''}
               </p>
               {p.barrio && <p className="font-body text-xs text-coal/50">{p.barrio}</p>}
             </div>
           )}
-
-          {/* Ajuste fino del pin en el mapa */}
-          <div className="flex flex-col gap-1.5">
-            {!showMap ? (
-              <button type="button" onClick={openMap} disabled={locating}
-                className="flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 border border-cherry/25 bg-cherry/5 text-cherry font-body text-sm font-semibold hover:bg-cherry/10 transition-colors disabled:opacity-50">
-                <MapPin size={15} />
-                {locating ? 'Ubicando…' : (p.lat != null ? 'Ajustar el pin en el mapa' : 'Ubicar en el mapa y ajustar el pin')}
-              </button>
-            ) : (
-              <>
-                <p className="font-body text-[11px] text-coal/55">Arrastra el pin 📍 (o toca el mapa) hasta la puerta exacta.</p>
-                <Suspense fallback={<div className="h-[220px] rounded-xl bg-coal/5 flex items-center justify-center font-body text-xs text-coal/40">Cargando mapa…</div>}>
-                  <MapPicker initialLat={p.lat} initialLng={p.lng}
-                    onChange={(lat, lng) => setP(f => ({ ...f, lat, lng, pinFuente: 'mapa', pinPrecision: null }))} />
-                </Suspense>
-                <p className="font-body text-[11px] text-mint flex items-center gap-1">
-                  <Check size={12} /> Pin ubicado — el domiciliario llegará justo aquí.
-                </p>
-              </>
-            )}
-          </div>
 
           {aviso && (
             <div className="bg-mustard/10 border border-mustard/40 rounded-xl px-3 py-2.5">
@@ -294,8 +314,8 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
           )}
 
           <div className="flex flex-col gap-2 pt-1">
-            <button type="button" onClick={handleSave} disabled={saving} className="btn-primary w-full btn-lg">
-              {saving ? 'Guardando…' : <><Check size={18} aria-hidden="true" /> Guardar dirección</>}
+            <button type="button" onClick={handleSave} disabled={saving || buscando} className="btn-primary w-full btn-lg">
+              {saving ? 'Ubicando…' : <><Check size={18} aria-hidden="true" /> Guardar dirección</>}
             </button>
             <button type="button" onClick={onCancel} className="btn-ghost w-full">Cancelar</button>
           </div>
@@ -357,9 +377,10 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
   const selectPlace = async (p) => {
     // Las muy viejas (sin calle/número por separado) no se pueden armar ni
     // editar con el formulario: se usan como están.
-    if (p.pinFuente || revisando || !p.viaNum || !p.cruceNum) { seleccionar(p); return }
+    if (p.pinFuente || revisando || !textoDireccion(p)) { seleccionar(p); return }
     setRevisando(p.id)
-    const q = `${geocodeQuery(p)}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
+    const base = p.viaNum ? geocodeQuery(p) : textoDireccion(p)
+    const q = `${base}, ${p.barrio ? p.barrio + ', ' : ''}Medellín, Colombia`
     const google = await ubicarDireccion(q, p.referencia?.trim())
     setRevisando(null)
     const g = google?.[0]
@@ -410,7 +431,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
 
       {loaded && places.length === 0 && (
         <p className="font-body text-xs text-coal/45">
-          Aún no tienes direcciones guardadas. Agrega una con los datos exactos (calle, carrera, número…) para que el domiciliario llegue sin perderse.
+          Aún no tienes direcciones guardadas. Escribe la tuya y la ubicamos en el mapa.
         </p>
       )}
 
