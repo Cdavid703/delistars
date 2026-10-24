@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { Printer, AlertTriangle, Check, RotateCcw, X, ChevronDown } from 'lucide-react'
 import { db } from '../../services/firebase'
+import ChipEstado from './ChipEstado'
 import { llamarApi } from '../../services/pedidosApi'
 import { ambiguo } from '../../utils/comanda'
 
@@ -166,39 +167,33 @@ export default function ImpresoraCaja({ puesto, sedeId }) {
   if (!activo) return null
   const { esImpresora, impresoraActiva, impresoraNombre, hayImpresora, hacerImpresora, dejarImpresora } = puesto
 
+  // Va dentro de la franja de estado de la caja (flex con wrap): la etiqueta en
+  // línea; la ayuda y las comandas por revisar ocupan todo el ancho debajo.
   return (
-    <div className="mx-4 mt-2 flex flex-col gap-2">
+    <>
       {esImpresora ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-mint">
-          <span className="flex items-center gap-2"><Printer size={14} aria-hidden="true" /> Este aparato imprime las comandas{enCola ? ` · ${enCola} en cola` : ''}.</span>
-          {ultimo && <span className={ultimo.ok ? 'text-coal/55' : 'text-pepper'}>{ultimo.texto}</span>}
-          <span className="flex gap-3 ml-auto">
-            <button onClick={prueba} disabled={busy} className="btn-link text-xs">Página de prueba</button>
-            <button onClick={() => setAyuda((v) => !v)} className="btn-link text-xs inline-flex items-center gap-1">Imprimir sin cuadro <ChevronDown size={12} aria-hidden="true" /></button>
-            <button onClick={dejarImpresora} className="btn-link text-xs text-coal/55">Dejar de imprimir</button>
+        <ChipEstado tono="bien" icono={Printer} texto={`Las comandas se imprimen aquí${enCola ? ` · ${enCola} en cola` : ''}`}>
+          <span className="flex items-center gap-2 pl-1 font-normal">
+            <button onClick={prueba} disabled={busy} className="underline underline-offset-2 hover:text-coal">Prueba</button>
+            <button onClick={() => setAyuda((v) => !v)} className="underline underline-offset-2 hover:text-coal inline-flex items-center gap-0.5">Sin cuadro <ChevronDown size={11} aria-hidden="true" /></button>
+            <button onClick={dejarImpresora} className="underline underline-offset-2 text-coal/50 hover:text-coal">Dejar</button>
           </span>
-        </div>
+        </ChipEstado>
       ) : impresoraActiva ? (
-        <div className="flex items-center justify-between gap-2 font-body text-xs text-coal/55">
-          <span className="flex items-center gap-2"><Printer size={14} aria-hidden="true" /> Las comandas se imprimen en {impresoraNombre}.</span>
-          <button onClick={hacerImpresora} className="btn-link text-xs flex-shrink-0">Imprimir en este</button>
-        </div>
+        <ChipEstado tono="neutro" icono={Printer} texto={`Las comandas se imprimen en ${impresoraNombre}`}
+          accion={{ texto: 'Imprimir en este', onClick: hacerImpresora }} />
       ) : (
-        <div className="bg-tangelo/15 border border-tangelo/50 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-          <p className="font-body text-xs text-coal leading-snug flex items-start gap-2 flex-1">
-            <Printer size={14} className="text-tangelo flex-shrink-0 mt-0.5" aria-hidden="true" />
-            <span>
-              {hayImpresora
-                ? <>El aparato que imprime ({impresoraNombre}) se desconectó. Las comandas esperan en la cola{esperando ? ` (${esperando})` : ''}.</>
-                : <>Ningún aparato imprime las comandas. Elige el computador que tiene la impresora.</>}
-            </span>
-          </p>
-          <button onClick={hacerImpresora} className="btn-primary btn-sm whitespace-nowrap flex-shrink-0">Imprimir en este</button>
-        </div>
+        <ChipEstado tono="atencion" icono={Printer}
+          texto={hayImpresora ? `La impresora se desconectó${esperando ? ` · ${esperando} en cola` : ''}` : 'Sin impresora de comandas'}
+          titulo={hayImpresora ? `El aparato que imprime (${impresoraNombre}) se desconectó: las comandas esperan en la cola.` : 'Ningún aparato imprime las comandas. Elige el computador que tiene la impresora.'}
+          accion={{ texto: 'Imprimir en este', onClick: hacerImpresora }} />
+      )}
+      {esImpresora && ultimo && (
+        <span className={`font-body text-xs ${ultimo.ok ? 'text-coal/50' : 'text-pepper font-semibold'}`}>{ultimo.texto}</span>
       )}
 
       {esImpresora && ayuda && (
-        <div className="bg-cream rounded-xl px-3 py-2 font-body text-xs text-coal/75 flex flex-col gap-1">
+        <div className="basis-full bg-cream rounded-xl px-3 py-2 font-body text-xs text-coal/75 flex flex-col gap-1">
           <p>Para que las comandas salgan solas, sin el cuadro de imprimir, en el computador de la impresora:</p>
           <p>1. Pon la impresora de comandas como <strong>predeterminada</strong> en Windows.</p>
           <p>2. Crea un acceso directo de Chrome y en «Destino» agrega al final:</p>
@@ -208,12 +203,12 @@ export default function ImpresoraCaja({ puesto, sedeId }) {
       )}
 
       {revisar.length > 0 && (
-        <div className="bg-pepper/10 border border-pepper/30 rounded-2xl px-3 py-2 flex flex-col gap-2">
+        <div className="basis-full bg-pepper/10 border border-pepper/30 rounded-2xl px-3 py-2 flex flex-col gap-2">
           <p className="font-body text-xs font-semibold text-pepper flex items-center gap-1.5"><AlertTriangle size={14} aria-hidden="true" /> Comandas por revisar</p>
           {revisar.map((j) => <RevisarTrabajo key={j.id} j={j} compacto />)}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
