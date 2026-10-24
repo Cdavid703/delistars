@@ -2,15 +2,14 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Eye, EyeOff, Mail } from 'lucide-react'
 import {
-  loginGoogle, loginMicrosoft, crearCuentaCorreo, entrarConCorreo, recuperarContrasena,
+  loginGoogle, loginMicrosoft, loginApple, crearCuentaCorreo, entrarConCorreo, recuperarContrasena,
 } from '../../services/firebase'
 import { mensajeAuth, esCancelacion, erroresRegistro } from '../../utils/erroresAuth'
-import { LogoGoogle, LogoMicrosoft } from './LogosMarca'
+import { LogoGoogle, LogoMicrosoft, LogoApple } from './LogosMarca'
 
-// Entrar o crear cuenta (especificación §6.1): Google, Microsoft y correo con
-// contraseña. Si la persona estaba como invitada, Google, Microsoft y "Crear
-// cuenta" ENLAZAN su sesión: no pierde el pedido que ya hizo. Apple llega
-// cuando exista la cuenta de Apple Developer.
+// Entrar o crear cuenta (especificación §6.1): Google, Apple, Microsoft y
+// correo con contraseña. Si la persona estaba como invitada, los botones y
+// "Crear cuenta" ENLAZAN su sesión: no pierde el pedido que ya hizo.
 export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerrar, onListo }) {
   const [modo, setModo] = useState('entrar') // 'entrar' | 'crear'
   const [form, setForm] = useState({ nombre: '', telefono: '', email: '', password: '' })
@@ -50,7 +49,7 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
     setAviso(`Te enviamos a ${form.email.trim()} un enlace para crear una contraseña nueva. Revisa también el correo no deseado.`)
   })
 
-  // Botón blanco con el logo a la izquierda (guías de marca de Google y Microsoft).
+  // Botón blanco con el logo a la izquierda (guías de marca de Google, Microsoft y Apple).
   const botonMarca = 'w-full inline-flex items-center justify-center gap-3 bg-white text-coal font-body font-semibold text-sm px-5 py-3 rounded-full border border-coal/20 shadow-sm hover:bg-smoked/40 active:scale-[0.98] transition disabled:opacity-60'
   const campo = 'w-full bg-white border border-coal/15 rounded-xl px-3 py-2.5 font-body text-sm text-coal focus:outline-none focus:border-cherry'
 
@@ -69,6 +68,10 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
         <button onClick={() => social('google', loginGoogle)} disabled={!!busy} className={botonMarca}>
           <LogoGoogle />
           {busy === 'google' ? 'Conectando…' : 'Continuar con Google'}
+        </button>
+        <button onClick={() => social('apple', loginApple)} disabled={!!busy} className={botonMarca}>
+          <LogoApple />
+          {busy === 'apple' ? 'Conectando…' : 'Continuar con Apple'}
         </button>
         <button onClick={() => social('microsoft', loginMicrosoft)} disabled={!!busy} className={botonMarca}>
           <LogoMicrosoft />
