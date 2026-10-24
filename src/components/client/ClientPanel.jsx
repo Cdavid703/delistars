@@ -9,6 +9,7 @@ import {
   enablePush, pushPermission,
 } from '../../services/firebase'
 import { llamarPedidos, ErrorApi, nuevaClave } from '../../services/pedidosApi'
+import { campanaParaPedido } from '../../utils/campana'
 import { etapaDe } from '../../utils/etapas'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
@@ -1533,6 +1534,8 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           ...(codigoAplicado ? { codigo: codigoAplicado } : {}),
           ...(redeemCount > 0 ? { premios: redeemCount } : {}),
           usarSaldo:    conSaldo,
+          // Campaña de Mercadeo abierta en las últimas 24 h (§17.4).
+          ...(campanaParaPedido() ? { campana: campanaParaPedido() } : {}),
         },
         // Pago adelantado: se registra en cuanto el pedido existe (el comprobante
         // va a la carpeta del pedido, que el servidor crea).

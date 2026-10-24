@@ -23,19 +23,19 @@ test('cuenta clientes con correo y los que aceptan, por segmento', () => {
   assert.equal(r.clientes, 4)
   assert.equal(r.conCorreo, 3)
   assert.equal(r.aceptan, 1)
-  assert.deepEqual(r.segmentos.todos, { clientes: 3, aceptan: 1 })
-  assert.deepEqual(r.segmentos.santa_lucia, { clientes: 1, aceptan: 1 })
-  assert.deepEqual(r.segmentos.santa_teresita, { clientes: 2, aceptan: 0 })
-  assert.deepEqual(r.segmentos.inactivos30, { clientes: 1, aceptan: 0 })
-  assert.deepEqual(r.segmentos.frecuentes, { clientes: 1, aceptan: 1 })
-  assert.deepEqual(r.segmentos.nuevos, { clientes: 2, aceptan: 0 })
-  assert.deepEqual(r.segmentos.cercaPremio, { clientes: 1, aceptan: 1 })
+  assert.deepEqual(r.segmentos.todos, { clientes: 3, aceptan: 1, notificables: 0 })
+  assert.deepEqual(r.segmentos.santa_lucia, { clientes: 1, aceptan: 1, notificables: 0 })
+  assert.deepEqual(r.segmentos.santa_teresita, { clientes: 2, aceptan: 0, notificables: 0 })
+  assert.deepEqual(r.segmentos.inactivos30, { clientes: 1, aceptan: 0, notificables: 0 })
+  assert.deepEqual(r.segmentos.frecuentes, { clientes: 1, aceptan: 1, notificables: 0 })
+  assert.deepEqual(r.segmentos.nuevos, { clientes: 2, aceptan: 0, notificables: 0 })
+  assert.deepEqual(r.segmentos.cercaPremio, { clientes: 1, aceptan: 1, notificables: 0 })
 })
 
 test('sin datos, todos los segmentos existen en cero', () => {
   const r = calcularAudiencia([], [], AHORA)
   assert.equal(Object.keys(r.segmentos).length, 7)
-  assert.deepEqual(r.segmentos.frecuentes, { clientes: 0, aceptan: 0 })
+  assert.deepEqual(r.segmentos.frecuentes, { clientes: 0, aceptan: 0, notificables: 0 })
 })
 
 const { destinatarios } = require('./audiencia')
@@ -57,4 +57,25 @@ test('destinatarios: solo los que aceptan, del segmento, sin bajas y sin correos
 test('la audiencia tampoco cuenta como "aceptan" a quien se dio de baja', () => {
   const clientes = [{ uid: 'a', email: 'a@x.com', promociones: { acepta: true } }]
   assert.equal(calcularAudiencia(clientes, [], AHORA, new Set(['a'])).aceptan, 0)
+})
+
+test('notificables: aceptan y tienen aparato; la promoción por notificación respeta la sede habitual', () => {
+  const { calcularAudiencia, destinatariosPush } = require('./audiencia')
+  const clientes = [
+    { uid: 'a', email: 'a@x.co', promociones: { acepta: true } },
+    { uid: 'b', promociones: { acepta: true } },              // sin correo, con aparato
+    { uid: 'c', email: 'c@x.co', promociones: { acepta: false } },
+    { uid: 'd', email: 'd@x.co', promociones: { acepta: true } }, // sin aparato
+  ]
+  const pedidos = [
+    { clientUid: 'a', status: 'completed', sedeId: 'santa_lucia', createdAtMs: AHORA - 1000 },
+    { clientUid: 'b', status: 'completed', sedeId: 'santa_teresita', createdAtMs: AHORA - 1000 },
+  ]
+  const aparatos = new Set(['a', 'b', 'c'])
+  const aud = calcularAudiencia(clientes, pedidos, AHORA, new Set(), aparatos)
+  assert.equal(aud.notificables, 2)
+  assert.equal(aud.segmentos.todos.notificables, 2)
+  assert.equal(aud.segmentos.santa_lucia.notificables, 1)
+  assert.deepEqual(destinatariosPush('todos', clientes, pedidos, AHORA, new Set(), aparatos, 'santa_lucia').map((c) => c.uid), ['a'])
+  assert.deepEqual(destinatariosPush('todos', clientes, pedidos, AHORA, new Set(['b']), aparatos, '').map((c) => c.uid), ['a'])
 })

@@ -8,7 +8,8 @@ const { getAuth, signInWithEmailAndPassword } = require('firebase/auth')
 const { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } = require('firebase/firestore')
 const cron = require('node-cron')
 const { revisarPrecio, mensajeDescuadre } = require('./verificarDomicilio')
-const { calcularAudiencia, destinatarios } = require('./audiencia')
+const { calcularAudiencia, destinatarios, destinatariosPush } = require('./audiencia')
+const promos = require('./promos')
 const { armarCorreo } = require('./correoCampana')
 const nodemailer = require('nodemailer')
 const MailComposer = require('nodemailer/lib/mail-composer')
@@ -137,7 +138,7 @@ async function updateAudiencia() {
   try {
     const desde = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
     const [cs, ps] = await Promise.all([
-      adminDb.collection('customers').select('email', 'promociones', 'loyalty').get(),
+      adminDb.collection('customers').select('email', 'promociones', 'loyalty', 'fcmTokens').get(),
       adminDb.collection('orders').where('createdAt', '>=', desde).select('clientUid', 'status', 'sedeId', 'createdAt').get(),
     ])
     const clientes = cs.docs.map((d) => ({ uid: d.id, ...d.data() }))
@@ -145,7 +146,7 @@ async function updateAudiencia() {
       const o = d.data()
       return { clientUid: o.clientUid, status: o.status, sedeId: o.sedeId, createdAtMs: o.createdAt?.toMillis?.() || 0 }
     })
-    const aud = calcularAudiencia(clientes, pedidos, Date.now(), await bajasMercadeo())
+    const aud = calcularAudiencia(clientes, pedidos, Date.now(), await bajasMercadeo(), await aparatosDeClientes(clientes))
     await setDoc(doc(db, 'config', 'mercadeo_audiencia'), { ...aud, actualizado: serverTimestamp() })
     console.log(`[scheduler] audiencia mercadeo: ${aud.conCorreo} con correo, ${aud.aceptan} aceptan`)
   } catch (err) {
@@ -254,8 +255,11 @@ async function enviarCampana(id, c) {
   await actualizarCampana(id, { 'envio.estado': 'enviando', 'envio.total': ya.size + lista.length, 'envio.error': null })
   let enviados = ya.size
   let fallidos = c.envio?.fallidos || 0
+  let porCupo = 0
   const enviadosUids = [...ya]
   for (const cliente of lista) {
+    // Una promoción cada 24 h por cuenta, sumando correo y notificaciones (§17.3).
+    if (!(await tomarCupo(cliente.uid, id, 'correo'))) { porCupo++; continue }
     try {
       await smtp().sendMail(armarCorreo(c, cliente, clave))
       enviados++
@@ -275,6 +279,7 @@ async function enviarCampana(id, c) {
   }
   await actualizarCampana(id, {
     estado: 'enviada', 'envio.estado': 'enviada', 'envio.enviados': enviados, 'envio.fallidos': fallidos,
+    'envio.omitidosPorCupo': porCupo,
     'envio.enviadosUids': enviadosUids, 'envio.enviadaAt': serverTimestamp(),
     // Historial: una campaña se puede enviar varias veces.
     'envio.historial': arrayUnion({
@@ -302,6 +307,127 @@ function watchCampanas() {
       }
     }, (err) => console.error('[scheduler] watch campañas error:', err?.message || err))
   console.log(`[scheduler] envío de campañas activo (${SMTP_LISTO ? 'SMTP listo' : 'SMTP pendiente de SMTP_USER/SMTP_PASS'})`)
+}
+
+// ─── Promociones por notificación (Fase 7, especificación §17) ──────────────
+// Mercadeo programa la campaña (canal notificación, vigencia, destino) y aquí:
+//  1. al empezar la vigencia, la audiencia que aceptó promociones y tiene un
+//     aparato queda en promo_cola/{campana}_{uid};
+//  2. cada minuto se despacha: una promoción cada 24 h por cuenta (promo_cupo),
+//     la que vence antes primero, revisando vigencia, pausa y consentimiento
+//     justo antes de enviar. Lo vencido se marca y no se envía.
+// Todo queda contado en campanas/{id}.metricas (sin datos personales).
+const COLA = 'promo_cola'
+const contar = (id, campos) => adminDb.doc(`campanas/${id}`).update(
+  Object.fromEntries(Object.entries(campos).map(([k, v]) => [`metricas.${k}`, FieldValue.increment(v)]))).catch(() => {})
+
+/** Cuentas con un aparato para notificaciones (app: dispositivos/{uid}/tokens; navegador: fcmTokens). */
+async function aparatosDeClientes(clientes) {
+  const set = new Set(clientes.filter((c) => (c.fcmTokens || []).length).map((c) => c.uid))
+  const tk = await adminDb.collectionGroup('tokens').select().get().catch(() => null)
+  for (const d of tk?.docs || []) {
+    const destino = d.ref.parent.parent
+    if (destino?.parent?.id === 'dispositivos') set.add(destino.id)
+  }
+  return set
+}
+
+/** Reserva el cupo de 24 h de una cuenta (transacción: dos envíos a la vez no lo duplican). */
+async function tomarCupo(uid, campanaId, canal) {
+  const ref = adminDb.doc(`promo_cupo/${uid}`)
+  return adminDb.runTransaction(async (tx) => {
+    const c = await tx.get(ref)
+    if (!promos.cupoLibre(c.exists ? c.data().ultimaAt : null)) return false
+    tx.set(ref, { ultimaAt: Date.now(), campanaId, canal })
+    return true
+  }).catch(() => false)
+}
+
+async function pushPromo(uid, c, campanaId) {
+  const url = promos.enlaceDestino(c, campanaId)
+  const msg = { title: String(c.push?.titulo || '').slice(0, 65), body: String(c.push?.texto || '').slice(0, 180) }
+  await pushApp(uid, msg, url)
+  const cust = await adminDb.doc(`customers/${uid}`).get()
+  const tokens = cust.exists ? (cust.data().fcmTokens || []) : []
+  if (tokens.length) {
+    await getMessaging().sendEachForMulticast({
+      tokens, notification: msg, data: { url, campanaId }, webpush: { fcmOptions: { link: url } },
+    }).catch((err) => console.error('[scheduler] push promo web:', err?.message || err))
+  }
+}
+
+async function encolarCampana(id, c) {
+  const bajas = await bajasMercadeo()
+  if (!bajas) return // sin la lista de bajas no se encola (se reintenta en un minuto)
+  const desde = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+  const [cs, ps] = await Promise.all([
+    adminDb.collection('customers').select('email', 'promociones', 'loyalty', 'fcmTokens').get(),
+    adminDb.collection('orders').where('createdAt', '>=', desde).select('clientUid', 'status', 'sedeId', 'createdAt').get(),
+  ])
+  const clientes = cs.docs.map((d) => ({ uid: d.id, ...d.data() }))
+  const pedidos = ps.docs.map((d) => { const o = d.data(); return { clientUid: o.clientUid, status: o.status, sedeId: o.sedeId, createdAtMs: o.createdAt?.toMillis?.() || 0 } })
+  const lista = destinatariosPush(c.segmento || 'todos', clientes, pedidos, Date.now(), bajas, await aparatosDeClientes(clientes), c.sedeId || '')
+  for (let i = 0; i < lista.length; i += 400) {
+    const batch = adminDb.batch()
+    for (const x of lista.slice(i, i + 400)) {
+      batch.set(adminDb.doc(`${COLA}/${id}_${x.uid}`), { campanaId: id, uid: x.uid, sedeId: c.sedeId || null, finAt: promos.ms(c.vigencia?.fin), creadoAt: Date.now(), estado: 'en_cola', motivo: null })
+    }
+    await batch.commit()
+  }
+  await adminDb.doc(`campanas/${id}`).update({ 'cola.encolada': true, 'cola.encoladaAt': Date.now(), 'cola.total': lista.length, 'metricas.enCola': lista.length })
+  console.log(`[scheduler] campaña ${id}: ${lista.length} en cola de notificación`)
+}
+
+let despachando = false
+async function procesarPromos() {
+  if (despachando || !adminDb) return
+  despachando = true
+  try {
+    const ahora = Date.now()
+    // 1) Encolar las campañas que empezaron.
+    const prog = await adminDb.collection('campanas').where('programada', '==', true).get()
+    const campanas = Object.fromEntries(prog.docs.map((d) => [d.id, d.data()]))
+    for (const [id, c] of Object.entries(campanas)) {
+      if (promos.pushActiva(c, ahora) && !c.cola?.encolada) await encolarCampana(id, c)
+    }
+    // 2) Despachar la cola.
+    const cola = await adminDb.collection(COLA).where('estado', '==', 'en_cola').limit(3000).get()
+    if (cola.empty) return
+    for (const d of cola.docs) {
+      const cid = d.data().campanaId
+      if (!(cid in campanas)) { const x = await adminDb.doc(`campanas/${cid}`).get(); campanas[cid] = x.exists ? x.data() : null }
+    }
+    const bajas = await bajasMercadeo()
+    if (!bajas) return
+    const porCuenta = new Map()
+    for (const d of cola.docs) porCuenta.set(d.data().uid, [...(porCuenta.get(d.data().uid) || []), { ref: d.ref, ...d.data() }])
+    for (const [uid, items] of porCuenta) {
+      // Vencidas (o campaña borrada): no se envían por estar en cola.
+      for (const it of items.filter((x) => promos.vencida(campanas[x.campanaId], ahora))) {
+        await it.ref.update({ estado: 'expirada', motivo: campanas[it.campanaId] ? 'vencio' : 'campana_borrada', cerradaAt: ahora })
+        await contar(it.campanaId, { enCola: -1, expirados: 1 })
+      }
+      const vivos = items.filter((x) => !promos.vencida(campanas[x.campanaId], ahora))
+      const sig = promos.siguiente(vivos, campanas, ahora)
+      if (!sig) continue // pausadas o sin empezar: siguen esperando
+      const cust = await adminDb.doc(`customers/${uid}`).get()
+      if (cust.data()?.promociones?.acepta !== true || bajas.has(uid)) {
+        for (const it of vivos) { await it.ref.update({ estado: 'omitida', motivo: 'sin_consentimiento', cerradaAt: ahora }); await contar(it.campanaId, { enCola: -1, omitidos: 1 }) }
+        continue
+      }
+      if (!(await tomarCupo(uid, sig.campanaId, 'notificacion'))) {
+        if (sig.motivo !== 'esperando_cupo') await sig.ref.update({ motivo: 'esperando_cupo' })
+        continue
+      }
+      await pushPromo(uid, campanas[sig.campanaId], sig.campanaId)
+      await sig.ref.update({ estado: 'enviada', motivo: null, enviadaAt: ahora })
+      await contar(sig.campanaId, { enCola: -1, enviados: 1 })
+    }
+  } catch (err) {
+    console.error('[scheduler] promociones:', err?.message || err)
+  } finally {
+    despachando = false
+  }
 }
 
 // ─── Indicadores agregados para Mercadeo ─────────────────────────────────────
@@ -1186,6 +1312,8 @@ async function main() {
       cron.schedule('0 10 * * *', avisarMercadeoDelDia, { timezone: TIMEZONE })
       // Campañas de correo: envía cuando Mercadeo lo pide desde el panel.
       try { watchCampanas() } catch (err) { console.error('[scheduler] envío de campañas deshabilitado:', err?.message || err) }
+      // Promociones por notificación: encolar y despachar cada minuto (§17.3).
+      cron.schedule('* * * * *', procesarPromos, { timezone: TIMEZONE })
       // Indicadores de Mercadeo: 120 días al arrancar, luego hoy y ayer cada 30 min.
       cron.schedule('*/30 * * * *', () => updateIndicadores(2), { timezone: TIMEZONE })
       updateIndicadores(120)

@@ -6,6 +6,7 @@ import RoleChoicePage       from './pages/RoleChoicePage'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
 import AvisoVersion         from './components/common/AvisoVersion'
 import { ROLES, SEDES } from './services/roles'
+import { recordarCampanaDeUrl } from './utils/campana'
 
 // Cada panel de rol se carga por separado: un cliente no descarga el código del
 // cajero ni del domiciliario (y viceversa), aligerando la carga inicial.
@@ -17,6 +18,10 @@ const SeguirConCodigo = lazy(() => import('./pages/SeguirConCodigo'))
 // ?codigo=K7QM-4ZP9 (o ?codigo vacío): seguir un pedido de caja con su código
 // privado, con o sin cuenta (Fase 4, P-16).
 const codigoEnUrl = new URLSearchParams(window.location.search).get('codigo')
+
+// ?campana=<id> (notificación de Mercadeo con destino «Mis premios»): se
+// cuenta la apertura y se recuerda 24 h para atribuir el pedido (§17.4).
+recordarCampanaDeUrl()
 
 function LoadingScreen() {
   return (

@@ -51,23 +51,32 @@ function segmentosDe(c, r, ahoraMs = Date.now()) {
  * pedidos:  [{ clientUid, status, sedeId, createdAtMs }]
  * bajas:    Set de uids que se dieron de baja desde un correo
  */
-function calcularAudiencia(clientes, pedidos, ahoraMs = Date.now(), bajas = new Set()) {
+function calcularAudiencia(clientes, pedidos, ahoraMs = Date.now(), bajas = new Set(), conAparato = new Set()) {
   const resumen = resumenPorCliente(pedidos)
-  const segmentos = Object.fromEntries(SEGMENTOS.map((id) => [id, { clientes: 0, aceptan: 0 }]))
+  const segmentos = Object.fromEntries(SEGMENTOS.map((id) => [id, { clientes: 0, aceptan: 0, notificables: 0 }]))
   let conCorreo = 0
   let aceptan = 0
+  let notificables = 0
   for (const c of clientes) {
+    // Notificación (app o navegador): aceptó promociones y tiene un aparato.
+    if (acepta(c, bajas) && conAparato.has(c.uid)) {
+      notificables++
+      for (const id of segmentosDe(c, resumen.get(c.uid), ahoraMs)) {
+        const s = segmentos[id] || (segmentos[id] = { clientes: 0, aceptan: 0, notificables: 0 })
+        s.notificables++
+      }
+    }
     if (!c.email) continue
     conCorreo++
     const si = acepta(c, bajas)
     if (si) aceptan++
     for (const id of segmentosDe(c, resumen.get(c.uid), ahoraMs)) {
-      const s = segmentos[id] || (segmentos[id] = { clientes: 0, aceptan: 0 })
+      const s = segmentos[id] || (segmentos[id] = { clientes: 0, aceptan: 0, notificables: 0 })
       s.clientes++
       if (si) s.aceptan++
     }
   }
-  return { clientes: clientes.length, conCorreo, aceptan, segmentos }
+  return { clientes: clientes.length, conCorreo, aceptan, notificables, segmentos }
 }
 
 /** Clientes a los que se les puede enviar una campaña de ese segmento. */
@@ -83,4 +92,21 @@ function destinatarios(segmento, clientes, pedidos, ahoraMs = Date.now(), bajas 
   })
 }
 
-module.exports = { calcularAudiencia, destinatarios, segmentosDe, SEGMENTOS }
+/**
+ * Cuentas a las que se les puede mandar una promoción por notificación: aceptó
+ * promociones, está en el segmento, tiene un aparato y, si la campaña es de una
+ * sede, esa es su sede habitual (o aún no tiene pedidos). La unidad es la
+ * cuenta, no el aparato.
+ */
+function destinatariosPush(segmento, clientes, pedidos, ahoraMs = Date.now(), bajas = new Set(), conAparato = new Set(), sedeId = '') {
+  const resumen = resumenPorCliente(pedidos)
+  return clientes.filter((c) => {
+    if (!acepta(c, bajas) || !conAparato.has(c.uid)) return false
+    const seg = segmentosDe(c, resumen.get(c.uid), ahoraMs)
+    if (!seg.includes(segmento)) return false
+    if (sedeId && resumen.get(c.uid) && !seg.includes(sedeId)) return false
+    return true
+  })
+}
+
+module.exports = { calcularAudiencia, destinatarios, destinatariosPush, segmentosDe, SEGMENTOS }
