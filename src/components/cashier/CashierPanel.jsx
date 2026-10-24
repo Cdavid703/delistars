@@ -616,7 +616,7 @@ export default function CashierPanel() {
       <div className="flex border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-3`}>
+            className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-2`}>
             {t.label}
             {t.id === 'reclamos' && reclamosAbiertos > 0 && (
               <span key={reclamosAbiertos} className="ml-1 bg-tangelo text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop">{reclamosAbiertos}</span>
