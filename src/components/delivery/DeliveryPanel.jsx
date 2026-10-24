@@ -30,6 +30,7 @@ import BotonSilencio from '../common/BotonSilencio'
 import BotonPushEquipo from '../common/BotonPushEquipo'
 import TurnoDomiciliario from './TurnoDomiciliario'
 import CampanaAvisos from '../common/CampanaAvisos'
+import ChatDomiciliario from '../common/ChatDomiciliario'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -1179,11 +1180,15 @@ function DriverOrderDetail({ order, onClose }) {
               domiciliario salga sabiendo cuánto cambio llevar. */}
           <CashChangeNotice order={order} />
 
-          {/* Comments */}
+          {/* Chat con el cliente (§8.3): solo ustedes dos lo ven */}
+          <ChatDomiciliario order={order} rol="driver" />
+
+          {/* Notas internas con la caja (no las ve el cliente) */}
           <div className="card border border-coal/10 flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <MessageSquare size={15} className="text-tangelo" />
-              <p className="font-display text-sm tracking-wide text-coal">Comentarios del pedido</p>
+              <MessageSquare size={15} className="text-tangelo" aria-hidden="true" />
+              <p className="font-display text-sm tracking-wide text-coal">Notas con la caja</p>
+              <span className="ml-auto font-body text-[10px] uppercase tracking-wider text-coal/45">El cliente no las ve</span>
             </div>
 
             {/* Existing comments */}

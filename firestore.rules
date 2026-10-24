@@ -248,6 +248,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ── Chat cliente ↔ domiciliario (Fase 7, especificación §8.3) ──────────
+    // orders/{id}/chat_domiciliario/{mensaje}: lo leen el cliente del pedido, el
+    // domiciliario que lo tiene asignado y administración (para reclamos). La
+    // caja NO: ese chat es entre quien entrega y quien recibe. Los mensajes los
+    // escribe solo el servidor (POST /api/v1/pedidos/:id/mensajes), que revisa
+    // quién habla y que el chat siga abierto (hasta 3 h después de la entrega).
+    match /orders/{orderId}/chat_domiciliario/{mensajeId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && get(/databases/$(database)/documents/orders/$(orderId)).data.clientUid == request.auth.uid)
+                  || (isDriver() && get(/databases/$(database)/documents/orders/$(orderId)).data.driverEmail == userEmail());
+      allow write: if false;
+    }
+
     // ── Config de la app (config/client_platform, config/eta_stats) ────────
     // Horarios (config/horarios): administración define el horario semanal y las
     // excepciones; la caja solo puede tocar el modo manual de cada sede (abrir o

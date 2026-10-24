@@ -16,6 +16,7 @@ import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
 import { candidatoPara, cargaDe } from './domiciliarios.service';
 import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
 import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar } from '../reglas/cambios';
+import { validarMensaje } from '../reglas/chat';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -379,6 +380,29 @@ export async function agregarProducto(u: Usuario, id: string, b: any) {
     });
     return { id, agregado: t };
   });
+}
+
+/**
+ * Mensaje en uno de los dos chats del pedido (§8.3). El canal 'caja' sigue en
+ * `clientMessages` (la forma que ya lee la app); el canal 'domiciliario' va a la
+ * subcolección `chat_domiciliario`, que la caja no puede leer. Las reglas de
+ * quién escribe y hasta cuándo están en reglas/chat.ts.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function enviarMensaje(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+  const p = snap.data() as PedidoDoc;
+  const { canal, mensaje } = validarMensaje(p, u, b?.canal, b?.texto);
+  const ahora = FieldValue.serverTimestamp();
+  if (canal === 'caja') {
+    await ref.update({ clientMessages: FieldValue.arrayUnion(mensaje), updatedAt: ahora });
+  } else {
+    await ref.collection('chat_domiciliario').add({ ...mensaje, at: ahora });
+  }
+  return { id, canal, mensaje };
 }
 
 /**

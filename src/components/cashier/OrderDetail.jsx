@@ -6,6 +6,7 @@ import {
 } from '../../services/firebase'
 import { devolucionInicial, aplicarSaldo } from '../../utils/devolucion'
 import ClientChat from './ClientChat'
+import ChatDomiciliario from '../common/ChatDomiciliario'
 import CodigoPrivado from './CodigoPrivado'
 import CashChangeNotice from '../common/CashChangeNotice'
 import { useAuth } from '../../contexts/AuthContext'
@@ -848,6 +849,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               justo debajo de sus datos para que el cajero pueda escribirle sin
               tener que cotizar primero ni bajar hasta el fondo del detalle. */}
           <ClientChat order={order} unreadCount={unreadClientMsgs} />
+          {/* El chat cliente ↔ domiciliario (§8.3) no es de la caja; administración
+              lo puede leer para resolver reclamos. */}
+          {esAdmin && order.driverEmail && order.deliveryMode !== 'pickup' && (
+            <ChatDomiciliario order={order} rol="admin" soloLectura />
+          )}
 
           {/* Recoger en sede — sin dirección de entrega */}
           {pickup && (

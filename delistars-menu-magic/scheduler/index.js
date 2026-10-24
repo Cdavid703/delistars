@@ -898,6 +898,46 @@ function watchOrdersForPush() {
   console.log('[scheduler] push FCM activo (vigilando cambios de estado de pedidos)')
 }
 
+// ─── Chat cliente ↔ domiciliario (Fase 7, §8.3) ─────────────────────────────
+// Vive en orders/{id}/chat_domiciliario, así que el vigía de pedidos no lo ve.
+// Cada mensaje nuevo le avisa al otro lado: del domiciliario al cliente (centro
+// de avisos + push a la app y a la web), del cliente al domiciliario asignado.
+function watchChatDomiciliario() {
+  let baseline = true
+  adminDb.collectionGroup('chat_domiciliario').orderBy('ts', 'desc').limit(200)
+    .onSnapshot(async (snap) => {
+      if (baseline) { baseline = false; return }
+      for (const chg of snap.docChanges()) {
+        if (chg.type !== 'added') continue
+        const m = chg.doc.data()
+        const pedidoRef = chg.doc.ref.parent.parent
+        if (!pedidoRef) continue
+        try {
+          const o = (await pedidoRef.get()).data()
+          if (!o) continue
+          const id = pedidoRef.id
+          const n = o.orderNumber ? ` #${o.orderNumber}` : ''
+          const texto = String(m.text || '').trim()
+          const body = texto.length > 120 ? `${texto.slice(0, 117)}…` : texto
+          if (m.role === 'driver' && o.clientUid) {
+            const msg = { title: `💬 Mensaje de tu domiciliario${n}`, body: body || `${m.name || 'Tu domiciliario'} te escribió.`, tipo: 'mensaje' }
+            const url = enlacePedido(id)
+            if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'msgdomi', chg.doc.id), { ...msg, pedidoId: id, url })) {
+              await pushApp(o.clientUid, msg, url)
+              await pushWebCliente(o.clientUid, msg, id, `mensaje del domiciliario`)
+            }
+          } else if (m.role === 'client' && o.driverEmail) {
+            await sendPushForStaff(id, o, {
+              rol: 'driver', soloA: o.driverEmail, clave: `msgcli-${chg.doc.id}`, tipo: 'mensaje',
+              title: `💬 Mensaje del cliente${n}`, body: body || `${o.name || 'El cliente'} te escribió en el chat.`,
+            })
+          }
+        } catch (e) { console.error('[scheduler] aviso chat domiciliario error:', e?.message || e) }
+      }
+    }, (err) => console.error('[scheduler] watch chat domiciliario error:', err?.message || err))
+  console.log('[scheduler] avisos del chat cliente ↔ domiciliario activos')
+}
+
 // ─── Devoluciones: aviso al celular de la caja ──────────────────────────────
 // Elegir la devolución no cambia el estado del pedido (sigue rechazado o
 // cancelado), así que watchOrdersForPush no lo ve. Además ese vigía solo mira
@@ -990,6 +1030,8 @@ async function main() {
       // Notificaciones push al cliente (usa la misma SA; requiere permiso FCM).
       try { watchOrdersForPush() }
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
+      try { watchChatDomiciliario() }
+      catch (err) { console.error('[scheduler] avisos del chat del domiciliario deshabilitados:', err?.message || err) }
       try { watchDevoluciones() }
       catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
       try { watchSolicitudesAcceso() }

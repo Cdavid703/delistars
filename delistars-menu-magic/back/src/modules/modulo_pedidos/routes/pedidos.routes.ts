@@ -3,7 +3,7 @@ import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia } from '../services/idempotencia.service';
-import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto } from '../services/pedidos.service';
+import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
@@ -237,6 +237,24 @@ router.post('/:id/cambio/responder', activa, requireUser, async (req: Request, r
  */
 router.post('/:id/agregar', activa, requireUser, async (req: Request, res: Response) => {
   try { res.json(await agregarProducto(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/mensajes:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: "Mensaje en un chat del pedido (§8.3): canal caja o domiciliario"
+ *     description: >
+ *       { canal: 'caja' | 'domiciliario', texto } → { id, canal, mensaje }.
+ *       caja: cliente ↔ caja (queda en clientMessages). domiciliario: cliente ↔ domiciliario asignado
+ *       (subcolección chat_domiciliario; la caja no la lee). Abierto hasta 3 h después de la entrega.
+ *       Errores: 422 canal | texto | largo, 409 rechazado | vencido | sin_domiciliario, 403 sin_permiso.
+ *     responses:
+ *       200: { description: "{ id, canal, mensaje: { role, name, text, ts } }" }
+ */
+router.post('/:id/mensajes', activa, requireUser, async (req: Request, res: Response) => {
+  try { res.json(await enviarMensaje(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
 });
 
 /**

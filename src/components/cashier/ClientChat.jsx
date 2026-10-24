@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
+import { conApi, ErrorApi } from '../../services/pedidosApi'
+import { motivoCerrado, textoCerrado } from '../../utils/chat'
 import { MessageSquare, Send } from 'lucide-react'
 
 // Chat cajero ↔ cliente de un pedido. Componente compartido para que esté
@@ -16,26 +18,29 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
   const [error, setError]     = useState('')
 
   const msgs = order.clientMessages || []
-  const cerrado = ['rejected', 'cancelled', 'completed'].includes(order.status)
+  const cerrado = motivoCerrado(order, 'caja')
 
   const send = async () => {
     if (!text.trim()) return
     setError('')
     setSending(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        clientMessages: arrayUnion({
-          role: 'cashier',
-          name: user?.displayName || user?.email || 'Cajero',
-          text: text.trim(),
-          ts:   Date.now(),
-        }),
-        updatedAt: serverTimestamp(),
-      })
+      // Por la API (§8.3): el servidor revisa que el chat siga abierto (hasta
+      // 3 h después de la entrega). Si la API no está, se escribe directo.
+      await conApi(`${order.id}/mensajes`, { canal: 'caja', texto: text.trim() }, () =>
+        updateDoc(doc(db, 'orders', order.id), {
+          clientMessages: arrayUnion({
+            role: 'cashier',
+            name: user?.displayName || user?.email || 'Cajero',
+            text: text.trim(),
+            ts:   Date.now(),
+          }),
+          updatedAt: serverTimestamp(),
+        }))
       setText('')
     } catch (err) {
       console.error('Error al enviar mensaje:', err)
-      setError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
+      setError(err instanceof ErrorApi ? err.message : 'No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSending(false) }
   }
 
@@ -68,7 +73,9 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
         </p>
       )}
 
-      {!cerrado && (
+      {cerrado ? (
+        <p className="font-body text-xs text-coal/45">{textoCerrado(cerrado, 'caja')}</p>
+      ) : (
         <div className="flex flex-col gap-1">
           <div className="flex gap-2">
             <textarea

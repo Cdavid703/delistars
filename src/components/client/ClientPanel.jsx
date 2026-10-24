@@ -50,6 +50,8 @@ import AccesoCuenta from '../common/AccesoCuenta'
 import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
 import MiCuenta from './MiCuenta'
 import CampanaAvisos from '../common/CampanaAvisos'
+import ChatDomiciliario from '../common/ChatDomiciliario'
+import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
 import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
@@ -2483,26 +2485,21 @@ function ClientOrderDetail({ order, onClose }) {
     } finally { setSendingBill(false) }
   }
 
+  // Por la API (§8.3): el servidor revisa que el chat siga abierto (hasta 3 h
+  // después de la entrega) y guarda el mensaje en clientMessages, como siempre.
   const sendClientMessage = async () => {
     if (!clientMsgText.trim()) return
     setChatError('')
     setSendingClientMsg(true)
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        clientMessages: arrayUnion({
-          role: 'client',
-          name: user?.displayName || 'Cliente',
-          text: clientMsgText.trim(),
-          ts:   Date.now(),
-        }),
-        updatedAt: serverTimestamp(),
-      })
+      await llamarPedidos(`${order.id}/mensajes`, { canal: 'caja', texto: clientMsgText.trim() })
       setClientMsgText('')
     } catch (err) {
       console.error('Error al enviar mensaje:', err)
-      setChatError('No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
+      setChatError(err instanceof ErrorApi ? err.message : 'No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSendingClientMsg(false) }
   }
+  const chatCajaCerrado = motivoCerrado(order, 'caja')
 
   const handleUploadReceipt = (e) => {
     const file = e.target.files?.[0]
@@ -3155,13 +3152,18 @@ function ClientOrderDetail({ order, onClose }) {
                 <p className="font-body text-xs text-coal/40">Puedes escribirle al cajero aquí si tienes alguna duda</p>
               )}
 
-              {!isDelivered && (
+              {chatCajaCerrado ? (
+                <p className="font-body text-xs text-coal/50 flex items-center gap-1.5">
+                  <Lock size={13} aria-hidden="true" /> {textoCerrado(chatCajaCerrado, 'caja')}
+                </p>
+              ) : (
                 <div className="flex flex-col gap-1">
                   <div className="flex gap-2">
                     <textarea
                       className="textarea-field flex-1 h-14 scroll-custom text-sm"
                       placeholder="Escríbele al cajero…"
                       value={clientMsgText}
+                      maxLength={MAX_TEXTO}
                       onChange={e => setClientMsgText(e.target.value)}
                     />
                     <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
@@ -3173,6 +3175,11 @@ function ClientOrderDetail({ order, onClose }) {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Chat con el domiciliario (§8.3): aparte del de la caja, y la caja no lo ve */}
+          {!['rejected','cancelled'].includes(order.status) && order.deliveryMode !== 'pickup' && (
+            <ChatDomiciliario order={order} rol="client" />
           )}
 
           {/* Agregar otro producto — mientras la caja no lo haya despachado */}
