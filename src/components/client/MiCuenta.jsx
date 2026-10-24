@@ -8,7 +8,7 @@ import {
 } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 import { mensajeAuth, esCancelacion } from '../../utils/erroresAuth'
-import { LogoGoogle, LogoMicrosoft } from '../common/LogosMarca'
+import { LogoGoogle, LogoMicrosoft, LogoApple } from '../common/LogosMarca'
 import { useAuth } from '../../contexts/AuthContext'
 
 // Mi cuenta (especificación §6.1 puntos 8, 10 y 11; Fase 4, paso 4): datos,
@@ -89,6 +89,7 @@ function Datos({ user, perfil }) {
 const ICONOS = {
   'google.com': <LogoGoogle />,
   'microsoft.com': <LogoMicrosoft />,
+  'apple.com': <LogoApple />,
   password: <Mail size={18} className="text-cherry" />,
 }
 

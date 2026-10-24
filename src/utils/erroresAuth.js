@@ -15,7 +15,8 @@ const MENSAJES = {
   'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos e intenta de nuevo.',
   'auth/network-request-failed': 'Sin conexión. Revisa tu internet e intenta de nuevo.',
   'auth/account-exists-with-different-credential':
-    'Ese correo ya tiene cuenta con otro método (Google, Microsoft o contraseña). Entra con ese método.',
+    'Ese correo ya tiene cuenta con otro método (Google, Apple, Microsoft o contraseña). Entra con ese método.',
+  'auth/operation-not-allowed': 'Esa forma de entrar todavía no está activa. Usa otra por ahora.',
   'auth/popup-blocked': 'El navegador bloqueó la ventana. Permite las ventanas emergentes e intenta de nuevo.',
   'auth/provider-already-linked': 'Esa forma de entrar ya está en tu cuenta.',
   'auth/ultimo-metodo': 'Necesitas al menos una forma de entrar: agrega otra antes de quitar esta.',

@@ -51,6 +51,18 @@ export const microsoftProvider = new OAuthProvider('microsoft.com')
 microsoftProvider.setCustomParameters({ prompt: 'select_account' })
 export const loginMicrosoft = () => entrarCon(microsoftProvider)
 
+// Apple (especificación §6.1). Apple entrega el nombre solo la primera vez y
+// puede esconder el correo real («Ocultar mi correo»): lo que falte se pide
+// después en «Completa tus datos».
+export const appleProvider = new OAuthProvider('apple.com')
+appleProvider.addScope('email')
+appleProvider.addScope('name')
+appleProvider.setCustomParameters({ locale: 'es_CO' })
+export const loginApple = () => entrarCon(appleProvider)
+
+const PROVEEDOR_DE = { 'microsoft.com': microsoftProvider, 'apple.com': appleProvider }
+const proveedorDe = (id) => PROVEEDOR_DE[id] || provider
+
 async function entrarCon(proveedor) {
   const actual = auth.currentUser
   if (actual?.isAnonymous) {
@@ -115,11 +127,12 @@ export async function correoVerificado() {
 
 // ─── Mi cuenta: formas de entrar (especificación §6.1 punto 8, Fase 4) ──────
 // Se vincula estando ya dentro de la cuenta: el método nuevo se prueba en su
-// propia ventana (Google, Microsoft) o con la contraseña nueva. Nunca se
+// propia ventana (Google, Microsoft, Apple) o con la contraseña nueva. Nunca se
 // fusionan dos cuentas por tener el mismo correo.
 export const PROVEEDORES = {
   'google.com':    { nombre: 'Google' },
   'microsoft.com': { nombre: 'Microsoft' },
+  'apple.com':     { nombre: 'Apple' },
   password:        { nombre: 'Correo y contraseña' },
 }
 export const metodosDe = (user) => (user?.providerData || []).map(p => p.providerId).filter(id => PROVEEDORES[id])
@@ -127,7 +140,7 @@ export const metodosDe = (user) => (user?.providerData || []).map(p => p.provide
 export async function vincularMetodo(providerId) {
   const actual = auth.currentUser
   if (!actual) throw Object.assign(new Error('sin sesión'), { code: 'auth/no-current-user' })
-  await linkWithPopup(actual, providerId === 'microsoft.com' ? microsoftProvider : provider)
+  await linkWithPopup(actual, proveedorDe(providerId))
   await actual.reload()
 }
 
@@ -158,7 +171,7 @@ export async function confirmarIdentidad({ password, providerId } = {}) {
     await reauthenticateWithCredential(actual, EmailAuthProvider.credential(actual.email, password))
   } else {
     const id = providerId || metodos.find(m => m !== 'password')
-    await reauthenticateWithPopup(actual, id === 'microsoft.com' ? microsoftProvider : provider)
+    await reauthenticateWithPopup(actual, proveedorDe(id))
   }
   await actual.getIdToken(true)
 }
