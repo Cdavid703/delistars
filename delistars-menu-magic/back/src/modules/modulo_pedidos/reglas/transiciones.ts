@@ -110,7 +110,7 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
       const total = totalConocido(p);
       if (p.totalPrice == null && total != null) {
         // Saldo a favor: se descuenta y lo que sobre vuelve a la cuenta (el servicio crea ese saldo).
-        const s = Number(p.saldoAplicado?.monto) > 0 ? aplicarSaldo(total, Number(p.saldoAplicado.monto)) : null;
+        const s = Number(p.saldoAplicado?.monto) > 0 ? aplicarSaldo(total, Number(p.saldoAplicado.monto), p.saldoAplicado?.limite) : null;
         Object.assign(extras, {
           totalPrice: s ? s.aPagar : total,
           deliveryPrice: p.deliveryMode === 'pickup' ? 0 : Number(p.deliveryPrice) || 0,

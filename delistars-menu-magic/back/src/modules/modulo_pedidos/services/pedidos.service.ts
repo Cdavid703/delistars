@@ -9,7 +9,7 @@ import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
 import { planTransicion, esAhora, PedidoDoc, rolesDe } from '../reglas/transiciones';
 import { planPago } from '../reglas/pago';
 import { planCotizar, planAsignar, planAceptar, planCuadre, PlanCaja } from '../reglas/caja';
-import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, Premio, Credito } from '../reglas/beneficios';
+import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, limiteDeSaldo, Premio, Credito } from '../reglas/beneficios';
 import { SEDES, normalizarTelefono, coordsValidas } from '../reglas/sedes';
 import type { Usuario } from '../../../middlewares/require-user';
 import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
@@ -162,6 +162,7 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   };
 
   const beneficios = { premios: 0, saldo: null as null | { ids: string[]; monto: number } };
+  const limiteSaldo = limiteDeSaldo(b?.usarSaldo);
   let itemsGuardados = itemsTexto;
   const orderNumber = await db.runTransaction(async (tx) => {
     // Lecturas primero (regla de las transacciones): contador, premios y saldo.
@@ -195,7 +196,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
       items,
       ...(codigo ? { codigoPromo: codigo } : {}),
       ...(premioIds.length ? { loyaltyRedemption: { sedeId: sede.id, rewardIds: premioIds, count: premioIds.length } } : {}),
-      ...(saldo ? { saldoAplicado: { ids: saldo.ids, monto: saldo.monto } } : {}),
+      // Saldo por partes (§14.3): `limite` = cuánto eligió usar; sin él, todo lo posible.
+      ...(saldo ? { saldoAplicado: { ids: saldo.ids, monto: saldo.monto, ...(limiteSaldo != null ? { limite: limiteSaldo } : {}) } } : {}),
       orderNumber: num,
     });
     for (const id of premioIds) {
@@ -223,7 +225,7 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   }
 
   const bruto = domicilio.deliveryPrice != null || modo === 'pickup' ? subtotal + ((domicilio.deliveryPrice as number) || 0) : null;
-  const saldoCalc = bruto != null && beneficios.saldo ? aplicarSaldo(bruto, beneficios.saldo.monto) : null;
+  const saldoCalc = bruto != null && beneficios.saldo ? aplicarSaldo(bruto, beneficios.saldo.monto, limiteSaldo) : null;
   const totalCreado = saldoCalc ? saldoCalc.aPagar : bruto;
   const itemsFinal = itemsGuardados;
 

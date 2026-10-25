@@ -4,7 +4,7 @@
  * handleSubmit y services/firebase.js → redeemLoyaltyRewards / usarSaldo).
  */
 import { validarCodigo, CODIGOS } from '../../../shared/codigos';
-import { saldoDisponible, aplicarSaldo } from '../../../shared/devolucion';
+import { saldoDisponible, aplicarSaldo, limiteDeSaldo } from '../../../shared/devolucion';
 import { ErrorPedido } from './armado';
 
 /** Espejo de LOYALTY_REWARD en src/services/firebase.js. */
@@ -47,4 +47,4 @@ export function elegirSaldo(creditos: Credito[], sedeId: string, usar: unknown) 
   return { ids, monto };
 }
 
-export { aplicarSaldo };
+export { aplicarSaldo, limiteDeSaldo };

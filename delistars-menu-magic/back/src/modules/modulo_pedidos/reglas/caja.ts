@@ -44,7 +44,7 @@ export function planCotizar(p: PedidoDoc, u: Usuario, b: any, saldoReal: number 
   const qp = precio(b?.quotedPrice, 'Precio de productos');
   const dp = p.deliveryMode === 'pickup' ? 0 : precio(b?.deliveryPrice ?? 0, 'Precio del domicilio');
   const total = qp + dp;
-  const s = saldoReal != null ? { ...aplicarSaldo(total, saldoReal), disponible: saldoReal } : null;
+  const s = saldoReal != null ? { ...aplicarSaldo(total, saldoReal, p.saldoAplicado?.limite), disponible: saldoReal } : null;
   const aCobrar = s ? s.aPagar : total;
   const numero = typeof b?.orderNumber === 'string' && b.orderNumber.trim() ? b.orderNumber.trim().slice(0, 10) : null;
   const campos: Record<string, unknown> = {

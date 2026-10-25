@@ -67,10 +67,20 @@ export function saldoDisponible(creditos, sedeId) {
 /**
  * Aplica el saldo a un total. Si el saldo es mayor, lo que sobra vuelve a la
  * cuenta del cliente como un saldo nuevo (lo crea la caja al aceptar).
+ * `limite` (§14.3, saldo por partes): cuánto eligió usar el cliente; el resto
+ * del total lo paga con otro medio y lo no usado vuelve a su cuenta.
  */
-export function aplicarSaldo(total, saldo) {
+export function aplicarSaldo(total, saldo, limite) {
   const t = Math.max(0, Number(total) || 0)
   const s = Math.max(0, Number(saldo) || 0)
-  const usado = Math.min(t, s)
+  const tope = limite != null && Number.isFinite(Number(limite)) ? Math.max(0, Number(limite)) : Infinity
+  const usado = Math.min(t, s, tope)
   return { usado, aPagar: t - usado, sobrante: s - usado }
+}
+
+/** Lo que manda el cliente en `usarSaldo`: true (todo lo posible) o un monto entero; null si no usa. */
+export function limiteDeSaldo(usar) {
+  if (usar === true) return null
+  const n = Number(usar)
+  return Number.isInteger(n) && n > 0 ? n : null
 }

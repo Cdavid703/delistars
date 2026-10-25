@@ -10,7 +10,7 @@ import {
 } from '../../services/firebase'
 import { llamarPedidos, ErrorApi, nuevaClave } from '../../services/pedidosApi'
 import { campanaParaPedido } from '../../utils/campana'
-import { etapaDe, ETAPAS, EXCEPCIONES } from '../../utils/etapas'
+import { etapaDe, ETAPAS, EXCEPCIONES, terminado } from '../../utils/etapas'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
@@ -625,7 +625,8 @@ export default function ClientPanel() {
           <button onClick={exitCheckout} className="btn-icon"><X size={20} /></button>
         </div>
         <div className="p-5 max-w-lg mx-auto pb-16">
-          <ClientOrderForm user={user} sede={sede} perfil={perfil} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} onCambiarSede={selectSede} />
+          <ClientOrderForm user={user} sede={sede} perfil={perfil} onSubmit={handleCreateOrder} onCancel={exitCheckout} availableRewards={availableForSede} creditos={creditosSede} onCambiarSede={selectSede}
+            pedidosActivos={orders.filter(o => !terminado(o))} onVerPedido={(id) => { setShowForm(false); openOrderDetail(id) }} />
         </div>
       </div>
     )
@@ -1257,7 +1258,10 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
   )
 }
 
-function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
+function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede, pedidosActivos = [], onVerPedido }) {
+  // Ya tiene un pedido en curso (§7.2): se le avisa y confirma que este es otro
+  // pedido aparte. No se bloquea: puede ser una compra adicional a propósito.
+  const [preguntarAdicional, setPreguntarAdicional] = useState(false)
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
     (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
@@ -1364,9 +1368,13 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   const totalBruto = totalAPagar({ menuTotal, deliveryMode: form.deliveryMode, precioDomicilio: precioDom })
   // Saldo a favor: se usa por defecto; el cliente puede guardarlo.
   const [usarMiSaldo, setUsarMiSaldo] = useState(true)
+  // Saldo por partes (§14.3): '' = todo lo que alcance; un valor = solo eso, y
+  // la diferencia la paga con otro medio. Lo no usado sigue en su cuenta.
+  const [montoSaldo, setMontoSaldo] = useState('')
   const saldo = creditos.reduce((t, c) => t + (Number(c.monto) || 0), 0)
-  const conSaldo = usarMiSaldo && saldo > 0
-  const saldoCalc = aplicarSaldo(totalBruto, conSaldo ? saldo : 0)
+  const limiteSaldo = montoSaldo === '' ? null : Number(montoSaldo)
+  const conSaldo = usarMiSaldo && saldo > 0 && limiteSaldo !== 0
+  const saldoCalc = aplicarSaldo(totalBruto, conSaldo ? saldo : 0, conSaldo ? limiteSaldo : null)
   // Con pago adelantado el cliente paga el total ya descontado.
   const total = saldoCalc.aPagar
 
@@ -1487,7 +1495,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   }
 
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (adicionalConfirmado = false) => {
     const errs = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
@@ -1512,6 +1520,8 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       }))
     }
     if (errs.length) { setErrors(errs); return }
+    if (pedidosActivos.length && adicionalConfirmado !== true) { setPreguntarAdicional(true); return }
+    setPreguntarAdicional(false)
     setLoading(true)
     submittingRef.current = true
     try {
@@ -1536,7 +1546,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           items:        carritoApi.items,
           ...(codigoAplicado ? { codigo: codigoAplicado } : {}),
           ...(redeemCount > 0 ? { premios: redeemCount } : {}),
-          usarSaldo:    conSaldo,
+          usarSaldo:    conSaldo ? (limiteSaldo ?? true) : false,
           // Campaña de Mercadeo abierta en las últimas 24 h (§17.4).
           ...(campanaParaPedido() ? { campana: campanaParaPedido() } : {}),
         },
@@ -1892,13 +1902,29 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
             <input type="checkbox" checked={usarMiSaldo} onChange={e => setUsarMiSaldo(e.target.checked)} className="w-5 h-5 accent-[#2a9d7a]" />
             Usar mi saldo en este pedido
           </label>
+          {usarMiSaldo && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setMontoSaldo('')}
+                className={`rounded-full px-3 py-1.5 font-body text-xs font-semibold ${montoSaldo === '' ? 'bg-mint text-cream' : 'bg-white text-coal/70 border border-coal/15'}`}>
+                Todo lo que alcance
+              </button>
+              <label className="flex items-center gap-1.5 font-body text-xs text-coal/70">
+                Usar solo
+                <input inputMode="numeric" value={montoSaldo} placeholder="valor"
+                  onChange={e => setMontoSaldo(e.target.value.replace(/[^\d]/g, '').slice(0, 7))}
+                  className="input-field w-28 py-1.5 text-sm" aria-label="Cuánto saldo usar" />
+              </label>
+            </div>
+          )}
           {conSaldo && (
             <p className="font-body text-xs text-coal/70 mt-1.5 leading-relaxed">
               {pagoAhora
-                ? (saldoCalc.sobrante > 0
-                    ? <>Cubre todo el pedido y te quedan <strong>${saldoCalc.sobrante.toLocaleString('es-CO')}</strong> a favor.</>
-                    : <>Se descuentan <strong>${saldoCalc.usado.toLocaleString('es-CO')}</strong> del total.</>)
-                : 'Se descuenta cuando la caja te envíe la cotización.'}
+                ? (saldoCalc.aPagar === 0
+                    ? <>Cubre todo el pedido{saldoCalc.sobrante > 0 ? <> y te quedan <strong>${saldoCalc.sobrante.toLocaleString('es-CO')}</strong> a favor</> : ''}.</>
+                    : <>Usas <strong>${saldoCalc.usado.toLocaleString('es-CO')}</strong> de tu saldo y pagas <strong>${saldoCalc.aPagar.toLocaleString('es-CO')}</strong> con otro medio{saldoCalc.sobrante > 0 ? <>. Te quedan ${saldoCalc.sobrante.toLocaleString('es-CO')} a favor</> : ''}.</>)
+                : (limiteSaldo != null
+                    ? <>Se descuentan hasta <strong>${limiteSaldo.toLocaleString('es-CO')}</strong> cuando la sede te envíe la cotización.</>
+                    : 'Se descuenta cuando la sede te envíe la cotización.')}
             </p>
           )}
         </div>
@@ -1943,8 +1969,33 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       </div>
       )}
 
+      {preguntarAdicional && (
+        <div className="rounded-2xl border-2 border-tangelo bg-tangelo/10 p-4 flex flex-col gap-3" role="alertdialog" aria-live="polite">
+          <p className="font-display text-base tracking-wide text-coal">Ya tienes {pedidosActivos.length === 1 ? 'un pedido' : `${pedidosActivos.length} pedidos`} en curso</p>
+          <ul className="flex flex-col gap-1">
+            {pedidosActivos.slice(0, 3).map(o => {
+              const { etapa, excepcion } = etapaDe(o)
+              const lista = o.deliveryMode === 'pickup' ? ETAPAS.recoger : ETAPAS.domicilio
+              const texto = excepcion ? EXCEPCIONES[excepcion]?.texto : lista.find(e => e.id === etapa)?.texto
+              return (
+                <li key={o.id}>
+                  <button type="button" onClick={() => onVerPedido?.(o.id)} className="font-body text-sm text-coal/80 underline underline-offset-2">
+                    Pedido #{o.orderNumber || '—'} · {texto || 'En curso'} · {o.sedeName || ''}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="font-body text-sm text-coal/80">¿Este es un pedido aparte? Se prepara y se entrega por separado.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => handleSubmit(true)} disabled={loading} className="btn-primary">Sí, es otro pedido</button>
+            <button type="button" onClick={() => setPreguntarAdicional(false)} className="btn-secondary">No, volver</button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2 pt-2">
-        <button onClick={handleSubmit} disabled={loading} className="btn-primary w-full btn-lg">
+        <button onClick={() => handleSubmit()} disabled={loading} className="btn-primary w-full btn-lg">
           {subiendo !== null ? `Subiendo comprobante ${subiendo}%…`
             : loading ? 'Enviando…' : 'Enviar pedido'}
         </button>

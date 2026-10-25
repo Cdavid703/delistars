@@ -338,7 +338,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       let saldo = null
       if (order.saldoAplicado?.ids?.length) {
         const disponible = await saldoVerificado(order)
-        saldo = { ...aplicarSaldo(localTotal, disponible), disponible }
+        saldo = { ...aplicarSaldo(localTotal, disponible, order.saldoAplicado?.limite), disponible }
         if (saldo.sobrante > 0) {
           await crearSaldoSobrante(order, saldo.sobrante, user?.email)
         }
@@ -1398,7 +1398,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     <p className="font-body text-xs text-coal/80">
                       El cliente usa <strong>{fmt(order.saldoAplicado.monto)}</strong> de saldo a favor.
                       Se descuenta solo al enviar: cobrará{' '}
-                      <strong>{fmt(aplicarSaldo(localTotal, order.saldoAplicado.monto).aPagar)}</strong>.
+                      <strong>{fmt(aplicarSaldo(localTotal, order.saldoAplicado.monto, order.saldoAplicado?.limite).aPagar)}</strong>.
                     </p>
                   </div>
                 )}
