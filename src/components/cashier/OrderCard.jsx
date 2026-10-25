@@ -1,6 +1,7 @@
 import { Bike, Store, MessageCircle, Check, Receipt, Gift, CircleCheck, CircleX, AlertCircle, Plus, Banknote, Clock, Smartphone, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { etapaDe, ETAPAS } from '../../utils/etapas'
 import { minutosEnEtapa, DEMORA, porAsignar } from '../../utils/tableroCaja'
+import { LogoPago } from '../common/LogosApps'
 
 // Tarjeta de pedido de la caja. Se lee de un vistazo, de arriba abajo:
 //   1. número, etapa real y cuánto lleva en ella (se pone naranja/roja si se demora)
@@ -79,7 +80,7 @@ function Pago({ order }) {
   const Icono = p === 'Efectivo' ? Banknote : Smartphone
   return (
     <span className="inline-flex items-center gap-1 font-body text-xs text-coal/70">
-      <Icono size={13} className="text-coal/45" aria-hidden="true" /> {p}
+      {LogoPago({ medio: p, size: 14 }) || <Icono size={13} className="text-coal/45" aria-hidden="true" />} {p}
       {digital && order.deliveryMode !== 'pickup' && (order.transferValidated
         ? <ShieldCheck size={13} className="text-mint" aria-label="Transferencia verificada" />
         : <ShieldAlert size={13} className="text-tangelo" aria-label="Transferencia por verificar" />)}

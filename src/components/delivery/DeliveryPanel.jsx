@@ -13,10 +13,10 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   MapPin, Phone, User, ShoppingBag, Navigation,
-  ExternalLink, CheckCircle, LogOut, Bell,
+  CheckCircle, LogOut, Bell,
   DollarSign, Calculator, X, MessageSquare, BookOpen, MoreVertical,
   Search, ChevronDown, ChevronUp, HelpCircle,
-  Send, Radio, Route, Target, Gift, Check, Pencil, AlertTriangle, MessageCircle,
+  Send, Radio, Route, Target, Gift, Check, Pencil, AlertTriangle, 
   ClipboardList, Tag, Banknote, Calendar, Lightbulb, Bike, ChevronRight
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
@@ -33,6 +33,7 @@ import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import CuadresEfectivo from '../common/CuadresEfectivo'
 import { transferenciaPendiente } from '../../utils/cuadres'
+import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -667,10 +668,10 @@ function ReturnToSedeModal({ sedeId, onClose }) {
         <div className="p-5 flex flex-col gap-3 pb-8">
           <p className="font-body text-sm text-coal/60 text-center">¿Con qué app quieres navegar?</p>
           <button onClick={openMaps} className="btn-primary w-full btn-lg">
-            <Navigation size={18} /> Abrir en Google Maps
+            <span className="inline-flex rounded-md bg-white p-0.5"><LogoGoogleMaps size={18} /></span> Abrir en Google Maps
           </button>
           <button onClick={openWaze} className="btn-secondary w-full btn-lg">
-            <ExternalLink size={18} /> Abrir en Waze
+            <LogoWaze size={20} /> Abrir en Waze
           </button>
         </div>
       </div>
@@ -988,7 +989,7 @@ function DriverOrderDetail({ order, onClose }) {
                 return (
                   <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors">
-                    <MessageCircle size={15} aria-hidden="true" /> WhatsApp
+                    <LogoWhatsApp size={16} /> WhatsApp
                   </a>
                 )
               })()}
@@ -1022,8 +1023,8 @@ function DriverOrderDetail({ order, onClose }) {
                 </div>
 
                 <div className="flex gap-2 mb-2">
-                  <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><Navigation size={14} />Maps</button>
-                  <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><ExternalLink size={14} />Waze</button>
+                  <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><LogoGoogleMaps size={15} />Maps</button>
+                  <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><LogoWaze size={15} />Waze</button>
                 </div>
 
                 {/* Pedir la ubicación por WhatsApp + pegarla */}
@@ -1032,7 +1033,7 @@ function DriverOrderDetail({ order, onClose }) {
                     {order.phone && (
                       <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
                         className="btn w-full justify-center bg-[#25D366] text-white [@media(hover:hover)]:hover:brightness-95">
-                        <MapPin size={14} aria-hidden="true" /> Pedirle la ubicación por WhatsApp
+                        <LogoWhatsApp size={16} blanco /> Pedirle la ubicación por WhatsApp
                       </a>
                     )}
                     {!pinOpen ? (
@@ -1836,7 +1837,7 @@ function RouteSuggestionModal({ orders, geoCache, clusters, sede, onClose, onOrd
           {/* Acciones */}
           {route.length > 0 && (
             <button onClick={openMultiRoute} className="btn-primary w-full">
-              <Navigation size={16} /> Abrir ruta completa en Google Maps
+              <span className="inline-flex rounded-md bg-white p-0.5"><LogoGoogleMaps size={16} /></span> Abrir ruta completa en Google Maps
             </button>
           )}
           <p className="font-body text-[11px] text-coal/40 text-center">

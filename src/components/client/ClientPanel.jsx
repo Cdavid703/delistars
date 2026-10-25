@@ -45,7 +45,7 @@ import {
   LogOut, Info, Star, Plus, X, AlertCircle, Clock, MessageSquare,
   HelpCircle, ChevronDown, ChevronUp, Send, UserRound,
   ClipboardList, Wallet, Bike, ChefHat, CircleCheck, CircleX, Ban, Mail, Gift, Trash2, Banknote, MessageCircle,
-  CreditCard, Paperclip, Lightbulb, Store, Check, Upload, Smartphone, Building2, Shuffle,
+  CreditCard, Paperclip, Lightbulb, Store, Check, Upload, Building2, Shuffle,
   Bell, BellOff, Lock, Phone, Pencil
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
@@ -58,6 +58,7 @@ import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import ReclamoPedido from './ReclamoPedido'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
+import { LogoWhatsApp, LogoGoogleMaps, LogoNequi, LogoPago } from '../common/LogosApps'
 
 const STATUS_STEPS = [
   { key: 'pending',       label: 'Pedido enviado' },
@@ -863,7 +864,7 @@ export default function ClientPanel() {
                 rel="noreferrer"
                 className="btn btn-sm mt-2 border border-[#25D366]/50 text-[#128C7E] bg-transparent [@media(hover:hover)]:hover:bg-[#25D366]/10"
               >
-                <MessageSquare size={14} /> Soporte por WhatsApp
+                <LogoWhatsApp size={16} /> Soporte por WhatsApp
               </a>
             )}
           </div>
@@ -1049,7 +1050,7 @@ function DatosTransferencia({ sedeId }) {
       {/* Cuenta / llave para transferir (por si no puede escanear el QR) */}
       <div className="w-full bg-smoked/50 rounded-xl px-3 py-2 flex flex-col items-center gap-0.5">
         <p className="font-body text-[11px] text-coal/50 uppercase tracking-wider">Cuenta / llave para transferir</p>
-        <p className="font-body text-xs text-coal/70 font-semibold">{cuenta.banco} {cuenta.tipo}</p>
+        <p className="font-body text-xs text-coal/70 font-semibold inline-flex items-center gap-1.5"><LogoPago medio={cuenta.banco} size={16} />{cuenta.banco} {cuenta.tipo}</p>
         <p className="font-body text-lg font-bold text-coal tracking-widest text-center select-all">
           {cuenta.numeroVisible}
         </p>
@@ -1163,7 +1164,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
           {[
             ['Efectivo',      Banknote],
             ['Transferencia', Building2],
-            ['Nequi',         Smartphone],
+            ['Nequi',         LogoNequi],
             ['Mixto',         Shuffle],
           ].map(([valor, IconoPago]) => (
             <button key={valor} type="button" onClick={() => set('payment', valor)}
@@ -2979,7 +2980,7 @@ function ClientOrderDetail({ order, onClose }) {
                     </a>
                     <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-sm font-semibold hover:bg-[#25D366]/20 transition-colors">
-                      <MessageCircle size={15} aria-hidden="true" /> WhatsApp
+                      <LogoWhatsApp size={16} /> WhatsApp
                     </a>
                   </div>
                 )
@@ -3000,7 +3001,7 @@ function ClientOrderDetail({ order, onClose }) {
                     </Suspense>
                     <p className="font-body text-[11px] text-coal/50 text-center">El mapa se actualiza solo: la moto es tu domiciliario y la casa, tu dirección.</p>
                     <button onClick={openDriverMap} className="btn-secondary btn-sm w-full">
-                      <Navigation size={14} /> Abrir en Google Maps
+                      <LogoGoogleMaps size={15} /> Abrir en Google Maps
                     </button>
                   </div>
                 ) : (
