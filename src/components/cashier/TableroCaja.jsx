@@ -1,7 +1,7 @@
 import { motion, AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
 import { Inbox, CircleCheck, ChefHat, PackageCheck, Bike } from 'lucide-react'
 import OrderCard from './OrderCard'
-import { minutosEnEtapa } from '../../utils/tableroCaja'
+import { minutosEnEtapa, porAsignar } from '../../utils/tableroCaja'
 import { etapaDe } from '../../utils/etapas'
 
 // Tablero de la caja en pantallas anchas (computador): una columna por etapa,
@@ -19,7 +19,7 @@ const COLUMNAS = [
 
 const RESORTE = { type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }
 
-export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onToggleFacturado }) {
+export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onToggleFacturado, onAsignar }) {
   const porColumna = Object.fromEntries(COLUMNAS.map((c) => [c.id, []]))
   for (const o of orders) {
     const { etapa } = etapaDe(o)
@@ -37,11 +37,18 @@ export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onT
           {COLUMNAS.map((c) => {
             const lista = porColumna[c.id]
             const Icono = c.icono
+            // Confirmados: cuántos domicilios esperan que la caja les asigne domiciliario.
+            const sinDomi = c.id === 'confirmados' ? lista.filter(porAsignar).length : 0
             return (
               <section key={c.id} className="flex flex-col min-h-0 rounded-2xl bg-coal/[0.035]" aria-label={c.titulo}>
                 <header className="flex items-center gap-2 px-3 pt-3 pb-2">
                   <Icono size={16} className="text-coal/45" aria-hidden="true" />
                   <h2 className="font-display text-lg tracking-wide text-coal leading-none">{c.titulo}</h2>
+                  {sinDomi > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-tangelo/15 px-2 py-0.5 font-body text-[11px] font-semibold text-coal" title="Domicilios sin domiciliario">
+                      <Bike size={11} className="text-tangelo" aria-hidden="true" /> {sinDomi} por asignar
+                    </span>
+                  )}
                   <motion.span key={lista.length} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={RESORTE}
                     className={`ml-auto min-w-[24px] h-6 px-2 rounded-full flex items-center justify-center font-body text-xs font-bold tabular ${
                       lista.length ? (c.id === 'nuevos' ? 'bg-cherry text-cream' : 'bg-coal text-cream') : 'bg-coal/10 text-coal/40'}`}>
@@ -57,7 +64,7 @@ export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onT
                         exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
                         transition={RESORTE}>
                         <OrderCard tablero order={o} ahora={ahora} unreadCount={unreadChatMap[o.id] || 0}
-                          onClick={() => onAbrir(o)} onToggleFacturado={() => onToggleFacturado(o)} />
+                          onClick={() => onAbrir(o)} onToggleFacturado={() => onToggleFacturado(o)} onAsignar={() => onAsignar(o)} />
                       </motion.div>
                     ))}
                   </AnimatePresence>
