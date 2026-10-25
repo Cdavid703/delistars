@@ -132,6 +132,15 @@ service cloud.firestore {
           && (!('excepcion' in cambiados()) || request.resource.data.excepcion in excepcionesPermitidas)
           && (!('version' in cambiados()) || request.resource.data.version == resource.data.get('version', 0) + 1);
     }
+    // Un solo editor por pedido (§10.3): el control (campo `editor`) lo da el
+    // servidor (POST /api/v1/pedidos/:id/editor). Mientras otra persona lo tenga,
+    // la caja y el admin solo pueden tocar marcas que no cambian el pedido.
+    function equipoPuedeEditar() {
+      let antes = resource.data;
+      return !('editor' in cambiados())
+        && (!('editor' in antes) || antes.editor == null || antes.editor.uid == request.auth.uid
+            || cambiados().hasOnly(['facturado', 'facturadoBy', 'facturadoAt', 'vistoPorCaja', 'comments', 'updatedAt']));
+    }
     function clientePuedeActualizar() {
       let d = request.resource.data;
       let antes = resource.data;
@@ -175,7 +184,7 @@ service cloud.firestore {
       allow read:   if isAdmin() || isCashier()
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid)
                     || (isDriver() && resource.data.driverEmail == userEmail());
-      allow update: if isAdmin() || isCashier()
+      allow update: if ((isAdmin() || isCashier()) && equipoPuedeEditar())
                     || (isSignedIn() && resource.data.clientUid == request.auth.uid && clientePuedeActualizar())
                     || (isDriver() && resource.data.driverEmail == userEmail() && domiciliarioPuedeActualizar());
       allow delete: if isAdmin();

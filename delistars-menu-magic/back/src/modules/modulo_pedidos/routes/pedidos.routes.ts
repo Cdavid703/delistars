@@ -3,7 +3,8 @@ import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { conIdempotencia, conIdempotenciaOpcional } from '../services/idempotencia.service';
-import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje } from '../services/pedidos.service';
+import { crearPedidoCaja } from '../services/pedidoCaja.service';
+import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje, editorPedido } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
@@ -132,6 +133,47 @@ router.post('/', activa, requireUser, async (req: Request, res: Response) => {
   try {
     const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), req.body, async () => ({
       status: 201, body: await crearPedido(req.usuario!, req.body, req.ip ?? ''),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/editor:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Tomar o soltar el control de un pedido (un solo editor, §10.3)
+ *     description: >
+ *       Caja de la sede o admin. { accion: 'tomar' | 'soltar', motivo? }. Tomar uno libre no pide motivo; tomar el
+ *       de otro («Tomar control») exige motivo (422 motivo), queda en el historial y se le avisa al anterior.
+ *       Mientras otro lo tenga, las acciones de caja responden 409 otro_editor.
+ *     responses:
+ *       200: { description: "{ id, editor: { uid, email, nombre } | null, cambio }" }
+ */
+router.post('/:id/editor', activa, requireUser, async (req: Request, res: Response) => {
+  try { res.json(await editorPedido(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/caja:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: La caja crea un pedido desde el catálogo (presencial, teléfono o WhatsApp)
+ *     description: >
+ *       Caja de la sede o admin. { sedeId, deliveryMode, nombre, telefono, canal?: presencial | telefono | whatsapp,
+ *       direccion?, coords?, barrio?, referencia?, deliveryPrice? (si no hay coords o para fijarlo a mano), notas?,
+ *       items (mismo formato que POST /pedidos), pago: { metodo, billete?, mixtoEfectivo?, mixtoTransferencia? } }.
+ *       Precios del catálogo y agotados de la sede (409 agotado_en_sede). Nace confirmado; a domicilio se asigna
+ *       al domiciliario en turno o queda por asignar. Sin cuenta: devuelve el código privado. Exige Idempotency-Key.
+ *     responses:
+ *       200: { description: "{ id, orderNumber, etapa, subtotal, deliveryPrice, total, items, domiciliario, codigo }" }
+ */
+router.post('/caja', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), { caja: true, ...req.body }, async () => ({
+      status: 200, body: await crearPedidoCaja(req.usuario!, req.body, req.ip || ''),
     }));
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }

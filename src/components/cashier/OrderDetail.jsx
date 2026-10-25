@@ -50,6 +50,29 @@ const fmtTime = (ts) => {
 export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign, unreadClientMsgs = 0 }) {
   const { user, role } = useAuth()
   const esAdmin = role === ROLES.ADMIN
+
+  // Un solo editor por pedido (§10.3): al abrir el detalle la caja toma el control
+  // si está libre y lo suelta al cerrar. Si otra persona lo tiene, queda en solo
+  // consulta hasta que tome el control con un motivo (el servidor avisa al otro).
+  const esEquipo = role === ROLES.ADMIN || role === ROLES.CASHIER
+  const pedidoActivo = !['completed', 'rejected', 'cancelled'].includes(order.status)
+  const otroEditor = order.editor?.uid && order.editor.uid !== user?.uid ? order.editor : null
+  const soloConsulta = esEquipo && pedidoActivo && !!otroEditor
+  const [motivoControl, setMotivoControl] = useState('')
+  const [tomandoControl, setTomandoControl] = useState(false)
+  const [errorControl, setErrorControl] = useState('')
+  useEffect(() => {
+    if (!esEquipo || !pedidoActivo) return undefined
+    llamarPedidos(`${order.id}/editor`, { accion: 'tomar' }).catch(() => { /* lo tiene otro: solo consulta */ })
+    return () => { llamarPedidos(`${order.id}/editor`, { accion: 'soltar' }).catch(() => {}) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.id])
+  const tomarControl = async () => {
+    setTomandoControl(true); setErrorControl('')
+    try { await llamarPedidos(`${order.id}/editor`, { accion: 'tomar', motivo: motivoControl.trim() }); setMotivoControl('') }
+    catch (err) { setErrorControl(err instanceof ErrorApi ? err.message : 'No se pudo tomar el control. Revisa la conexión.') }
+    finally { setTomandoControl(false) }
+  }
   const [loading,          setLoading]          = useState(false)
   const [rejecting,        setRejecting]        = useState(false)
   const [rejectReason,     setRejectReason]     = useState('')
@@ -694,6 +717,25 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           </div>
         </div>
 
+        {/* Un solo editor (§10.3): si otra persona lo tiene, aquí solo se consulta. */}
+        {soloConsulta && (
+          <div className="mx-5 mt-4 rounded-2xl border-2 border-mustard bg-mustard/15 p-3 flex flex-col gap-2">
+            <p className="font-body text-sm text-coal">
+              Lo está editando <strong>{otroEditor.nombre || otroEditor.email}</strong>
+              {otroEditor.desde?.toDate ? ` desde las ${otroEditor.desde.toDate().toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}` : ''}.
+              Puedes verlo; para cambiar algo, toma el control.
+            </p>
+            <div className="flex gap-2">
+              <input className="input-field flex-1 text-sm" value={motivoControl} maxLength={200} onChange={e => setMotivoControl(e.target.value)}
+                placeholder="Por qué tomas el control (ej. se fue a cocina)" />
+              <button onClick={tomarControl} disabled={tomandoControl || motivoControl.trim().length < 3} className="btn-primary btn-sm whitespace-nowrap">
+                {tomandoControl ? 'Tomando…' : 'Tomar control'}
+              </button>
+            </div>
+            {errorControl && <p className="font-body text-xs text-pepper">{errorControl}</p>}
+          </div>
+        )}
+        <fieldset disabled={soloConsulta} className={`m-0 min-w-0 border-0 p-0 ${soloConsulta ? 'opacity-70' : ''}`}>
         <div className="p-5 flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] xl:gap-6 xl:items-start">
           {/* En computador, dos columnas: a la izquierda lo que ES el pedido;
               a la derecha lo que la caja HACE (la acción de la etapa arriba). */}
@@ -1673,6 +1715,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             </div>
           </div>
         </div>
+        </fieldset>
       </div>
     </div>
   )
