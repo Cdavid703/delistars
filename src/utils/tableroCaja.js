@@ -23,3 +23,5 @@ export function minutosEnEtapa(order, ahora) {
   return t ? Math.max(0, Math.floor((ahora - t) / 60000)) : null
 }
 
+/** Domicilio cotizado que todavía no tiene domiciliario: la caja se lo asigna. */
+export const porAsignar = (o) => o?.status === 'quoted' && o.deliveryMode !== 'pickup' && !o.driverEmail

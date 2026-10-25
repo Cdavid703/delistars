@@ -1,6 +1,6 @@
 import { Bike, Store, MessageCircle, Check, Receipt, Gift, CircleCheck, CircleX, AlertCircle, Plus, Banknote, Clock, Smartphone, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { etapaDe, ETAPAS } from '../../utils/etapas'
-import { minutosEnEtapa, DEMORA } from '../../utils/tableroCaja'
+import { minutosEnEtapa, DEMORA, porAsignar } from '../../utils/tableroCaja'
 
 // Tarjeta de pedido de la caja. Se lee de un vistazo, de arriba abajo:
 //   1. número, etapa real y cuánto lleva en ella (se pone naranja/roja si se demora)
@@ -61,7 +61,7 @@ function avisosDe(order, unreadCount) {
   if (order.needsRequote) a.push({ k: 'recotizar', tono: 'atencion', icono: Plus, texto: 'Agregó productos · vuelve a cotizar' })
   if (order.excepcion === 'cambio_pendiente' && order.cambioPropuesto?.estado === 'pendiente') a.push({ k: 'cambio', tono: 'atencion', icono: Clock, texto: 'Cambio propuesto · esperando al cliente' })
   if (!order.excepcion && order.cambioPropuesto?.estado === 'rechazado') a.push({ k: 'rechazo', tono: 'urgente', icono: CircleX, texto: 'Rechazó el cambio · queda el original' })
-  if (order.sinDomiciliario && !order.driverEmail && order.deliveryMode !== 'pickup' && order.status === 'quoted') a.push({ k: 'sindomi', tono: 'atencion', icono: Bike, texto: 'Nadie en turno · asígnalo a mano' })
+  if (porAsignar(order)) a.push({ k: 'asignar', tono: 'atencion', icono: Bike, texto: order.sinDomiciliario ? 'Nadie en turno · asígnalo a mano' : 'Sin domiciliario · asígnalo' })
   if (order.pagoAdelantado && order.status === 'pending') a.push({ k: 'completo', tono: 'bien', icono: CircleCheck, texto: `Pedido completo · ${order.payment} · solo aceptar` })
   if (order.status === 'pending_cuadre') a.push({ k: 'cuadre', tono: 'atencion', icono: Banknote, texto: 'Efectivo por cuadrar con la caja' })
   return a
@@ -87,6 +87,19 @@ function Pago({ order }) {
   )
 }
 
+// Botón dentro de la tarjeta (la tarjeta ya es un botón): abre la asignación
+// del domiciliario sin pasar por el detalle.
+function BotonAsignar({ onAsignar }) {
+  const ir = (e) => { e.stopPropagation(); onAsignar?.() }
+  return (
+    <span role="button" tabIndex={0} onClick={ir}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ir(e) } }}
+      className="inline-flex items-center gap-1 rounded-full bg-cherry px-2.5 py-1 font-body text-[11px] font-semibold text-cream cursor-pointer select-none transition-colors hover:bg-cherry/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/40">
+      <Bike size={12} aria-hidden="true" /> Asignar
+    </span>
+  )
+}
+
 // Chulito de "facturado": se prende y apaga sin abrir el pedido.
 function Facturado({ facturado, onToggle }) {
   const stop = (e) => { e.stopPropagation(); onToggle?.() }
@@ -102,7 +115,7 @@ function Facturado({ facturado, onToggle }) {
   )
 }
 
-export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFacturado, ahora, tablero = false }) {
+export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFacturado, onAsignar, ahora, tablero = false }) {
   const { etapa, excepcion } = etapaDe(order)
   const pickup = order.deliveryMode === 'pickup'
   const avisos = avisosDe(order, unreadCount)
@@ -158,7 +171,12 @@ export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFac
         {order.driverName && !pickup && (
           <span className="inline-flex items-center gap-1 font-body text-xs text-mint"><Bike size={12} aria-hidden="true" /> {order.driverName}</span>
         )}
-        {onToggleFacturado && <span className="ml-auto"><Facturado facturado={!!order.facturado} onToggle={onToggleFacturado} /></span>}
+        {(onToggleFacturado || (onAsignar && porAsignar(order))) && (
+          <span className="ml-auto inline-flex items-center gap-1.5">
+            {onAsignar && porAsignar(order) && <BotonAsignar onAsignar={onAsignar} />}
+            {onToggleFacturado && <Facturado facturado={!!order.facturado} onToggle={onToggleFacturado} />}
+          </span>
+        )}
       </div>
     </button>
   )

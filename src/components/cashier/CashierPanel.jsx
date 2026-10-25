@@ -24,6 +24,8 @@ import Logo from '../common/Logo'
 import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
 import TableroCaja from './TableroCaja'
+import ChipEstado from './ChipEstado'
+import { porAsignar } from '../../utils/tableroCaja'
 import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
 import AssignDeliveryDetail from './AssignDeliveryDetail'
@@ -46,14 +48,12 @@ function finDelDiaColombia() {
 
 const TABS = [
   { id: 'active',    label: 'Activos' },
-  { id: 'assign',    label: 'Asignar' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
   { id: 'reclamos',  label: 'Reclamos' },
 ]
 
 const ACTIVE_STATUSES   = ['pending', 'assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
-const ASSIGN_STATUSES   = ['quoted']
 const CUADRE_STATUSES   = ['pending_cuadre']
 const COMPLETE_STATUSES = ['completed', 'rejected', 'delivered_paid', 'delivered_cash']
 
@@ -366,12 +366,11 @@ export default function CashierPanel() {
     }, () => {})
   }, [])
 
-  const isPickup = o => o.deliveryMode === 'pickup'
   const filteredOrders = orders.filter(o => {
-    // Recoger en sede no pasa por asignación de domiciliario: el pedido cotizado
-    // se queda en "Activos" para que el cajero lo gestione hasta la entrega.
-    if (tab === 'active')    return (ACTIVE_STATUSES.includes(o.status) || (o.status === 'quoted' && isPickup(o))) && isToday(o.createdAt)
-    if (tab === 'assign')    return ASSIGN_STATUSES.includes(o.status) && !isPickup(o) && isToday(o.createdAt)
+    // Los cotizados también son activos: los de recoger siguen hasta la entrega y
+    // los domicilios sin domiciliario muestran «Asignar» en su tarjeta (antes
+    // vivían en una pestaña aparte y el tablero no los veía).
+    if (tab === 'active')    return (ACTIVE_STATUSES.includes(o.status) || o.status === 'quoted') && isToday(o.createdAt)
     if (tab === 'cuadre')    return CUADRE_STATUSES.includes(o.status) && isToday(o.createdAt)
     if (tab === 'completed') {
       // Los cancelados por el cliente también se listan aquí (como cancelado) para
@@ -385,7 +384,7 @@ export default function CashierPanel() {
   })
 
   const pendingCount  = orders.filter(o => o.status === 'pending'                    && isToday(o.createdAt)).length
-  const assignCount   = orders.filter(o => ASSIGN_STATUSES.includes(o.status)        && o.deliveryMode !== 'pickup' && isToday(o.createdAt)).length
+  const sinDomiciliario = orders.filter(o => porAsignar(o) && isToday(o.createdAt))
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
@@ -650,9 +649,6 @@ export default function CashierPanel() {
                 <MessageCircle size={8} />{totalUnreadChat}
               </span>
             )}
-            {t.id === 'assign'  && assignCount  > 0 && (
-              <span className="ml-1 bg-tangelo text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full">{assignCount}</span>
-            )}
             {t.id === 'cuadre' && cuadreCount  > 0 && (
               <span className="ml-1 bg-mustard text-coal text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cuadreCount}</span>
             )}
@@ -701,6 +697,13 @@ export default function CashierPanel() {
         <ImpresoraCaja puesto={puesto} sedeId={sede?.id} />
         {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
         <EstadoDomiciliarios sedeId={sede?.id} />
+        {/* Domicilios sin domiciliario: el que más lleva esperando se asigna primero. */}
+        {sinDomiciliario.length > 0 && (
+          <ChipEstado tono="atencion" icono={Bike}
+            texto={sinDomiciliario.length === 1 ? '1 domicilio por asignar' : `${sinDomiciliario.length} domicilios por asignar`}
+            titulo="Domicilios cotizados que todavía no tienen domiciliario"
+            accion={{ texto: 'Asignar', onClick: () => openAssign([...sinDomiciliario].sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))[0]) }} />
+        )}
       </div>
 
       {/* Saldo a favor de quien eliminó su cuenta: transferirlo */}
@@ -778,7 +781,7 @@ export default function CashierPanel() {
       {tab === 'active' && ancho ? (
         <main className="flex-1 min-h-0 p-4 pt-3">
           <TableroCaja orders={filteredOrders} ahora={ahora} unreadChatMap={unreadChatMap}
-            onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} />
+            onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} onAsignar={(o) => openAssign(o)} />
         </main>
       ) : (
       <main className="flex-1 min-h-0 overflow-y-auto scroll-custom p-4 pb-24 xl:pb-6 flex flex-col gap-3 stagger md:grid md:grid-cols-2 xl:grid-cols-3 md:items-start md:content-start">
@@ -786,12 +789,10 @@ export default function CashierPanel() {
         {tab !== 'reclamos' && filteredOrders.length === 0 && !showForm && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center md:col-span-2 xl:col-span-3">
             {tab === 'active' ? <ShoppingBag size={32} className="text-coal/25" aria-hidden="true" />
-              : tab === 'assign' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />
               : tab === 'cuadre' ? <Banknote size={32} className="text-coal/25" aria-hidden="true" />
               : <CircleCheck size={32} className="text-coal/25" aria-hidden="true" />}
             <p className="font-body text-coal/40">
               {tab === 'active'    ? 'No hay pedidos activos' :
-               tab === 'assign'   ? 'No hay pedidos cotizados pendientes de asignar' :
                tab === 'cuadre'   ? 'No hay cuadres pendientes' :
                historyDate ? `No hay pedidos para el ${historyDate}` : 'No hay pedidos completados hoy'}
             </p>
@@ -803,7 +804,8 @@ export default function CashierPanel() {
             order={order}
             ahora={ahora}
             unreadCount={unreadChatMap[order.id] || 0}
-            onClick={() => tab === 'assign' ? openAssign(order) : openOrderDetail(order.id)}
+            onClick={() => openOrderDetail(order.id)}
+            onAsignar={() => openAssign(order)}
             onToggleFacturado={() => toggleFacturado(order)}
           />
         ))}
@@ -1427,7 +1429,7 @@ const MANUAL_SECTIONS = [
         'Si dice "Pedido completo": el cliente ya vio el total y eligió cómo paga (billete o comprobante). Revisa y toca "Aceptar pedido".',
         'Si no (dirección sin ubicar, pidió revisar el domicilio o pedido escrito a mano): llena número, precio y domicilio y toca "Enviar cotización al cliente".',
         'Las transferencias se marcan aparte con "Confirmar pago recibido" al ver el comprobante.',
-        'Ve a la pestaña "Asignar domicilio", selecciona el pedido y completa el envío al domiciliario.',
+        'Si el sistema no le asignó domiciliario, la tarjeta dice "Sin domiciliario" (en el tablero, columna Confirmados): toca "Asignar" y completa el envío al domiciliario.',
         'El domiciliario acepta, va en camino y marca la entrega.',
         'Si fue efectivo, el pedido aparece en "Cuadre" para confirmar el dinero recibido.',
       ]},
