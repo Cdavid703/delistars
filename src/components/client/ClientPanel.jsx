@@ -30,6 +30,7 @@ import {
 } from '../../utils/pagoAdelantado'
 import {
   devolucionInicial, puedeElegirSaldo, erroresDatosDevolucion, saldoDisponible, aplicarSaldo,
+  DEVOLUCION_POR_CLIENTE,
 } from '../../utils/devolucion'
 import { sonar, sonarMensaje, sonidoDeEstado } from '../../utils/sonidos'
 import BotonSilencio from '../common/BotonSilencio'
@@ -761,14 +762,14 @@ export default function ClientPanel() {
       {completarPerfil}
 
       {/* Devolución esperando que el cliente elija cómo la quiere */}
-      {orders.filter(o => o.devolucion?.estado === 'por_elegir').map(o => (
+      {orders.filter(o => DEVOLUCION_POR_CLIENTE.includes(o.devolucion?.estado)).map(o => (
         <div key={`dev-${o.id}`} className="mx-4 mt-3">
           <button onClick={() => openOrderDetail(o.id)}
             className="w-full text-left rounded-2xl p-5 bg-cherry text-cream shadow-card">
             <p className="font-display text-xl tracking-wide flex items-center gap-2"><Banknote size={20} aria-hidden="true" /> Te debemos {fmt(o.devolucion.monto)}</p>
             <p className="font-body text-sm text-cream/90 mt-1 leading-relaxed">
               Tu pedido{o.orderNumber ? ` #${o.orderNumber}` : ''} no siguió y ya lo habías pagado. Toca aquí y
-              elige cómo quieres la devolución.
+              {o.devolucion.estado === 'transferencia_sin_datos' ? ' dinos a dónde te transferimos.' : ' elige cómo quieres la devolución.'}
             </p>
           </button>
         </div>
@@ -2219,7 +2220,7 @@ function CambioPropuesto({ order }) {
   const responder = async (acepta) => {
     if (!acepta && !window.confirm('¿Rechazar el cambio? Tu pedido queda como lo enviaste y la sede revisa si puede prepararlo así.')) return
     setBusy(acepta ? 'si' : 'no'); setError('')
-    try { await llamarPedidos(`${order.id}/cambio/responder`, { acepta }) }
+    try { await llamarPedidos(`${order.id}/cambio/responder`, { acepta, propuestaId: order.cambioPropuesto?.id }) }
     catch (err) { setError(err instanceof ErrorApi && err.status < 500 ? err.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.') }
     finally { setBusy(null) }
   }
@@ -2236,11 +2237,22 @@ function CambioPropuesto({ order }) {
         <div className="bg-white/70 rounded-xl p-3">
           <p className="font-body text-[11px] uppercase tracking-wider text-coal/50 mb-1">Tu pedido original</p>
           <p className="font-body text-sm text-coal/70 whitespace-pre-line line-through decoration-coal/30">{c.anterior?.items || order.items}</p>
+          {c.direccion && (
+            <p className="font-body text-xs text-coal/60 mt-1 line-through decoration-coal/30">
+              Entrega en: {c.anterior?.direccion?.fullAddress || order.fullAddress || 'sin dirección'}
+            </p>
+          )}
           {totalAntes != null && <p className="font-body text-xs text-coal/50 mt-1">Total: {fmt(totalAntes)}</p>}
         </div>
         <div className="bg-white rounded-xl p-3 border border-tangelo/40">
           <p className="font-body text-[11px] uppercase tracking-wider text-tangelo mb-1">Como quedaría</p>
           <p className="font-body text-sm text-coal whitespace-pre-line">{c.items}</p>
+          {c.direccion && (
+            <p className="font-body text-sm text-coal mt-1 flex items-start gap-1.5">
+              <MapPin size={14} className="text-tangelo mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <span>Entrega en: <strong>{c.direccion.fullAddress}</strong>{c.direccion.barrio ? `, ${c.direccion.barrio}` : ''}</span>
+            </p>
+          )}
           <p className="font-body text-sm font-bold text-coal mt-1">
             Total: <span className="text-cherry">{fmt(c.totalPrice)}</span>
             {order.deliveryMode !== 'pickup' && c.deliveryPrice > 0 && <span className="font-normal text-coal/60 text-xs"> (incluye domicilio {fmt(c.deliveryPrice)})</span>}
@@ -2267,7 +2279,9 @@ function CambioPropuesto({ order }) {
 const MEDIOS_DEVOLUCION = ['Nequi', 'Daviplata', 'Bancolombia', 'Otro banco']
 function DevolucionCliente({ order }) {
   const dev = order.devolucion
-  const [opcion,  setOpcion]  = useState('')
+  // Eligió transferencia desde el reloj sin datos: llega con esa opción marcada.
+  const sinDatos = dev.estado === 'transferencia_sin_datos'
+  const [opcion,  setOpcion]  = useState(sinDatos ? 'transferencia' : '')
   const [datos,   setDatos]   = useState({ medio: '', numero: '', titular: '', documento: '' })
   const [errores, setErrores] = useState([])
   const [busy,    setBusy]    = useState(false)
@@ -2302,7 +2316,7 @@ function DevolucionCliente({ order }) {
     } finally { setBusy(false) }
   }
 
-  if (dev.estado !== 'por_elegir') {
+  if (!DEVOLUCION_POR_CLIENTE.includes(dev.estado)) {
     const textos = {
       transferencia_solicitada: `Te vamos a transferir ${monto} a ${dev.datos?.medio || 'tu cuenta'} (${dev.datos?.numero || ''}). Te avisamos por el chat cuando esté hecho.`,
       saldo_solicitado:         `Pediste ${monto} como saldo a favor. La caja lo acredita en tu cuenta en breve.`,
@@ -2325,7 +2339,9 @@ function DevolucionCliente({ order }) {
         <Banknote size={19} aria-hidden="true" /> Te devolvemos {monto}
       </p>
       <p className="font-body text-sm text-coal/80 leading-relaxed">
-        Tu pedido no siguió y ya lo habías pagado por transferencia. ¿Cómo quieres tu plata?
+        {sinDatos
+          ? 'Elegiste transferencia desde tu reloj. Falta que nos digas a dónde te la enviamos, o cámbiala por saldo a favor.'
+          : 'Tu pedido no siguió y ya lo habías pagado por transferencia. ¿Cómo quieres tu plata?'}
       </p>
       <div className="flex flex-col gap-2">
         <button type="button" onClick={() => setOpcion('transferencia')}

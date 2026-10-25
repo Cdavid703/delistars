@@ -15,7 +15,7 @@ import type { Usuario } from '../../../middlewares/require-user';
 import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
 import { candidatoPara, cargaDe } from './domiciliarios.service';
 import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
-import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar } from '../reglas/cambios';
+import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar, idPropuesta, revisarRespuesta, validarDireccionPropuesta, direccionAnterior, DireccionPropuesta } from '../reglas/cambios';
 import { validarMensaje } from '../reglas/chat';
 import { atribuible } from '../../modulo_mercadeo/campanas.reglas';
 
@@ -314,9 +314,27 @@ export async function transicionar(u: Usuario, id: string, b: any) {
 
 /** La caja propone un cambio: queda «cambio pendiente» y la propuesta aparte; el original no se toca. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function proponerCambio(u: Usuario, id: string, b: any) {
+export async function proponerCambio(u: Usuario, id: string, b: any, ip = '') {
   const db = firestore();
   const ref = db.doc(`orders/${id}`);
+  // Dirección nueva (W-5): se mide el recorrido desde la sede del pedido ANTES de
+  // la transacción (es una llamada a Google). Fuera de cobertura o sin poder
+  // medir → no se propone: la caja no puede inventar la tarifa.
+  let dir: DireccionPropuesta | undefined;
+  if (b?.direccion != null) {
+    const snap = await ref.get();
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p0 = snap.data() as PedidoDoc;
+    const d = validarDireccionPropuesta(p0, b.direccion);
+    const sede = SEDES[String(p0.sedeId)];
+    if (!sede) throw new ErrorPedido('sede', 'El pedido no tiene una sede válida', 409);
+    const r = await recorrido.medir(sede.coords, d.coords, ip);
+    if (!r.ok) throw new ErrorPedido('sin_medicion', 'No se pudo medir el recorrido hasta esa dirección. Intenta de nuevo', 409);
+    const t = precioDomicilio(r.km, RECORRIDO);
+    if (t.estado === 'fuera_de_rango') throw new ErrorPedido('fuera_de_cobertura', `Esa dirección está fuera de cobertura: solo llevamos hasta ${t.maxKm} km por calle`, 409);
+    if (t.estado !== 'ok') throw new ErrorPedido('sin_medicion', 'No se pudo calcular la tarifa de esa dirección', 409);
+    dir = { fullAddress: d.fullAddress, barrio: d.barrio, reference: d.reference, addrLat: d.coords.lat, addrLng: d.coords.lng, deliveryKm: Number(r.km.toFixed(2)), precio: t.precio };
+  }
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
@@ -327,15 +345,18 @@ export async function proponerCambio(u: Usuario, id: string, b: any) {
     }
     // Quién puede y desde qué etapa lo decide el modelo de etapas (caja, antes de preparar).
     const plan = planTransicion(p, 'excepcion:cambio_pendiente', u, b?.motivo);
-    const c = validarPropuesta(p, b);
+    const c = validarPropuesta(p, b, dir);
     const ahora = FieldValue.serverTimestamp();
     const version = versionActual + 1;
     const e = etapaDe(p);
     tx.update(ref, {
       etapa: plan.etapa, excepcion: 'cambio_pendiente', excepcionMotivo: c.motivo, version, updatedAt: ahora,
       cambioPropuesto: {
-        ...c, estado: 'pendiente', propuestoPor: u.email || u.uid, propuestoAt: ahora,
-        anterior: { items: p.items ?? '', quotedPrice: p.quotedPrice ?? null, deliveryPrice: p.deliveryPrice ?? null, totalPrice: p.totalPrice ?? null },
+        ...c, id: idPropuesta(), estado: 'pendiente', propuestoPor: u.email || u.uid, propuestoAt: ahora,
+        anterior: {
+          items: p.items ?? '', quotedPrice: p.quotedPrice ?? null, deliveryPrice: p.deliveryPrice ?? null, totalPrice: p.totalPrice ?? null,
+          ...(c.direccion ? { direccion: direccionAnterior(p) } : {}),
+        },
       },
     });
     tx.set(ref.collection('historial').doc(), {
@@ -358,9 +379,7 @@ export async function responderCambio(u: Usuario, id: string, b: any) {
     const p = snap.data() as PedidoDoc;
     if (!p.clientUid || p.clientUid !== u.uid) throw new ErrorPedido('sin_permiso', 'Solo el cliente del pedido responde al cambio', 403);
     const e = etapaDe(p);
-    if (e.excepcion !== 'cambio_pendiente' || p.cambioPropuesto?.estado !== 'pendiente') {
-      throw new ErrorPedido('sin_propuesta', 'No hay un cambio pendiente por responder', 409);
-    }
+    revisarRespuesta(p, b);
     const acepta = b?.acepta === true;
     const ahora = FieldValue.serverTimestamp();
     const version = (Number(p.version) || 0) + 1;
@@ -371,7 +390,7 @@ export async function responderCambio(u: Usuario, id: string, b: any) {
       de: { etapa: e.etapa, excepcion: 'cambio_pendiente' }, a: { etapa: e.etapa, excepcion: null },
       motivo: null, status: p.status ?? null, version,
     });
-    return { id, aceptado: acepta, etapa: e.etapa, version };
+    return { id, aceptado: acepta, etapa: e.etapa, version, propuestaId: p.cambioPropuesto?.id ?? null };
   });
 }
 

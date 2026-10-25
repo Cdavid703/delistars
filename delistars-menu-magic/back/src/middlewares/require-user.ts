@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getAuth } from 'firebase-admin/auth';
 import { firebaseApp, firestore } from '../config/firestore';
+import { cuentaRevocada, sesionRelojActiva } from '../modules/modulo_auth/reloj.service';
 
 /**
  * Quién llama (token de Firebase en `Authorization: Bearer <idToken>`).
@@ -30,6 +31,8 @@ export interface Usuario {
   sedes: { caja: string[]; domiciliario: string[] };
   /** Cuándo inició sesión por última vez (ms): acciones delicadas piden que sea reciente. */
   autenticadoAt: number;
+  /** Id de la sesión del Apple Watch (sesiones_reloj/{id}) o null si no es un reloj. */
+  reloj: string | null;
 }
 
 declare global {
@@ -60,6 +63,18 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
   if (scheme !== 'Bearer' || !token) return res.status(401).json({ error: 'Falta token de autenticación' });
   try {
     const d = await getAuth(firebaseApp()).verifyIdToken(token);
+    // W-2: sesión revocada (cerrar sesión en todos lados, cuenta deshabilitada o
+    // borrada) → fuera, aunque el token no haya vencido. Si la consulta a Firebase
+    // falla, no se tumba el servicio: la firma del token ya se verificó.
+    const revocada = await cuentaRevocada(d.uid, Number(d.auth_time || 0)).catch((e) => {
+      console.warn('[auth] no se pudo revisar la revocación:', (e as Error)?.message || e);
+      return false;
+    });
+    // W-1: sesión del Apple Watch. Vale mientras su registro siga activo.
+    const reloj = typeof d.reloj === 'string' ? d.reloj : null;
+    if (revocada || (reloj && !(await sesionRelojActiva(reloj, d.uid)))) {
+      return res.status(401).json({ error: 'La sesión se cerró. Vuelve a entrar', codigo: 'sesion_cerrada' });
+    }
     const email = (d.email || '').toLowerCase();
     const db = firestore();
     const [baja, sedesCaja, sedesDom, mercadeoDinamico] = email
@@ -72,19 +87,22 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
       : [false, [], [], false];
     const caja = baja ? [] : sedesCaja;
     const dom = baja ? [] : sedesDom;
+    // El reloj solo actúa como cliente: sin roles del equipo y sin «ingreso
+    // reciente» (borrar la cuenta y lo delicado se hacen desde el iPhone).
     req.usuario = {
       uid: d.uid,
       email,
       anonimo: d.firebase?.sign_in_provider === 'anonymous',
       nombre: (d.name as string) || '',
-      esAdmin: ADMINS.includes(email),
-      esCaja: caja.length > 0,
-      esDomiciliario: dom.length > 0,
-      esMercadeo: !baja && !!mercadeoDinamico,
-      proveedor: d.firebase?.sign_in_provider || '',
+      esAdmin: !reloj && ADMINS.includes(email),
+      esCaja: !reloj && caja.length > 0,
+      esDomiciliario: !reloj && dom.length > 0,
+      esMercadeo: !reloj && !baja && !!mercadeoDinamico,
+      proveedor: reloj ? String(d.prov || 'custom') : d.firebase?.sign_in_provider || '',
       correoVerificado: d.email_verified === true,
-      sedes: { caja, domiciliario: dom },
-      autenticadoAt: Number(d.auth_time || 0) * 1000,
+      sedes: reloj ? { caja: [], domiciliario: [] } : { caja, domiciliario: dom },
+      autenticadoAt: reloj ? 0 : Number(d.auth_time || 0) * 1000,
+      reloj,
     };
     next();
   } catch {

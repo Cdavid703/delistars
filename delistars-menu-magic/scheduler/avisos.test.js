@@ -29,7 +29,16 @@ test('domicilio sin domiciliario: aviso al admin a los 10 minutos', () => {
 
 test('push de Expo: mensajes y tokens muertos', () => {
   const m = mensajesExpo(['ExponentPushToken[a]'], { title: 'T', body: 'B' }, 'https://delistars.com/p/1')
-  assert.deepEqual(m[0], { to: 'ExponentPushToken[a]', title: 'T', body: 'B', sound: 'default', data: { url: 'https://delistars.com/p/1' } })
+  // Sin datos: aviso de pedido con su categoría.
+  assert.deepEqual(m[0], { to: 'ExponentPushToken[a]', title: 'T', body: 'B', sound: 'default', data: { url: 'https://delistars.com/p/1', tipo: 'pedido' }, categoryId: 'estado_pedido' })
+  // W-8: pedido, tipo, propuesta y categoría para la notificación propia del reloj.
+  const c = mensajesExpo(['x'], { title: 'T', body: 'B', tipo: 'cambio' }, 'u', { orderId: 'o1', tipo: 'cambio', propuestaId: 'prop_1' })
+  assert.deepEqual(c[0].data, { url: 'u', tipo: 'cambio', orderId: 'o1', propuestaId: 'prop_1' })
+  assert.equal(c[0].categoryId, 'cambio_pedido')
+  const r = mensajesExpo(['x'], { title: 'T', body: 'B' }, 'u', { orderId: 'o1', reclamoId: 'r1', tipo: 'reclamo' })
+  assert.deepEqual([r[0].data.reclamoId, r[0].categoryId], ['r1', 'reclamo'])
+  // Promoción: sin categoría.
+  assert.equal(mensajesExpo(['x'], { title: 'T', body: 'B' }, 'u', { tipo: 'promo' })[0].categoryId, undefined)
   assert.deepEqual(expoMuertos(['a', 'b'], { data: [{ status: 'ok' }, { status: 'error', details: { error: 'DeviceNotRegistered' } }] }), ['b'])
 })
 

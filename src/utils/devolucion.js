@@ -35,10 +35,15 @@ export const puedeElegirSaldo = (order) => !!order?.clientEmail
 
 // Estados de la devolución:
 //   por_elegir               → el cliente todavía no decide
+//   transferencia_sin_datos  → eligió transferencia (desde el reloj) y le faltan
+//                              los datos; la caja todavía NO puede transferir
 //   transferencia_solicitada → dejó sus datos; la caja tiene que transferir
 //   saldo_solicitado         → pidió saldo; la caja lo acredita
 //   transferida / acreditada → resuelta
 export const DEVOLUCION_PENDIENTE_CAJA = ['transferencia_solicitada', 'saldo_solicitado']
+
+/** El cliente todavía tiene que hacer algo: elegir, o completar los datos de la transferencia. */
+export const DEVOLUCION_POR_CLIENTE = ['por_elegir', 'transferencia_sin_datos']
 
 /** Errores de los datos para la transferencia de vuelta. */
 export function erroresDatosDevolucion({ medio, numero, titular }) {

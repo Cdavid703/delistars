@@ -48,8 +48,28 @@ function sinRespuestaDemasiado(o, ahora = Date.now(), esperaMin = 10) {
 }
 
 /** Mensajes para el servicio de push de Expo (la app). */
-function mensajesExpo(tokens, msg, url) {
-  return tokens.map((to) => ({ to, title: msg.title, body: msg.body, sound: 'default', data: { url } }))
+// Categoría de notificación por tipo de aviso (W-8). La app (y el Apple Watch)
+// registran estas categorías para mostrar su propia notificación con acceso al
+// pedido; si una no está registrada, el aviso sale normal.
+const CATEGORIA_EXPO = {
+  cambio: 'cambio_pedido',
+  reclamo: 'reclamo',
+  mensaje: 'mensaje_pedido',
+  pedido: 'estado_pedido',
+}
+
+/**
+ * Mensajes para Expo. `datos` (W-8): { orderId, tipo, reclamoId, propuestaId } van en
+ * `data` junto al enlace, y el tipo elige la categoría (categoryId).
+ */
+function mensajesExpo(tokens, msg, url, datos = {}) {
+  const tipo = datos.tipo || msg.tipo || 'pedido'
+  const data = { url, tipo }
+  if (datos.orderId) data.orderId = String(datos.orderId)
+  if (datos.reclamoId) data.reclamoId = String(datos.reclamoId)
+  if (datos.propuestaId) data.propuestaId = String(datos.propuestaId)
+  const categoryId = CATEGORIA_EXPO[tipo]
+  return tokens.map((to) => ({ to, title: msg.title, body: msg.body, sound: 'default', data, ...(categoryId ? { categoryId } : {}) }))
 }
 
 /** Tokens de Expo que Expo dice que ya no existen (desinstalaron la app). */
@@ -58,4 +78,4 @@ function expoMuertos(tokens, respuesta) {
   return tokens.filter((_, i) => datos[i]?.status === 'error' && datos[i]?.details?.error === 'DeviceNotRegistered')
 }
 
-module.exports = { URL_WEB, enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos }
+module.exports = { URL_WEB, enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos, CATEGORIA_EXPO }

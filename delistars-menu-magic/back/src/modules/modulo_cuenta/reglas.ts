@@ -28,7 +28,7 @@ export interface Pendiente {
   texto: string;
 }
 
-const DEVOLUCION_ABIERTA = ['por_elegir', 'transferencia_solicitada', 'saldo_solicitado'];
+const DEVOLUCION_ABIERTA = ['por_elegir', 'transferencia_sin_datos', 'transferencia_solicitada', 'saldo_solicitado'];
 const pesos = (n: number) => `$${Number(n || 0).toLocaleString('es-CO')}`;
 
 /** Lo que falta resolver antes de borrar la cuenta (y lo que se le muestra al cliente). */
