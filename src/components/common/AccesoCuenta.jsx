@@ -119,7 +119,7 @@ export default function AccesoCuenta({ titulo = 'Entra o crea tu cuenta', onCerr
           </button>
           {modo === 'crear' && (
             <p className="font-body text-[11px] text-coal/55 text-center">
-              Te enviaremos un enlace para confirmar tu correo antes de tu primer pedido.
+              Te enviaremos un enlace para confirmar tu correo. Puedes pedir de una vez, sin esperarlo.
             </p>
           )}
           {modo === 'entrar' && (

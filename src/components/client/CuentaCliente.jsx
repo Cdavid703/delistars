@@ -1,54 +1,9 @@
 import { useState } from 'react'
 import { doc, setDoc } from 'firebase/firestore'
 import { updateProfile } from 'firebase/auth'
-import { MailCheck } from 'lucide-react'
-import { db, auth, reenviarVerificacion, correoVerificado } from '../../services/firebase'
-import { mensajeAuth } from '../../utils/erroresAuth'
+import { db, auth } from '../../services/firebase'
 
 // Piezas de la cuenta del cliente (especificación §6.1, Fase 4).
-
-/**
- * Cuenta creada con correo y contraseña que aún no confirmó el correo: no puede
- * enviar su primer pedido. El carrito y el borrador se conservan mientras tanto.
- */
-export function AvisoVerificarCorreo({ email, onVerificado, className = '' }) {
-  const [busy, setBusy] = useState(null)
-  const [msg, setMsg] = useState('')
-  const reenviar = async () => {
-    setBusy('reenviar'); setMsg('')
-    try { await reenviarVerificacion(); setMsg(`Te enviamos otro enlace a ${email}.`) }
-    catch (err) { setMsg(mensajeAuth(err)) }
-    finally { setBusy(null) }
-  }
-  const yaConfirme = async () => {
-    setBusy('ya'); setMsg('')
-    try {
-      if (await correoVerificado()) onVerificado?.()
-      else setMsg('Todavía no aparece confirmado. Abre el enlace del correo y vuelve a tocar aquí.')
-    } catch (err) { setMsg(mensajeAuth(err)) }
-    finally { setBusy(null) }
-  }
-  return (
-    <div className={`bg-mustard/15 border-2 border-mustard rounded-2xl p-4 ${className}`}>
-      <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
-        <MailCheck size={18} /> Confirma tu correo para pedir
-      </p>
-      <p className="font-body text-xs text-coal/75 mt-1.5 leading-relaxed">
-        Te enviamos un enlace a <strong>{email}</strong>. Ábrelo y vuelve aquí: tu pedido se conserva.
-        Revisa también el correo no deseado.
-      </p>
-      <div className="flex gap-2 mt-3">
-        <button onClick={yaConfirme} disabled={!!busy} className="btn-primary flex-1 text-sm">
-          {busy === 'ya' ? 'Revisando…' : 'Ya lo confirmé'}
-        </button>
-        <button onClick={reenviar} disabled={!!busy} className="btn-secondary flex-1 text-sm">
-          {busy === 'reenviar' ? 'Enviando…' : 'Reenviar enlace'}
-        </button>
-      </div>
-      {msg && <p className="font-body text-xs text-coal/70 mt-2">{msg}</p>}
-    </div>
-  )
-}
 
 /**
  * Al entrar con Google o Microsoft se pide SOLO lo que falte (nombre y/o

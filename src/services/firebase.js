@@ -88,7 +88,7 @@ const volverA = () => ({ url: `${window.location.origin}/domicilios/` })
 /**
  * Crea la cuenta con nombre, teléfono, correo y contraseña. Si estaba como
  * invitado, ENLAZA (mismo uid: no pierde su pedido). Manda el enlace de
- * verificación: sin confirmar el correo no se puede enviar el primer pedido.
+ * verificación (confirmarlo ya no es obligatorio para pedir, 25 oct 2026).
  */
 export async function crearCuentaCorreo({ nombre, telefono, email, password }) {
   const correo = email.trim().toLowerCase()
