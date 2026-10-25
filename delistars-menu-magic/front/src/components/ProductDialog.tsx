@@ -25,7 +25,9 @@ const getProductCustomOptions = (product: ApiProduct | null) => {
 };
 
 export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null; onClose: () => void }) => {
-  const { addItem, setOpen } = useCart();
+  const { addItem, setOpen, agotados } = useCart();
+  // Agotado en esta sede: la ficha se ve, pero no se agrega (§7.2).
+  const agotado = !!product && agotados.has(product.id_producto);
   const [qty, setQty] = useState(1);
   const [addonQtys, setAddonQtys] = useState<Record<number, number>>({});
   const [notes, setNotes] = useState("");
@@ -254,6 +256,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
     : undefined;
 
   const handleAdd = () => {
+    if (agotado) return;
     if (notes.length > 250) {
       toast.error("El comentario es muy largo");
       return;
@@ -445,7 +448,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                   <div>
                     <p className="text-xs font-semibold mb-2">Salsas (sin costo adicional)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      {salsas.map((s) => (
+                      {salsas.filter((x) => !agotados.has(x.id)).map((s) => (
                         <button key={s.id} type="button" onClick={() => cambiarUnidad(i, (x) => ({ ...x, salsas: alternarEn(x.salsas, s.id) }))}
                           className={`px-2 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${u.salsas.includes(s.id)
                             ? "bg-primary/10 text-primary border-primary/40 font-bold"
@@ -460,7 +463,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                   <div>
                     <p className="text-xs font-semibold mb-2">Cebolla</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {cebollas.map((c) => (
+                      {cebollas.filter((x) => !agotados.has(x.id)).map((c) => (
                         <button key={c.id} type="button" onClick={() => cambiarUnidad(i, (x) => ({ ...x, cebollas: alternarEn(x.cebollas, c.id) }))}
                           className={`px-3 py-2 rounded-2xl text-xs font-semibold border transition-smooth text-center ${u.cebollas.includes(c.id)
                             ? "bg-primary/10 text-primary border-primary/40 font-bold"
@@ -534,7 +537,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                 <p className="font-display text-lg tracking-wide mb-1">Salsas</p>
                 <p className="text-xs text-muted-foreground mb-3">Selecciona las salsas que deseas (sin costo adicional)</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {salsas.map((s) => {
+                  {salsas.filter((x) => !agotados.has(x.id)).map((s) => {
                     const selected = selectedSalsas.has(s.id);
                     return (
                       <button
@@ -561,7 +564,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                 <p className="font-display text-lg tracking-wide mb-1">Cebolla</p>
                 <p className="text-xs text-muted-foreground mb-3">Selecciona el tipo de cebolla (sin costo adicional)</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {cebollas.map((c) => {
+                  {cebollas.filter((x) => !agotados.has(x.id)).map((c) => {
                     const selected = selectedCebollas.has(c.id);
                     return (
                       <button
@@ -588,7 +591,7 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
                 <p className="font-display text-lg tracking-wide mb-1">Adiciones</p>
                 <p className="text-xs text-muted-foreground mb-3">Personaliza tu pedido</p>
                 <div className="space-y-2">
-                  {addons.map((a) => {
+                  {addons.filter((x) => !agotados.has(x.id)).map((a) => {
                     const q = addonQtys[a.id] ?? 0;
                     return (
                       <div
@@ -656,10 +659,11 @@ export const ProductDialog = ({ product, onClose }: { product: ApiProduct | null
           </div>
           <Button
             onClick={handleAdd}
+            disabled={agotado}
             size="lg"
             className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth h-12 text-base"
           >
-            Agregar al carrito
+            {agotado ? "Agotado en esta sede" : "Agregar al carrito"}
           </Button>
         </div>
 

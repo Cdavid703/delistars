@@ -520,6 +520,19 @@ service cloud.firestore {
     }
 
     // ── Todo lo demás: denegado ────────────────────────────────────────────
+    // Agotado por sede (§7.2, P-14): { ids, nombres, actualizadoAt }. Lo lee
+    // cualquiera (el menú y la app lo muestran en vivo, sin datos personales);
+    // lo escribe solo el servidor (POST /api/v1/agotados). El historial con quién
+    // lo marcó lo ve el equipo.
+    match /agotados/{sedeId} {
+      allow read: if true;
+      allow write: if false;
+      match /historial/{id} {
+        allow read: if isAdmin() || isCashier();
+        allow write: if false;
+      }
+    }
+
     // Sesiones del Apple Watch: solo el servidor las crea y cierra (admin SDK).
     match /sesiones_reloj/{id} {
       allow read, write: if false;

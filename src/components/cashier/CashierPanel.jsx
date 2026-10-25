@@ -25,6 +25,8 @@ import RoleSwitcher from '../common/RoleSwitcher'
 import OrderCard from './OrderCard'
 import TableroCaja from './TableroCaja'
 import ChipEstado from './ChipEstado'
+import AgotadosCaja from './AgotadosCaja'
+import useAgotados from '../../hooks/useAgotados'
 import { porAsignar } from '../../utils/tableroCaja'
 import OrderForm from './OrderForm'
 import OrderDetail from './OrderDetail'
@@ -36,7 +38,7 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X,
-  Calculator, Search, Bike, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
+  Calculator, Search, Bike, PackageX, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
   Banknote, ShoppingBag, CircleCheck, Ban, FileText, ClipboardList, Tag, Lightbulb
 } from 'lucide-react'
 
@@ -110,6 +112,7 @@ export default function CashierPanel() {
   const prevStatusRef = useRef(new Map())
   const [alarmActive,     setAlarmActive]    = useState(false)
   const [showManual,      setShowManual]     = useState(false)
+  const [showAgotados,    setShowAgotados]   = useState(false)
   const [showCuadreTurno, setShowCuadreTurno] = useState(false)
   const [showTracking,    setShowTracking]   = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
@@ -385,6 +388,7 @@ export default function CashierPanel() {
 
   const pendingCount  = orders.filter(o => o.status === 'pending'                    && isToday(o.createdAt)).length
   const sinDomiciliario = orders.filter(o => porAsignar(o) && isToday(o.createdAt))
+  const agotados = useAgotados(sede?.id)
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
 
   const handleCreateOrder = async (data) => {
@@ -483,6 +487,11 @@ export default function CashierPanel() {
             <span className="font-body text-xs font-semibold hidden sm:inline">Cuadre</span>
           </button>
           <RoleSwitcher />
+          <button onClick={() => setShowAgotados(true)} title="Productos agotados en esta sede"
+            className="btn-icon text-coal/60 hover:text-pepper flex items-center gap-1 px-2 w-auto min-w-11">
+            <PackageX size={18} />
+            <span className="font-body text-xs font-semibold hidden sm:inline">Agotados</span>
+          </button>
           <button onClick={() => setShowManual(true)} className="btn-icon text-coal/60 hover:text-cherry flex items-center gap-1 px-2 w-auto min-w-11">
             <BookOpen size={18} />
             <span className="font-body text-xs font-semibold hidden sm:inline">Manual</span>
@@ -697,6 +706,13 @@ export default function CashierPanel() {
         <ImpresoraCaja puesto={puesto} sedeId={sede?.id} />
         {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
         <EstadoDomiciliarios sedeId={sede?.id} />
+        {/* Lo agotado en la sede: para acordarse de volver a ofrecerlo. */}
+        {agotados.ids.size > 0 && (
+          <ChipEstado tono="neutro" icono={PackageX}
+            texto={agotados.ids.size === 1 ? `Agotado: ${Object.values(agotados.nombres)[0] || '1 producto'}` : `${agotados.ids.size} productos agotados`}
+            titulo={Object.values(agotados.nombres).join(', ')}
+            accion={{ texto: 'Ver', onClick: () => setShowAgotados(true) }} />
+        )}
         {/* Domicilios sin domiciliario: el que más lleva esperando se asigna primero. */}
         {sinDomiciliario.length > 0 && (
           <ChipEstado tono="atencion" icono={Bike}
@@ -838,6 +854,7 @@ export default function CashierPanel() {
       )}
 
       {/* Manual de usuario modal */}
+      {showAgotados && <AgotadosCaja sede={sede} onClose={() => setShowAgotados(false)} />}
       {showManual && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
           onClick={e => { if (e.target === e.currentTarget) setShowManual(false) }}>

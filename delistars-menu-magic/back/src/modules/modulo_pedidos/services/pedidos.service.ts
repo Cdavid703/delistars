@@ -84,7 +84,9 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     throw new ErrorPedido('sede_cerrada', `${sede.nombre} no está recibiendo pedidos en este momento`, 409);
   }
 
-  const { itemsTexto, subtotal } = armarItems(b?.items, await catalogo(), sede.id);
+  // Agotados de esta sede (los marca la caja): no se pueden pedir.
+  const agotados = new Set<number>(((await db.doc(`agotados/${sede.id}`).get()).data()?.ids ?? []).map(Number));
+  const { itemsTexto, subtotal } = armarItems(b?.items, await catalogo(), sede.id, Date.now(), agotados);
 
   // Código promocional: una vez por cuenta (se busca en sus pedidos, como la web).
   const codigoPedido = b?.codigo ? String(b.codigo).trim().toUpperCase() : '';
