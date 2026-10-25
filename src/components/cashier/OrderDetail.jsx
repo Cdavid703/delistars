@@ -788,7 +788,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                       {addrSuggestions.map((s, i) => (
                         <button key={i} type="button"
                           onClick={() => {
-                            setAddrDraft(s); setAddrSuggestions([])
+                            setAddrDraft(s); setAddrSuggestions([]); setAddrSearched(false)
                             const l = addrLugares[i]
                             setAddrPunto(l && l.direccion === s && Number.isFinite(l.lat) ? { lat: l.lat, lng: l.lng } : null)
                           }}
