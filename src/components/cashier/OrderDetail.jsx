@@ -24,9 +24,10 @@ import {
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Hash, DollarSign, MessageSquare, Clock,
   Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check,
-  CircleCheck, CircleX, Store, Banknote, MessageCircle
+  CircleCheck, CircleX, Store, Banknote
 } from 'lucide-react'
 import ComandaPedido from './ComandaPedido'
+import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -751,7 +752,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 return (
                   <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                     className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors w-fit">
-                    <MessageCircle size={14} aria-hidden="true" /> WhatsApp cliente
+                    <LogoWhatsApp size={15} /> WhatsApp cliente
                   </a>
                 )
               })()}
@@ -788,10 +789,10 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
 
                   <div className="flex gap-2 mt-3">
                     <button onClick={openDirections} className="btn-secondary btn-sm flex-1">
-                      <Navigation size={14} /> Ver ruta
+                      <LogoGoogleMaps size={15} /> Ver ruta
                     </button>
                     <button onClick={openWaze} className="btn-secondary btn-sm flex-1">
-                      <ExternalLink size={14} /> Waze
+                      <LogoWaze size={15} /> Waze
                     </button>
                   </div>
 
@@ -1576,7 +1577,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   return (
                     <a href={waUrl} target="_blank" rel="noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 border-[#25D366]/50 text-[#25D366] bg-[#25D366]/5 font-semibold text-sm font-body hover:bg-[#25D366]/15 transition-colors">
-                      <MessageCircle size={14} aria-hidden="true" /> {waPhone ? 'Avisar por WhatsApp' : 'Enviar WhatsApp (elige contacto)'}
+                      <LogoWhatsApp size={15} /> {waPhone ? 'Avisar por WhatsApp' : 'Enviar WhatsApp (elige contacto)'}
                     </a>
                   )
                 })()}

@@ -6,6 +6,7 @@ import { precioDomicilio, RECORRIDO } from '../../utils/tarifaDomicilio'
 import { SEDES } from '../../services/roles'
 import useAgotados from '../../hooks/useAgotados'
 import { opcionesCatalogo, vendibles, seleccionInicial, precioUnidad, faltantes, itemApi, resumenItem } from '../../utils/catalogoCaja'
+import { LogoPago, LogoWhatsApp } from '../common/LogosApps'
 
 // Pedido de la caja desde el catálogo (especificación §10.1). Presencial, por
 // teléfono o por WhatsApp, sin cuenta del comprador. Los productos se arman con
@@ -253,7 +254,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">
-          {CANALES.map((c) => <Chip key={c.id} activo={canal === c.id} onClick={() => setCanal(c.id)}>{c.texto}</Chip>)}
+          {CANALES.map((c) => <Chip key={c.id} activo={canal === c.id} onClick={() => setCanal(c.id)}><span className="inline-flex items-center gap-1.5">{c.id === 'whatsapp' && <LogoWhatsApp size={14} />}{c.texto}</span></Chip>)}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <input className="input-field text-sm" value={cliente.nombre} onChange={(e) => setCliente((c) => ({ ...c, nombre: e.target.value }))} placeholder="Nombre del cliente" />
@@ -349,7 +350,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       {/* 4. Pago */}
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap gap-1.5">
-          {METODOS.map((m) => <Chip key={m} activo={pago.metodo === m} onClick={() => setPago((p) => ({ ...p, metodo: m }))}>{m}</Chip>)}
+          {METODOS.map((m) => <Chip key={m} activo={pago.metodo === m} onClick={() => setPago((p) => ({ ...p, metodo: m }))}><span className="inline-flex items-center gap-1.5"><LogoPago medio={m} size={14} />{m}</span></Chip>)}
         </div>
         {pago.metodo === 'Mixto' && (
           <div className="grid grid-cols-2 gap-2">

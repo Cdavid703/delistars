@@ -15,6 +15,7 @@ import {
   UtensilsCrossed, Handshake,
 } from "lucide-react";
 import { FAMILIAS, ENSALADA_DE_LA_CASA, ENSALADA_NOTA, SALSAS_CASA, CEBOLLAS } from "@/data/ingredientes";
+import { LogoWhatsApp } from "@/components/LogosApps";
 
 const BROCHURE_URL = "/brochure-delistars-empresas.pdf";
 // Se genera con scripts/generar-ficha-ingredientes.py desde el mismo JSON que
@@ -763,7 +764,7 @@ function SeccionCotizar() {
         <h3 className="font-display text-2xl text-coal mb-2">¡Solicitud enviada! 🎉</h3>
         <p className="text-muted-foreground mb-5">Te contactaremos muy pronto. Si es urgente, escríbenos por WhatsApp.</p>
         <a href={`https://wa.me/${WA_EMPRESAS}?text=${WA_TEXT}`} target="_blank" rel="noreferrer">
-          <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0">Escribir por WhatsApp</Button>
+          <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0"><LogoWhatsApp blanco size={18} /> Escribir por WhatsApp</Button>
         </a>
         <p className="text-sm text-muted-foreground mt-4">
           También puedes escribirnos a <a href={`mailto:${CORREO}`} className="text-cherry font-semibold hover:underline">{CORREO}</a>
@@ -781,13 +782,13 @@ function SeccionCotizar() {
 
       {/* Opción rápida: WhatsApp */}
       <div className="max-w-2xl mx-auto mb-8 bg-[#25D366]/10 border border-[#25D366]/30 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-4">
-        <MessageCircle className="w-9 h-9 text-[#25D366] shrink-0" />
+        <LogoWhatsApp size={36} />
         <div className="flex-1 text-center sm:text-left">
           <p className="font-display text-lg text-coal">¿Prefieres hablar ya?</p>
           <p className="text-sm text-muted-foreground">Escríbenos por WhatsApp y coordinamos tu cotización al instante.</p>
         </div>
         <a href={`https://wa.me/${WA_EMPRESAS}?text=${WA_TEXT}`} target="_blank" rel="noreferrer" className="shrink-0">
-          <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0">WhatsApp empresas</Button>
+          <Button className="bg-[#25D366] hover:bg-[#1eb658] text-white border-0"><LogoWhatsApp blanco size={18} /> WhatsApp empresas</Button>
         </a>
       </div>
 

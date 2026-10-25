@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import {
   collection, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, updateDoc, getDocs
@@ -37,7 +38,7 @@ import { es } from 'date-fns/locale'
 import {
   Plus, LogOut, Users, MapPin, Power, BellRing, HelpCircle,
   ChevronDown, ChevronUp, BookOpen, X,
-  Calculator, Search, Bike, PackageX, Navigation, ExternalLink, Phone, MessageCircle, ChevronRight, Pencil, Check,
+  Calculator, Search, Bike, PackageX, Navigation, Phone, MessageCircle, ChevronRight, Pencil, Check,
   Banknote, ShoppingBag, CircleCheck, Ban, FileText, ClipboardList, Tag, Lightbulb
 } from 'lucide-react'
 
@@ -1210,7 +1211,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
               </a>
               <a href={`https://wa.me/57${driver.phone}`} target="_blank" rel="noreferrer"
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-[#25D366]/40 text-[#25D366] text-sm font-semibold font-body hover:bg-[#25D366]/10 transition-colors">
-                <MessageCircle size={15} /> WhatsApp
+                <LogoWhatsApp size={16} /> WhatsApp
               </a>
             </div>
           )}
@@ -1241,12 +1242,12 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
                 <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
                   target="_blank" rel="noreferrer"
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-mint/40 text-mint text-sm font-semibold font-body hover:bg-mint/10 transition-colors">
-                  <Navigation size={15} /> Google Maps
+                  <LogoGoogleMaps size={16} /> Google Maps
                 </a>
                 <a href={`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`}
                   target="_blank" rel="noreferrer"
                   className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-coal/20 text-coal/60 text-sm font-semibold font-body hover:bg-smoked transition-colors">
-                  <ExternalLink size={15} /> Waze
+                  <LogoWaze size={16} /> Waze
                 </a>
               </div>
             </div>

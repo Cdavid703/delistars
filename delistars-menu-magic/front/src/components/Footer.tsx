@@ -1,12 +1,13 @@
-import { Instagram, Facebook, MessageCircle, Music2, Phone } from "lucide-react";
+import { Phone } from "lucide-react";
+import { LogoWhatsApp, LogoInstagram, LogoFacebook, LogoTikTok } from "@/components/LogosApps";
 import logo from "@/assets/logo.svg";
 
 const SOCIALS = [
-  { Icon: MessageCircle, label: "WhatsApp", href: "https://wa.me/573135065720", handle: "+57 313 506 5720", sub: "Santa Lucía" },
-  { Icon: MessageCircle, label: "WhatsApp", href: "https://wa.me/573150634084", handle: "+57 315 063 4084", sub: "Santa Teresita" },
-  { Icon: Instagram, label: "Instagram", href: "https://www.instagram.com/delistars.med", handle: "@delistars.med" },
-  { Icon: Facebook, label: "Facebook", href: "https://www.facebook.com/delistars.med/", handle: "/delistars.med" },
-  { Icon: Music2, label: "TikTok", href: "https://www.tiktok.com/@delistars.med", handle: "@delistars.med" },
+  { Icon: LogoWhatsApp, label: "WhatsApp", href: "https://wa.me/573135065720", handle: "+57 313 506 5720", sub: "Santa Lucía" },
+  { Icon: LogoWhatsApp, label: "WhatsApp", href: "https://wa.me/573150634084", handle: "+57 315 063 4084", sub: "Santa Teresita" },
+  { Icon: LogoInstagram, label: "Instagram", href: "https://www.instagram.com/delistars.med", handle: "@delistars.med" },
+  { Icon: LogoFacebook, label: "Facebook", href: "https://www.facebook.com/delistars.med/", handle: "/delistars.med" },
+  { Icon: LogoTikTok, label: "TikTok", href: "https://www.tiktok.com/@delistars.med", handle: "@delistars.med" },
 ];
 
 export const Footer = () => {
@@ -34,8 +35,9 @@ export const Footer = () => {
               aria-label={label}
               className="group flex flex-col items-center gap-2 p-4 rounded-2xl bg-cream/5 border border-cream/10 hover:bg-cherry hover:border-cherry hover:-translate-y-1 transition-smooth"
             >
-              <span className="w-12 h-12 rounded-full bg-cream/10 group-hover:bg-cream/20 flex items-center justify-center transition-smooth">
-                <Icon className="w-6 h-6 text-cream group-hover:scale-110 transition-bounce" />
+              {/* Logos a color sobre un círculo claro para que se vean sus colores. */}
+              <span className="w-12 h-12 rounded-full bg-cream flex items-center justify-center transition-smooth">
+                <Icon size={26} className="group-hover:scale-110 transition-bounce" />
               </span>
               <span className="font-display text-sm tracking-wider">{label}</span>
               <span className="text-xs text-cream/60 group-hover:text-cream/90 truncate max-w-full">
