@@ -611,10 +611,10 @@ export async function editorPedido(u: Usuario, id: string, b: any) {
     }
     return { plan, p };
   });
-  // Aviso al que perdió el control (centro de avisos; no bloquea la respuesta).
+  // Aviso al que perdió el control (centro de avisos). Si falla, el cambio de control ya quedó.
   if (r.plan.cambio && r.plan.accion === 'tomar_control' && r.plan.anterior?.email) {
     const n = r.p.orderNumber ? ` #${r.p.orderNumber}` : '';
-    db.doc(`avisos/${r.plan.anterior.email.toLowerCase()}/items/control-${id}-${Date.now()}`).set({
+    await db.doc(`avisos/${r.plan.anterior.email.toLowerCase()}/items/control-${id}-${Date.now()}`).set({
       tipo: 'pedido', titulo: `${u.nombre || u.email} tomó el control del pedido${n}`, cuerpo: `Motivo: ${r.plan.motivo}`,
       pedidoId: id, enlace: null, leido: false, creadoAt: FieldValue.serverTimestamp(),
     }).catch(() => undefined);
