@@ -19,6 +19,8 @@ import { revisarEditor, planEditor } from '../reglas/editor';
 import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar, idPropuesta, revisarRespuesta, validarDireccionPropuesta, direccionAnterior, DireccionPropuesta } from '../reglas/cambios';
 import { validarMensaje } from '../reglas/chat';
 import { atribuible } from '../../modulo_mercadeo/campanas.reglas';
+import { revisarDestinatario } from '../../../shared/destinatario';
+import { nuevoTokenDestinatario, indiceDestinatario } from './destinatario.service';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 export function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
@@ -78,6 +80,10 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   if (modo === 'delivery' && direccion.length < 5) throw new ErrorPedido('direccion', 'La dirección es obligatoria');
   const coords = modo === 'delivery' && b?.coords != null ? b.coords : null;
   if (coords && !coordsValidas(coords)) throw new ErrorPedido('coords', 'La ubicación no es válida');
+  // Lo recibe otra persona (§7.3): sus datos aparte; los del comprador se conservan.
+  const rd = revisarDestinatario(b?.destinatario, { deliveryMode: modo });
+  if (!rd.ok) throw new ErrorPedido(`destinatario_${rd.campo}`, rd.error ?? 'Revisa los datos de quien recibe');
+  const destinatario = rd.destinatario ? { ...rd.destinatario, token: nuevoTokenDestinatario() } : null;
 
   const db = firestore();
   const horarios = (await db.doc('config/horarios').get()).data() || null;
@@ -156,6 +162,7 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     // De dónde llegó: la web de domicilios manda 'web'; la app móvil, 'app' (o nada).
     origen: b?.origen === 'web' ? 'web' : 'app',
     ...(campana ? { campana } : {}),
+    ...(destinatario ? { destinatario } : {}),
     version: 1,
     createdAt: ahora,
     updatedAt: ahora,
@@ -206,6 +213,7 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     for (const id of saldo?.ids ?? []) {
       tx.update(cliente.collection('credits').doc(id), { estado: 'usado', usadoEnOrderId: orderRef.id, usadoAt: ahora });
     }
+    if (destinatario) tx.set(indiceDestinatario(destinatario.token), { orderId: orderRef.id, creadoAt: ahora });
     tx.set(orderRef.collection('historial').doc(), {
       at: ahora, por: u.email, rol: 'cliente', accion: 'crear',
       de: null, a: { etapa: 'enviado', excepcion: null }, status: 'pending', version: 1,
@@ -216,7 +224,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
   // Perfil del cliente frecuente (igual que la web; no bloquea la respuesta).
   db.doc(`customers/${u.uid}`).set({
     uid: u.uid, name: nombre, email: u.email, phone: pedido.phone,
-    ...(pedido.fullAddress ? { addresses: FieldValue.arrayUnion(pedido.fullAddress) } : {}),
+    // La dirección de otra persona no se guarda entre las del comprador.
+    ...(pedido.fullAddress && !destinatario ? { addresses: FieldValue.arrayUnion(pedido.fullAddress) } : {}),
     lastOrderAt: ahora, orderCount: FieldValue.increment(1),
   }, { merge: true }).catch(() => undefined);
   // Métricas de la campaña: pedidos atribuidos y su valor en productos (al crearse).
@@ -243,6 +252,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     premios: beneficios.premios,
     saldo: beneficios.saldo ? { monto: beneficios.saldo.monto, usado: saldoCalc?.usado ?? null } : null,
     items: itemsFinal,
+    // Para compartir con quien recibe: /domicilios/?recibe=<token>.
+    destinatario: destinatario ? { nombre: destinatario.nombre, paga: destinatario.paga, token: destinatario.token } : null,
   };
 }
 

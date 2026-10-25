@@ -13,6 +13,7 @@
 import { etapaDe, terminado } from '../../../shared/etapas';
 import { ErrorPedido } from './armado';
 import { aplicarSaldo } from '../../../shared/devolucion';
+import { metodosPermitidos, pagaQuienRecibe } from '../../../shared/destinatario';
 import type { PedidoDoc } from './transiciones';
 
 export const METODOS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto'];
@@ -74,6 +75,13 @@ export function planPago(p: PedidoDoc, id: string, uid: string, b: any, bucket: 
 
   const metodo = b?.metodo;
   if (!METODOS.includes(metodo)) throw new ErrorPedido('metodo', 'Elige cómo vas a pagar: Efectivo, Transferencia, Nequi o Mixto');
+  // Para otra persona (§7.3): quien recibe paga en efectivo; quien pidió, por Transferencia o Nequi.
+  const permitidos = metodosPermitidos(p);
+  if (permitidos && !permitidos.includes(metodo)) {
+    throw new ErrorPedido('metodo', pagaQuienRecibe(p)
+      ? 'Lo paga quien recibe: en efectivo, al recibirlo'
+      : 'Lo pagas tú: por Transferencia o Nequi');
+  }
   const campos: Record<string, unknown> = {
     payment: metodo,
     cashOnDelivery: metodo === 'Efectivo' || metodo === 'Mixto',
@@ -99,7 +107,8 @@ export function planPago(p: PedidoDoc, id: string, uid: string, b: any, bucket: 
       if (!(billete > 0) || billete > 1_000_000) throw new ErrorPedido('billete', 'El billete no es válido');
       if (billete < parteEfectivo) throw new ErrorPedido('billete', 'El billete no alcanza para lo que pagas en efectivo');
       Object.assign(campos, { cashBillAmount: billete, cashChange: billete - parteEfectivo, billSentAt: '__ahora__' });
-    } else if (adelantado) {
+    } else if (adelantado && !pagaQuienRecibe(p)) {
+      // Si paga quien recibe, quien pidió puede no saber con qué billete: el domiciliario lleva cambio.
       throw new ErrorPedido('billete', 'Dinos con qué billete vas a pagar (o el valor exacto)');
     }
   } else {

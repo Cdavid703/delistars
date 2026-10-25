@@ -34,6 +34,7 @@ import ChatDomiciliario from '../common/ChatDomiciliario'
 import CuadresEfectivo from '../common/CuadresEfectivo'
 import { transferenciaPendiente } from '../../utils/cuadres'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
+import ContactosParaOtro from '../common/ContactosParaOtro'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -712,7 +713,9 @@ function DriverOrderCard({ order, onClick }) {
       </div>
       <div className="flex items-center gap-1.5 mb-1">
         <User size={13} className="text-coal/40" />
-        <span className="font-body font-semibold text-sm">{order.name}</span>
+        <span className="font-body font-semibold text-sm">
+          {order.destinatario?.nombre ? `${order.destinatario.nombre} (lo pidió ${order.name?.split(' ')[0] || 'otra persona'})` : order.name}
+        </span>
       </div>
       <div className="flex items-start gap-1.5 mb-1">
         <MapPin size={13} className="text-coal/40 mt-0.5 flex-shrink-0" />
@@ -922,9 +925,10 @@ function DriverOrderDetail({ order, onClose }) {
     '_blank')
 
   // ── Pedir la ubicación por WhatsApp ────────────────────────────────────────
+  // Si lo recibe otra persona, la ubicación se le pide a ella (§7.3).
   const waPedirUbicacion = linkPedirUbicacion({
-    telefono:     order.phone,
-    cliente:      order.name || order.clientName,
+    telefono:     order.destinatario?.telefono || order.phone,
+    cliente:      order.destinatario?.nombre || order.name || order.clientName,
     domiciliario: user?.displayName || order.driverName,
     pedido:       order.orderNumber,
   })
@@ -973,7 +977,8 @@ function DriverOrderDetail({ order, onClose }) {
             </div>
           )}
 
-          {/* Client */}
+          {/* Para otra persona: los dos contactos, identificados (§7.3) */}
+          {order.destinatario?.nombre ? <ContactosParaOtro order={order} rol="domiciliario" /> : (
           <div className="card">
             <div className="flex items-center gap-2 mb-2">
               <User size={16} className="text-cherry" />
@@ -995,6 +1000,7 @@ function DriverOrderDetail({ order, onClose }) {
               })()}
             </div>
           </div>
+          )}
 
           {/* Address + navigation */}
           <div className="card">

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import ComandaPedido from './ComandaPedido'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
+import ContactosParaOtro from '../common/ContactosParaOtro'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -743,7 +744,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           <div className="flex flex-col gap-4 min-w-0">
             <p className="font-body text-xs text-coal/40">{time}</p>
             {/* Client info */}
-            <Section title="Cliente">
+            <Section title={order.destinatario?.nombre ? 'Lo pidió' : 'Cliente'}>
               <Row icon={User}  label="Nombre"   value={order.name || order.clientName} />
               <Row icon={Phone} label="Teléfono" value={order.phone} />
               {order.phone && (() => {
@@ -752,11 +753,13 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 return (
                   <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
                     className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors w-fit">
-                    <LogoWhatsApp size={15} /> WhatsApp cliente
+                    <LogoWhatsApp size={15} /> {order.destinatario?.nombre ? 'WhatsApp de quien pidió' : 'WhatsApp cliente'}
                   </a>
                 )
               })()}
             </Section>
+            {/* Para otra persona (§7.3): a quién se entrega y quién paga */}
+            <ContactosParaOtro order={order} rol="caja" />
             {/* Recoger en sede — sin dirección de entrega */}
             {pickup && (
               <Section title="Entrega">

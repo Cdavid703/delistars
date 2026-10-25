@@ -14,10 +14,14 @@ const CashierPanel  = lazy(() => import('./components/cashier/CashierPanel'))
 const DeliveryPanel = lazy(() => import('./components/delivery/DeliveryPanel'))
 const ClientPanel   = lazy(() => import('./components/client/ClientPanel'))
 const SeguirConCodigo = lazy(() => import('./pages/SeguirConCodigo'))
+const RecibePedido    = lazy(() => import('./pages/RecibePedido'))
 
 // ?codigo=K7QM-4ZP9 (o ?codigo vacío): seguir un pedido de caja con su código
 // privado, con o sin cuenta (Fase 4, P-16).
 const codigoEnUrl = new URLSearchParams(window.location.search).get('codigo')
+
+// ?recibe=<token>: quien recibe un pedido para otra persona lo sigue sin cuenta (§7.3).
+const recibeEnUrl = new URLSearchParams(window.location.search).get('recibe')
 
 // ?campana=<id> (notificación de Mercadeo con destino «Mis premios»): se
 // cuenta la apertura y se recuerda 24 h para atribuir el pedido (§17.4).
@@ -75,6 +79,15 @@ export default function App() {
       if (sedeId && SEDES[sedeId]) selectSede(SEDES[sedeId])
     } catch (_) {}
   }, [user, sede])
+
+  // No necesita sesión: se muestra sin esperar a que cargue la cuenta.
+  if (recibeEnUrl) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <RecibePedido token={recibeEnUrl} />
+      </Suspense>
+    )
+  }
 
   if (loading) return <LoadingScreen />
 
