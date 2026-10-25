@@ -78,7 +78,7 @@ Tamaño: **S** (días), **M** (1–2 semanas), **L** (varias semanas).
 | 6.3 | Equipo | Solicitud de acceso con aprobación del admin, selector de rol y sede, "Cambiar de empleado", "Mis sesiones", revocar sesiones | M |
 | 7.1 | Sede y cobertura | Sugerir sede por ubicación al entrar, ofrecer la otra sede si la elegida no cubre (con diferencias del carrito) | S–M (parte hecha) |
 | 7.2 | Carrito | Agotado **por sede** (hoy `disponible` es global), aviso de pedido activo antes de otro, lista de pedidos activos al volver | M |
-| 7.3 | Pedido para otra persona | Destinatario, quién paga, enlace restringido del destinatario que vence a las 3 h | M |
+| 7.3 | Pedido para otra persona | Destinatario, quién paga, enlace restringido del destinatario que vence a las 3 h. **Hecho 25 oct 2026 en pruebas** (solo domicilio; la caja aún no lo ofrece en su pedido por catálogo) | M |
 | 8.1 | Estados | Pasar a 7 etapas (Enviado, Confirmado, En preparación, Listo, En camino, Llegó, Entregado) + flujo de recogida + excepciones. Hoy: pending, quoted, assigned, accepted, preparing, in_transit, arrived, delivered_*, completed… Requiere mapa de estados viejos → nuevos y migración. | L |
 | 8.3 | Chats | Dos conversaciones separadas por pedido (cliente–caja y cliente–domiciliario), fotos y notas de voz, ventana de 3 h, caja sin acceso al chat del domiciliario | L |
 | 9 | Cambios y cancelaciones | Cancelación por etapa, propuesta de cambio de productos con aceptación del cliente, cambio de dirección, "No puedo entregar" y devolución física | L |
