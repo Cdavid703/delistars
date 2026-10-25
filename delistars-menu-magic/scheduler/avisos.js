@@ -56,10 +56,12 @@ const CATEGORIA_EXPO = {
   reclamo: 'reclamo',
   mensaje: 'mensaje_pedido',
   pedido: 'estado_pedido',
+  // CarPlay (CP-2): la instrucción de la caja se puede mostrar en el carro.
+  instruccion: 'instruccion_caja',
 }
 
 /**
- * Mensajes para Expo. `datos` (W-8): { orderId, tipo, reclamoId, propuestaId } van en
+ * Mensajes para Expo. `datos` (W-8): { orderId, tipo, reclamoId, propuestaId, instruccion } van en
  * `data` junto al enlace, y el tipo elige la categoría (categoryId).
  */
 function mensajesExpo(tokens, msg, url, datos = {}) {
@@ -68,6 +70,7 @@ function mensajesExpo(tokens, msg, url, datos = {}) {
   if (datos.orderId) data.orderId = String(datos.orderId)
   if (datos.reclamoId) data.reclamoId = String(datos.reclamoId)
   if (datos.propuestaId) data.propuestaId = String(datos.propuestaId)
+  if (datos.instruccion) data.instruccion = String(datos.instruccion)
   const categoryId = CATEGORIA_EXPO[tipo]
   return tokens.map((to) => ({ to, title: msg.title, body: msg.body, sound: 'default', data, ...(categoryId ? { categoryId } : {}) }))
 }

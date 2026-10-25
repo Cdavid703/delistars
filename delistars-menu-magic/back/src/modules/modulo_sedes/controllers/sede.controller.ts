@@ -3,6 +3,19 @@ import { SedeService } from '../services/sede.service';
 import { UpdateSedeDTO } from '../models/dto/update-sede.dto';
 import { CreateSedeDTO } from '../models/dto/create-sede.dto';
 
+/**
+ * CP-6 (CarPlay «Llamar a caja»): cada sede trae su `sedeId` (el de los pedidos:
+ * santa_lucia | santa_teresita) y `telefono` en formato +57XXXXXXXXXX, para
+ * marcar directo. Salen de `nombre_sede` y `telefono_sede` de tbl_sedes.
+ */
+export function conSedeYTelefono<T extends { nombre_sede?: string; telefono_sede?: string }>(s: T) {
+  const nombre = (s.nombre_sede || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const sedeId = nombre.includes('lucia') ? 'santa_lucia' : nombre.includes('teresita') ? 'santa_teresita' : null;
+  const d = String(s.telefono_sede || '').replace(/\D/g, '');
+  const telefono = d.length >= 10 ? `+57${d.slice(-10)}` : null;
+  return { ...s, sedeId, telefono };
+}
+
 export class SedeController {
   private sedeService: SedeService;
 
@@ -13,7 +26,7 @@ export class SedeController {
   public getAllSedes = async (req: Request, res: Response): Promise<void> => {
     try {
       const sedes = await this.sedeService.getAllSedes();
-      res.status(200).json(sedes);
+      res.status(200).json(sedes.map(conSedeYTelefono));
     } catch (error) {
       console.error('Error al obtener sedes:', error);
       res.status(500).json({
@@ -35,7 +48,7 @@ export class SedeController {
         return;
       }
       
-      res.status(200).json(sede);
+      res.status(200).json(conSedeYTelefono(sede));
     } catch (error) {
       console.error('Error al obtener sede:', error);
       res.status(500).json({

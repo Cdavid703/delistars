@@ -4,7 +4,9 @@
  * Además escribe el `status` viejo equivalente para que las pantallas actuales
  * de la web sigan funcionando mientras migran.
  */
-import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../shared/etapas';
+import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC, MOTIVOS_NO_ENTREGA as MNE } from '../../../shared/etapas';
+
+const MOTIVOS_NO_ENTREGA = MNE as Record<string, string>;
 
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
 import { transferenciaPendiente } from '../../modulo_cuadres/reglas';
@@ -41,6 +43,30 @@ export interface Plan {
 const AHORA = '__ahora__';
 export const esAhora = (v: unknown) => v === AHORA;
 
+/** Motivo de «No puedo entregar»: el código, o su texto tal cual (CP-1). null si no es ninguno. */
+export function motivoNoEntrega(m: unknown): string | null {
+  if (typeof m !== 'string') return null;
+  const t = m.trim();
+  if (MOTIVOS_NO_ENTREGA[t]) return t;
+  const porTexto = Object.entries(MOTIVOS_NO_ENTREGA).find(([, v]) => v.toLowerCase() === t.toLowerCase());
+  return porTexto ? porTexto[0] : null;
+}
+
+/**
+ * ¿El pedido ya está donde se pide llevarlo? (CP-5). Un reintento después de
+ * un corte, aunque llegue con otra Idempotency-Key, no debe fallar ni repetir
+ * nada: se responde lo que hay (`sinCambios: true`).
+ */
+export function yaEsta(p: PedidoDoc, a: string, motivoRaw?: unknown): boolean {
+  const actual = etapaDe(p);
+  if (a.startsWith('excepcion:')) {
+    const exc = a.slice('excepcion:'.length);
+    if (actual.excepcion !== exc) return false;
+    return exc !== 'no_entregado' || p.incidencia?.motivo === motivoNoEntrega(motivoRaw);
+  }
+  return a !== 'seguir' && actual.etapa === a && (!actual.excepcion || !!EXCEPCIONES[actual.excepcion]?.final || a === 'entregado');
+}
+
 export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: unknown): Plan {
   const actual = etapaDe(p);
   if (terminado(p)) throw new ErrorPedido('terminado', 'El pedido ya terminó', 409);
@@ -58,8 +84,14 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
   if (!t) throw new ErrorPedido('sin_permiso', 'Tu rol no puede hacer este cambio', 403);
   if (t.bloquea && actual.excepcion && t.bloquea.includes(actual.excepcion))
     throw new ErrorPedido('bloqueado', `Primero hay que resolver: ${EXCEPCIONES[actual.excepcion].texto}`, 409);
-  const motivo = typeof motivoRaw === 'string' ? motivoRaw.trim().slice(0, 300) : '';
+  let motivo = typeof motivoRaw === 'string' ? motivoRaw.trim().slice(0, 300) : '';
   if (t.motivo && !motivo) throw new ErrorPedido('motivo', 'Este cambio necesita un motivo');
+  // «No puedo entregar» (CP-1): solo los tres motivos cerrados.
+  const codigoNoEntrega = a === 'excepcion:no_entregado' ? motivoNoEntrega(motivo) : null;
+  if (a === 'excepcion:no_entregado') {
+    if (!codigoNoEntrega) throw new ErrorPedido('motivo', `Motivo no válido. Usa uno de: ${Object.keys(MOTIVOS_NO_ENTREGA).join(', ')}`);
+    motivo = MOTIVOS_NO_ENTREGA[codigoNoEntrega];
+  }
 
   const rol = t.roles.find((r: string) => roles.includes(r as Rol)) as Rol;
   // Un solo editor (§10.3): la caja o el admin no cambian un pedido que tiene otro.
@@ -99,6 +131,18 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
     if (exc === 'cancelado') Object.assign(extras, {
       status: 'cancelled', cancelReason: motivo || 'Cancelado por el cliente', cancelledAt: AHORA,
       ...(devolucion ? { devolucion } : {}),
+    });
+    // CP-1: la incidencia queda aparte; una instrucción anterior de la caja ya no aplica.
+    if (exc === 'no_entregado') Object.assign(extras, {
+      incidencia: { motivo: codigoNoEntrega, texto: motivo, at: AHORA, por: u.email || u.uid },
+      instruccionCaja: null,
+    });
+    if (exc === 'regreso_declarado') Object.assign(extras, { regresoDeclaradoAt: AHORA });
+    // CP-3: la caja lo recibió. Para las pantallas viejas queda cerrado (status
+    // cancelled); la excepción `devuelto` dice que no fue una cancelación.
+    if (exc === 'devuelto') Object.assign(extras, {
+      status: 'cancelled', cancelReason: `Devuelto a la sede${p.incidencia?.texto ? `: ${p.incidencia.texto}` : ''}`,
+      cancelledAt: AHORA, devueltoAt: AHORA, devueltoPor: u.email || u.uid,
     });
     return { rol, etapa: actual.etapa, excepcion: exc, motivo: motivo || (exc === 'cancelado' ? 'Cancelado por el cliente' : null), extras };
   }
