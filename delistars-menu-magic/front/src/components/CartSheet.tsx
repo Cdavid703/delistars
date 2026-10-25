@@ -9,9 +9,13 @@ import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { usePlatformStatus } from "@/hooks/usePlatformStatus";
 import { optimizeImage } from "@/lib/utils";
+import { agotadoEnItem } from "@/lib/agotados";
 
 export const CartSheet = () => {
-  const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede } = useCart();
+  const { items, isOpen, setOpen, removeItem, updateQty, total, count, sede, agotados } = useCart();
+  // Lo que se agotó en la sede mientras estaba en el carrito: se señala y hay
+  // que quitarlo antes de pedir; no se borra solo (§7.2).
+  const hayAgotados = items.some((it) => agotadoEnItem(it, agotados).length > 0);
   const { user, login, loginMs } = useStaffAuth();
   const { abierta: platformActive, texto: textoHorario } = usePlatformStatus();
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -163,6 +167,11 @@ export const CartSheet = () => {
                         <p key={t} className="text-xs text-muted-foreground mt-0.5">{t}</p>
                       ))}
                       {it.notes && <p className="text-xs italic text-muted-foreground mt-1">"{it.notes}"</p>}
+                      {agotadoEnItem(it, agotados).length > 0 && (
+                        <p className="mt-1.5 rounded-lg bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">
+                          Se agotó en esta sede: {agotadoEnItem(it, agotados).join(", ")}. Quítalo o cámbialo para pedir.
+                        </p>
+                      )}
                       <div className="flex items-center justify-between mt-2">
                         <div className="flex items-center gap-1 bg-muted rounded-full">
                           <button onClick={() => updateQty(it.uid, it.quantity - 1)} className="p-1 hover:text-primary">
@@ -205,6 +214,13 @@ export const CartSheet = () => {
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       {textoHorario ? <strong>{textoHorario}.</strong> : null} Puedes ir armando tu
                       carrito y hacer el pedido cuando estemos abiertos.
+                    </p>
+                  </div>
+                ) : hayAgotados ? (
+                  <div className="rounded-2xl bg-destructive/10 border border-destructive/30 p-4 text-center">
+                    <p className="font-display text-base text-destructive">Algo de tu carrito se agotó</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                      Quita lo que está marcado o cámbialo por otro producto para hacer el pedido.
                     </p>
                   </div>
                 ) : needsLogin && (!user || user.isAnonymous) ? (

@@ -18,6 +18,8 @@ import logoCrema from '../../assets/logos/logo_dark.png'
 import RoleSwitcher from '../common/RoleSwitcher'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
+import useAgotados from '../../hooks/useAgotados'
+import { agotadosDelCarrito, nombresAgotados } from '../../utils/agotados'
 import { parseHandoff, parseMenuCart, carritoParaApi } from '../../utils/handoff'
 import { precioDomicilio, kmLineaRecta, distanciaParaCobrar, explicarTarifa, LINEA_RECTA } from '../../utils/tarifaDomicilio'
 import { medirRuta } from '../../services/recorrido'
@@ -1293,6 +1295,10 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   const [pidioRevisión,     setPidioRevisión]     = useState(false)
   // Productos del carrito del menú con sus ids, para la API (null = no hay carrito).
   const [carritoApi,        setCarritoApi]        = useState(null)
+  // Lo que se agotó en la sede mientras estaba en el carrito (§7.2): se señala
+  // y hay que quitarlo en el menú antes de enviar; no se borra solo.
+  const agotadosSede = useAgotados(sede?.id)
+  const agotadosEnCarrito = agotadosDelCarrito(carritoApi?.items, agotadosSede.ids)
   // Una clave por pedido: si el envío se reintenta, el servidor no lo duplica.
   const claveEnvio = useRef(nuevaClave())
   const errorsRef = useRef(null)
@@ -1488,6 +1494,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!carritoApi?.items.length && !carritoApi?.rearmar.length) errs.push('Elige tus productos en el menú para hacer el pedido')
     else if (carritoApi.rearmar.length) errs.push(`Vuelve a agregar desde el menú: ${carritoApi.rearmar.join(', ')}. El menú cambió desde que lo pusiste en el carrito.`)
+    if (agotadosEnCarrito.length) errs.push(`Se agotó en esta sede: ${nombresAgotados(agotadosEnCarrito, agotadosSede.nombres)}. Vuelve al menú, quítalo del carrito o cámbialo por otro.`)
     if (!user || user.isAnonymous) errs.push('Entra a tu cuenta para enviar el pedido (tu carrito se conserva).')
     // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
     if (codigoAplicado) {
@@ -1781,6 +1788,13 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         ) : (
           <div className="bg-coal/5 border border-dashed border-coal/20 rounded-xl px-4 py-4 text-center">
             <p className="font-body text-sm text-coal/70">Tu carrito está vacío.</p>
+          </div>
+        )}
+        {agotadosEnCarrito.length > 0 && (
+          <div className="mt-2 rounded-xl bg-pepper/10 border border-pepper/30 px-4 py-3">
+            <p className="font-body text-sm font-semibold text-pepper">Se agotó en esta sede: {nombresAgotados(agotadosEnCarrito, agotadosSede.nombres)}</p>
+            <p className="font-body text-xs text-coal/70 mt-0.5">Quítalo del carrito o cámbialo por otro producto para enviar el pedido.</p>
+            <a href="/" className="btn-secondary w-full mt-2">Cambiar mi pedido en el menú</a>
           </div>
         )}
         {(!carritoApi || carritoApi.rearmar.length > 0 || !carritoApi.items.length) && (

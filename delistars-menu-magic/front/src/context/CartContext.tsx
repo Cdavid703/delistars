@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect } from "react
 import type { Addon, Salsa, Cebolla, Product as ApiProduct } from "@/services/api";
 import { SEDES } from "@/data/menu";
 import type { UnidadCombo } from "@/lib/reglas";
+import { useAgotados } from "@/lib/agotados";
 
 export type CartItem = {
   uid: string;
@@ -42,6 +43,8 @@ type CartCtx = {
   setOpen: (v: boolean) => void;
   sede: number | null;
   setSede: (s: number | null) => void;
+  /** Ids agotados en la sede elegida (en vivo). */
+  agotados: ReadonlySet<number>;
 };
 
 const Ctx = createContext<CartCtx | null>(null);
@@ -132,11 +135,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
+  const agotados = useAgotados(SEDES.find((s) => s.id === sede)?.slug ?? null);
   const total = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const count = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <Ctx.Provider value={{ items, addItem, removeItem, updateQty, clear, reconcilePrices, total, count, isOpen, setOpen, sede, setSede }}>
+    <Ctx.Provider value={{ items, addItem, removeItem, updateQty, clear, reconcilePrices, total, count, isOpen, setOpen, sede, setSede, agotados }}>
       {children}
     </Ctx.Provider>
   );

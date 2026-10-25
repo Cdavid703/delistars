@@ -23,7 +23,7 @@ const EMOJI_MAP: Record<string, string> = {
 };
 
 export const MenuSection = () => {
-  const { sede, setSede, reconcilePrices } = useCart();
+  const { sede, setSede, reconcilePrices, agotados } = useCart();
   // Slug de la sede elegida ('santa_lucia' | 'santa_teresita'), como lo usa el servidor.
   const sedeSlug = SEDES.find((s) => s.id === sede)?.slug ?? null;
   const [selected, setSelected] = useState<ApiProduct | null>(null);
@@ -272,7 +272,7 @@ export const MenuSection = () => {
             {filteredProducts.length > 0 ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProducts.map((p) => (
-                  <ProductCard key={p.id_producto} product={p} onClick={() => setSelected(p)} />
+                  <ProductCard key={p.id_producto} product={p} agotado={agotados.has(p.id_producto)} onClick={() => setSelected(p)} />
                 ))}
               </div>
             ) : (
@@ -320,7 +320,7 @@ export const MenuSection = () => {
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 mb-10 animate-fade-in">
                   {categoryProducts.length > 0 ? (
                     categoryProducts.map((p) => (
-                      <ProductCard key={p.id_producto} product={p} onClick={() => setSelected(p)} />
+                      <ProductCard key={p.id_producto} product={p} agotado={agotados.has(p.id_producto)} onClick={() => setSelected(p)} />
                     ))
                   ) : (
                     <div className="col-span-full text-center py-8 text-muted-foreground">

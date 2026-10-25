@@ -6,7 +6,7 @@ import { formatCOP } from "@/context/CartContext";
 import { optimizeImage } from "@/lib/utils";
 import { DescripcionProducto } from "@/components/DescripcionProducto";
 
-export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick: () => void }) => {
+export const ProductCard = ({ product, onClick, agotado = false }: { product: ApiProduct; onClick: () => void; agotado?: boolean }) => {
   const hasPresentations = !!(product.presentations && product.presentations.length > 0);
   const minPrice = hasPresentations && product.presentations
     ? Math.min(...product.presentations.map((p) => p.precio_venta))
@@ -30,6 +30,12 @@ export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick
           className={`w-full h-full transition-bounce group-hover:scale-110 ${promoDe(product) ? "object-contain" : "object-cover"}`}
           style={promoDe(product) ? { backgroundColor: "#FC7F09" } : undefined}
         />
+        {/* Agotado en esta sede: se ve, pero no se puede agregar (§7.2). */}
+        {agotado && (
+          <span className="absolute left-3 top-3 rounded-full bg-foreground/85 px-3 py-1 font-display text-sm tracking-wide text-background">
+            Agotado
+          </span>
+        )}
       </div>
       <div className="p-5 flex flex-col gap-3 flex-1">
         <div className="flex items-start justify-between gap-3">
@@ -39,12 +45,18 @@ export const ProductCard = ({ product, onClick }: { product: ApiProduct; onClick
           </span>
         </div>
         <DescripcionProducto texto={product.descripcion_producto} max={5} className="text-sm md:text-base leading-snug text-foreground/75 font-medium flex-1" />
-        <Button
-          onClick={onClick}
-          className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth"
-        >
-          <Plus className="w-4 h-4 mr-1" /> Añadir
-        </Button>
+        {agotado ? (
+          <Button disabled variant="outline" className="w-full">
+            Agotado en esta sede
+          </Button>
+        ) : (
+          <Button
+            onClick={onClick}
+            className="w-full bg-gradient-hero text-primary-foreground border-0 shadow-soft hover:shadow-glow transition-smooth"
+          >
+            <Plus className="w-4 h-4 mr-1" /> Añadir
+          </Button>
+        )}
       </div>
     </article>
   );

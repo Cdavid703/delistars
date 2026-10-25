@@ -37,7 +37,15 @@ export class ErrorPedido extends Error {
 const entero = (v: unknown, min: number, max: number) =>
   Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
-export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId: string, ahora = Date.now()) {
+/** Mensaje y código cuando algo del carrito se agotó en la sede (§7.2, P-14). */
+const agotadoEnSede = (nombre: string) =>
+  new ErrorPedido('agotado_en_sede', `${nombre} se agotó en esta sede. Quítalo del carrito o elige otro`, 409);
+
+/**
+ * `agotados`: ids que la caja marcó agotados en esta sede (agotados/{sedeId}).
+ * El producto sigue en el menú con la etiqueta «Agotado»; aquí no se deja pedir.
+ */
+export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId: string, ahora = Date.now(), agotados: ReadonlySet<number> = new Set()) {
   if (!Array.isArray(items) || items.length === 0) throw new ErrorPedido('pedido_vacio', 'El pedido no tiene productos');
   if (items.length > 40) throw new ErrorPedido('pedido_grande', 'Máximo 40 líneas por pedido');
   const porId = new Map(catalogo.map((p) => [p.id_producto, p]));
@@ -49,6 +57,7 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
     const p = porId.get(raw?.id_producto);
     if (!p) throw new ErrorPedido('producto_no_existe', `${donde}: no existe en el menú`);
     if (!p.disponible) throw new ErrorPedido('agotado', `${p.nombre_producto} no está disponible`);
+    if (agotados.has(p.id_producto)) throw agotadoEnSede(p.nombre_producto);
     if (p.id_categoria === CATEGORIA.adiciones || p.id_categoria === CATEGORIA.salsas)
       throw new ErrorPedido('no_se_vende_solo', `${p.nombre_producto} solo se agrega a otro producto`);
     const promo = promoDe(p.nombre_producto);
@@ -93,6 +102,7 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
       const ad = porId.get(a?.id_producto);
       if (esBebida || !ad || ad.id_categoria !== CATEGORIA.adiciones || Number(ad.precio_venta) <= 0 || !ad.disponible)
         throw new ErrorPedido('adicion', `${p.nombre_producto}: adición no válida`);
+      if (agotados.has(ad.id_producto)) throw agotadoEnSede(`La adición ${ad.nombre_producto}`);
       if (!entero(a.cantidad, 1, 5)) throw new ErrorPedido('adicion', `${p.nombre_producto}: máximo 5 de cada adición`);
       for (let k = 0; k < a.cantidad; k++) adiciones.push(`Adición + ${ad.nombre_producto}`);
       base += Number(ad.precio_venta) * a.cantidad;
@@ -101,6 +111,7 @@ export function armarItems(items: unknown, catalogo: ProductoCatalogo[], sedeId:
       (Array.isArray(ids) ? ids : []).map((id) => {
         const x = porId.get(id as number);
         if (esBebida || !x || !valido(x)) throw new ErrorPedido(tipo, `${p.nombre_producto}: ${tipo} no válida`);
+        if (agotados.has(x.id_producto)) throw agotadoEnSede(`La ${tipo} ${x.nombre_producto}`);
         return x.nombre_producto;
       });
     const esSalsa = (x: ProductoCatalogo) => x.id_categoria === CATEGORIA.salsas;
