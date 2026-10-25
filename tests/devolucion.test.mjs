@@ -54,3 +54,18 @@ test('aplicar saldo menor al total: paga la diferencia', () => {
 test('aplicar saldo mayor al total: no paga y le sobra saldo', () => {
   assert.deepEqual(aplicarSaldo(30000, 41000), { usado: 30000, aPagar: 0, sobrante: 11000 })
 })
+
+test('saldo por partes (§14.3): el cliente elige cuánto usar y lo demás vuelve a su cuenta', async () => {
+  const { aplicarSaldo, limiteDeSaldo } = await import('../src/utils/devolucion.js')
+  // Sin tope: todo lo posible, como antes.
+  assert.deepEqual(aplicarSaldo(30000, 10000), { usado: 10000, aPagar: 20000, sobrante: 0 })
+  assert.deepEqual(aplicarSaldo(30000, 50000), { usado: 30000, aPagar: 0, sobrante: 20000 })
+  // Con tope: usa solo lo elegido y paga el resto con otro medio.
+  assert.deepEqual(aplicarSaldo(30000, 50000, 12000), { usado: 12000, aPagar: 18000, sobrante: 38000 })
+  assert.deepEqual(aplicarSaldo(30000, 10000, 15000), { usado: 10000, aPagar: 20000, sobrante: 0 })
+  assert.equal(limiteDeSaldo(true), null)
+  assert.equal(limiteDeSaldo(12000), 12000)
+  assert.equal(limiteDeSaldo('12000'), 12000)
+  assert.equal(limiteDeSaldo(0), null)
+  assert.equal(limiteDeSaldo(-5), null)
+})

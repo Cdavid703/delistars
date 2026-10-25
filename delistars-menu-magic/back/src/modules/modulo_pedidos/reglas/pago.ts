@@ -61,7 +61,7 @@ export function planPago(p: PedidoDoc, id: string, uid: string, b: any, bucket: 
   // viene descontado por la caja). Lo que sobre lo deja la caja al confirmar.
   const saldoCampos: Record<string, unknown> = {};
   if (adelantado && Number(p.saldoAplicado?.monto) > 0) {
-    const s = aplicarSaldo(total, Number(p.saldoAplicado.monto));
+    const s = aplicarSaldo(total, Number(p.saldoAplicado.monto), p.saldoAplicado?.limite);
     Object.assign(saldoCampos, { 'saldoAplicado.usado': s.usado, 'saldoAplicado.sobrante': s.sobrante });
     total = s.aPagar;
   }
