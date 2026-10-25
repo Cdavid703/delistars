@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { initializeApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { firebaseApp } from '../config/firestore';
 
-if (getApps().length === 0) {
-  initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID });
-}
+// Una sola inicialización (con la cuenta de servicio si la hay): ver config/firestore.ts.
+firebaseApp();
 
 const adminEmails = (process.env.ADMIN_EMAILS || '')
   .split(',')
