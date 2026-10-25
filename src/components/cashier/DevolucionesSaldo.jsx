@@ -4,9 +4,9 @@ import { db } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 import { Banknote } from 'lucide-react'
 
-// Saldo a favor de clientes que pidieron eliminar su cuenta (Fase 4, P-25): la
-// caja de la sede se lo transfiere y lo marca hecho. La cuenta se borra cuando
-// ya no queda nada pendiente.
+// Transferencias que debe hacer la caja de la sede: el saldo a favor de quien
+// pidió eliminar su cuenta (Fase 4, P-25) y los reembolsos de reclamos que el
+// cliente eligió por transferencia (Fase 7, §14.2). Marcarla hecha cierra el caso.
 export default function DevolucionesSaldo({ sedeId }) {
   const [lista, setLista] = useState([])
   const [abierta, setAbierta] = useState(null)
@@ -36,8 +36,14 @@ export default function DevolucionesSaldo({ sedeId }) {
           <button onClick={() => setAbierta(abierta === d.id ? null : d.id)} className="w-full flex items-center gap-3 text-left">
             <Banknote size={20} className="text-mustard flex-shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
-              <p className="font-body text-sm font-bold">Transferir saldo a favor · ${Number(d.monto).toLocaleString('es-CO')}</p>
-              <p className="font-body text-xs text-cream/85 truncate">{d.nombre || 'Cliente'} eliminó su cuenta: hay que devolverle su saldo</p>
+              <p className="font-body text-sm font-bold">
+                {d.origen === 'reclamo' ? 'Devolución de un reclamo' : 'Transferir saldo a favor'} · ${Number(d.monto).toLocaleString('es-CO')}
+              </p>
+              <p className="font-body text-xs text-cream/85 truncate">
+                {d.origen === 'reclamo'
+                  ? `${d.nombre || 'Cliente'}${d.orderNumber ? ` · pedido #${d.orderNumber}` : ''}: administración autorizó devolverle esta plata`
+                  : `${d.nombre || 'Cliente'} eliminó su cuenta: hay que devolverle su saldo`}
+              </p>
             </div>
             <span className="font-body text-xs font-bold">{abierta === d.id ? 'Cerrar' : 'Ver →'}</span>
           </button>

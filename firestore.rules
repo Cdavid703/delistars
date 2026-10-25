@@ -138,7 +138,7 @@ service cloud.firestore {
       // Lo que aún no tiene API: chat con la caja, calificación y cómo quiere
       // la devolución. Crear, pagar, cancelar, agregar productos y responder
       // a un cambio van por /api/v1/pedidos (Fases 4 y 7).
-      return cambiados().hasOnly(['clientMessages', 'rating', 'ratingComment', 'ratedAt', 'devolucion', 'updatedAt'])
+      return cambiados().hasOnly(['clientMessages', 'rating', 'ratingEntrega', 'ratingComment', 'ratedAt', 'devolucion', 'updatedAt'])
         && (!('devolucion' in cambiados())
             || ('devolucion' in antes
                 && d.devolucion.diff(antes.devolucion).affectedKeys().hasOnly(['estado', 'datos', 'elegidaAt'])
@@ -218,10 +218,17 @@ service cloud.firestore {
     // Caja con varios aparatos por sede: uno principal suena, los demás solo
     // muestran el aviso. Lo elige la caja (nunca automático); cada aparato
     // reporta que sigue conectado.
+    // Trabajos de impresión de comandas (Fase 7, §19): solo los escribe el
+    // servidor; los leen la caja (y su puente de impresión) y administración.
+    match /impresiones/{trabajoId} {
+      allow read: if isAdmin() || isCashier();
+      allow write: if false;
+    }
     match /caja_puestos/{sedeId} {
       allow read: if isAdmin() || isCashier();
       allow write: if (isAdmin() || isCashier())
-                   && request.resource.data.keys().hasOnly(['principal', 'principalNombre', 'principalPor', 'principalDesde', 'latidoPrincipal']);
+                   && request.resource.data.keys().hasOnly(['principal', 'principalNombre', 'principalPor', 'principalDesde', 'latidoPrincipal',
+                                                            'impresora', 'impresoraNombre', 'impresoraPor', 'impresoraDesde', 'latidoImpresora']);
     }
     match /caja_puestos/{sedeId}/aparatos/{aparatoId} {
       allow read: if isAdmin() || isCashier();
@@ -250,6 +257,31 @@ service cloud.firestore {
     match /devoluciones_saldo/{id} {
       allow read: if isAdmin() || isCashier();
       allow write: if false;
+    }
+
+    // ── Cuadres de efectivo (Fase 7, especificación §13.2 y §13.3) ──────────
+    // cuadres/{id}: entregas de efectivo del domiciliario a la caja y fondos
+    // para cambio de la caja al domiciliario. Los lee la caja, administración
+    // y el domiciliario dueño del movimiento. Todo se escribe por /api/v1/cuadres.
+    match /cuadres/{movimientoId} {
+      allow read: if isAdmin() || isCashier()
+                  || (isDriver() && resource.data.driverEmail == userEmail());
+      allow write: if false;
+    }
+
+    // ── Reclamos (Fase 7, especificación §14) ──────────────────────────────
+    // reclamos/{id}: lo lee el cliente dueño, administración (todos) y la caja
+    // solo los de comida ("producto"); los de entrega (domiciliario, chat) son
+    // de administración. Nadie escribe directo: todo por /api/v1/reclamos.
+    match /reclamos/{reclamoId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && resource.data.clientUid == request.auth.uid)
+                  || (isCashier() && resource.data.categoria == 'producto');
+      allow write: if false;
+      match /historial/{entradaId} {
+        allow read: if isAdmin() || isCashier();
+        allow write: if false;
+      }
     }
 
     // ── Historial (auditoría) del pedido — Fase 2 ──────────────────────────

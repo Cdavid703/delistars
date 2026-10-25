@@ -7,6 +7,7 @@
 import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../shared/etapas';
 
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
+import { transferenciaPendiente } from '../../modulo_cuadres/reglas';
 import { ErrorPedido } from './armado';
 import { totalConocido } from './pago';
 import { aplicarSaldo, devolucionInicial } from '../../../shared/devolucion';
@@ -121,6 +122,9 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
     case 'en_camino':      Object.assign(extras, { status: 'in_transit', inTransitAt: AHORA }); break;
     case 'llego':          Object.assign(extras, { status: 'arrived', arrivedAt: AHORA }); break;
     case 'entregado': {
+      // §13.1: a domicilio con pago digital, la caja tiene que haber confirmado
+      // la plata antes de que el domiciliario entregue (el comprobante no basta).
+      if (transferenciaPendiente(p)) throw new ErrorPedido('transferencia_pendiente', 'La caja aún no confirma la transferencia: no entregues hasta que la verifique', 409);
       const efectivo = actual.tipo === 'domicilio' && (p.cashOnDelivery || p.payment === 'Efectivo' || p.payment === 'Mixto');
       Object.assign(extras, efectivo
         ? { status: 'pending_cuadre', deliveredAt: AHORA }

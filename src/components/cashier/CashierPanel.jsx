@@ -6,10 +6,13 @@ import {
 import { db, createOrderWithNumber } from '../../services/firebase'
 import { llamarPedidos } from '../../services/pedidosApi'
 import DevolucionesSaldo from './DevolucionesSaldo'
+import Reclamos from './Reclamos'
+import CuadresEfectivo from '../common/CuadresEfectivo'
 import EstadoDomiciliarios from './EstadoDomiciliarios'
 import CampanaAvisos from '../common/CampanaAvisos'
 import PuestoCaja from './PuestoCaja'
 import usePuestoCaja from '../../hooks/usePuestoCaja'
+import ImpresoraCaja from './ImpresoraCaja'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_DRIVERS, DEFAULT_DRIVER_NAMES, SEDES } from '../../services/roles'
 import { estadoSede, textoEstado } from '../../utils/horarios'
@@ -47,6 +50,7 @@ const TABS = [
   { id: 'active',    label: 'Activos' },
   { id: 'cuadre',   label: 'Cuadre' },
   { id: 'completed', label: 'Entregados' },
+  { id: 'reclamos',  label: 'Reclamos' },
 ]
 
 const ACTIVE_STATUSES   = ['pending', 'assigned', 'accepted', 'preparing', 'in_transit', 'arrived']
@@ -67,6 +71,7 @@ const alarm = crearAlarma()
 
 export default function CashierPanel() {
   const { user, sede, logout, selectSede } = useAuth()
+  const esAdminReclamos = useAuth().role === 'admin'
   const [tab,             setTab]            = useState('active')
   // Computador (≥1280 px): «Activos» se ve como tablero por etapa.
   const [ancho, setAncho] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches)
@@ -79,6 +84,7 @@ export default function CashierPanel() {
   // Reloj de la caja: la demora de cada tarjeta se actualiza cada 30 s.
   const [ahora, setAhora] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 30000); return () => clearInterval(t) }, [])
+  const [reclamosAbiertos, setReclamosAbiertos] = useState(0)
   const [orders,          setOrders]         = useState([])
   const [drivers,         setDrivers]        = useState([])
   const [showForm,        setShowForm]       = useState(false)
@@ -630,8 +636,11 @@ export default function CashierPanel() {
       <div className="flex items-center border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-3`}>
+            className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-2`}>
             {t.label}
+            {t.id === 'reclamos' && reclamosAbiertos > 0 && (
+              <span key={reclamosAbiertos} className="ml-1 bg-tangelo text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop">{reclamosAbiertos}</span>
+            )}
             {t.id === 'active'  && pendingCount > 0 && (
               <span key={pendingCount} className="ml-1 bg-cherry text-cream text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop">{pendingCount}</span>
             )}
@@ -685,6 +694,7 @@ export default function CashierPanel() {
           Solo se pone naranja lo que hay que resolver. */}
       <div className="mx-4 mt-2 flex flex-wrap items-center gap-2">
         <PuestoCaja puesto={puesto} />
+        <ImpresoraCaja puesto={puesto} sedeId={sede?.id} />
         {/* Quién está en turno (Fase 5: los domicilios se asignan solos) */}
         <EstadoDomiciliarios sedeId={sede?.id} />
         {/* Domicilios sin domiciliario: el que más lleva esperando se asigna primero. */}
@@ -775,7 +785,8 @@ export default function CashierPanel() {
         </main>
       ) : (
       <main className="flex-1 min-h-0 overflow-y-auto scroll-custom p-4 pb-24 xl:pb-6 flex flex-col gap-3 stagger md:grid md:grid-cols-2 xl:grid-cols-3 md:items-start md:content-start">
-        {filteredOrders.length === 0 && !showForm && (
+        {tab === 'reclamos' && <div className="md:col-span-2 xl:col-span-3"><Reclamos sedeId={sede?.id} esAdmin={esAdminReclamos} onAbiertos={setReclamosAbiertos} /></div>}
+        {tab !== 'reclamos' && filteredOrders.length === 0 && !showForm && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center md:col-span-2 xl:col-span-3">
             {tab === 'active' ? <ShoppingBag size={32} className="text-coal/25" aria-hidden="true" />
               : tab === 'cuadre' ? <Banknote size={32} className="text-coal/25" aria-hidden="true" />
@@ -884,6 +895,7 @@ export default function CashierPanel() {
       {/* Cuadre de turno modal */}
       {showCuadreTurno && (
         <CuadreTurnoModal
+          sede={sede} esAdmin={esAdminReclamos}
           orders={orders}
           drivers={drivers}
           onClose={() => setShowCuadreTurno(false)}
@@ -1297,7 +1309,7 @@ function DriverTrackingModal({ orders, drivers, sede, onClose }) {
 }
 
 // ─── Cuadre de turno modal ────────────────────────────────────────────────────
-function CuadreTurnoModal({ orders, drivers, onClose }) {
+function CuadreTurnoModal({ orders, drivers, sede, esAdmin, onClose }) {
   const [selectedDriver, setSelectedDriver] = useState('')
 
   const completedToday = orders.filter(o =>
@@ -1344,6 +1356,9 @@ function CuadreTurnoModal({ orders, drivers, onClose }) {
               {drivers.map(d => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
             </select>
           </div>
+
+          {/* Entregas de efectivo, fondos para cambio y diferencias (§13.2, §13.3) */}
+          <CuadresEfectivo modo="caja" sedeId={sede?.id} esAdmin={esAdmin} drivers={drivers} pedidos={completedToday} />
 
           {/* Total pedidos */}
           <div className="card">

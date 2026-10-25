@@ -1070,6 +1070,138 @@ function watchChatDomiciliario() {
   console.log('[scheduler] avisos del chat cliente ↔ domiciliario activos')
 }
 
+// ─── Cuadres de efectivo (Fase 7, §13) ──────────────────────────────────────
+// Entrega propuesta → la caja; fondo propuesto o corregido → el domiciliario;
+// fondo rechazado → la caja; entrega con diferencia → administración;
+// confirmación → el domiciliario.
+function watchCuadres() {
+  const seen = new Map()
+  let baseline = true
+  const pesos = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
+  adminDb.collection('cuadres').orderBy('creadoAt', 'desc').limit(100)
+    .onSnapshot(async (snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') { seen.delete(chg.doc.id); continue }
+        const id = chg.doc.id
+        const m = chg.doc.data()
+        const prev = seen.get(id)
+        seen.set(id, { estado: m.estado, monto: m.monto })
+        if (baseline) continue
+        const o = { sedeId: m.sedeId, sedeName: m.sedeId === 'santa_teresita' ? 'Santa Teresita' : 'Santa Lucía', name: m.driverName }
+        const alDomi = (clave, title, body) => sendPushForStaff(id, o, { rol: 'driver', soloA: m.driverEmail, clave, tipo: 'cuadre', title, body })
+        const aCaja = (clave, title, body) => sendPushForStaff(id, o, { rol: 'cashier', clave, tipo: 'cuadre', title, body })
+        try {
+          if (!prev) {
+            if (m.tipo === 'entrega') await aCaja('cuadre-entrega', '💵 Entrega de efectivo por confirmar', `${m.driverName || 'Un domiciliario'} dice que te entrega ${pesos(m.monto)}. Cuenta la plata y confírmalo en el cuadre de turno.`)
+            if (m.tipo === 'fondo') await alDomi('cuadre-fondo', '💵 Fondo para cambio', `La caja te dio ${pesos(m.monto)} para cambio. Confírmalo en tu cuadre de turno.`)
+            continue
+          }
+          if (prev.estado === m.estado && prev.monto === m.monto) continue
+          if (m.tipo === 'fondo' && m.estado === 'rechazado') await aCaja(`cuadre-fondo-no-${m.respondidoAt || ''}`, '⚠️ El fondo no cuadra', `${m.driverName || 'El domiciliario'} dice que recibió ${pesos(m.montoRecibido)}, no ${pesos(m.monto)}. Revísalo y corrígelo.`)
+          if (m.tipo === 'fondo' && m.estado === 'propuesto' && prev.estado === 'rechazado') await alDomi(`cuadre-fondo-corr-${m.monto}`, '💵 Fondo corregido', `La caja corrigió el fondo a ${pesos(m.monto)}. Confírmalo.`)
+          if (m.estado === 'confirmado' && m.tipo === 'entrega') await alDomi('cuadre-ok', '✅ Entrega confirmada', `La caja confirmó que recibió ${pesos(m.montoRecibido)}.`)
+          if (m.estado === 'con_diferencia') {
+            await alDomi('cuadre-dif', '⚠️ La entrega no cuadró', `La caja contó ${pesos(m.montoRecibido)} de ${pesos(m.monto)}. Administración lo revisa.`)
+            for (const email of ADMIN_EMAILS) {
+              await sendPushForStaff(id, o, { rol: 'admin', soloA: email, clave: 'cuadre-dif-admin', tipo: 'cuadre', title: '⚠️ Cuadre con diferencia',
+                body: `${m.driverName || 'Un domiciliario'} entregó ${pesos(m.montoRecibido)} de ${pesos(m.monto)} en ${o.sedeName}: ${m.motivo || 'sin motivo'}. Resuélvelo en el cuadre de turno.` }).catch(() => {})
+            }
+          }
+        } catch (e) { console.error('[scheduler] aviso cuadre error:', e?.message || e) }
+      }
+      baseline = false
+    }, (err) => {
+      console.error('[scheduler] watch cuadres error:', err?.message || err)
+      setTimeout(() => { try { watchCuadres() } catch (e) { console.error('[scheduler] cuadres reintento error:', e?.message || e) } }, 60000)
+    })
+  console.log('[scheduler] avisos de cuadres activos')
+}
+
+// ─── Reclamos (Fase 7, §14) ─────────────────────────────────────────────────
+// Cada cambio de estado del caso le avisa a quien le toca mover: caso nuevo →
+// la caja (comida) o administración (entrega); reembolso solicitado →
+// administración; propuesta lista → el cliente; el cliente responde → quien
+// atiende; cierre → el cliente. Transferencia elegida: la ve la caja en su
+// franja de devoluciones (watchDevoluciones).
+function watchReclamos() {
+  const seen = new Map() // id -> { estado, reembolso }
+  let baseline = true
+  const avisarAdmins = async (id, r, clave, title, body) => {
+    for (const email of ADMIN_EMAILS) {
+      await sendPushForStaff(id, { sedeId: r.sedeId, sedeName: r.sedeName, orderNumber: r.orderNumber }, {
+        rol: 'admin', soloA: email, clave, tipo: 'reclamo', title, body, url: 'https://delistars.com/domicilios/',
+      }).catch(() => {})
+    }
+  }
+  adminDb.collection('reclamos').orderBy('actualizadoAt', 'desc').limit(100)
+    .onSnapshot(async (snap) => {
+      for (const chg of snap.docChanges()) {
+        if (chg.type === 'removed') { seen.delete(chg.doc.id); continue }
+        const id = chg.doc.id
+        const r = chg.doc.data()
+        const prev = seen.get(id)
+        const ahora = { estado: r.estado, reembolso: r.reembolso?.estado || null }
+        seen.set(id, ahora)
+        if (baseline) continue
+        const n = r.orderNumber ? ` #${r.orderNumber}` : ''
+        const pesos = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
+        const pedidoFalso = { sedeId: r.sedeId, sedeName: r.sedeName, orderNumber: r.orderNumber, name: r.clientNombre }
+        try {
+          if (!prev) {
+            // Caso nuevo
+            const body = `${r.clientNombre || 'Un cliente'} (pedido${n}): ${r.motivo}. «${String(r.descripcion || '').slice(0, 90)}»`
+            if (r.atiende === 'caja') {
+              await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reclamo-nuevo`, tipo: 'reclamo', title: '⚠️ Reclamo nuevo de un cliente', body })
+            }
+            await avisarAdmins(id, r, 'reclamo-nuevo', r.atiende === 'caja' ? '⚠️ Reclamo nuevo (comida)' : '⚠️ Reclamo nuevo (entrega)', body)
+            continue
+          }
+          if (prev.reembolso !== ahora.reembolso && ahora.reembolso === 'solicitado') {
+            await avisarAdmins(id, r, `reembolso-${r.reembolso?.solicitadoAt || ''}`, '💸 Reembolso por autorizar',
+              `La caja pide devolver ${pesos(r.reembolso?.monto)} del pedido${n} (${r.clientNombre || 'cliente'}). Autorízalo o recházalo.`)
+          }
+          if (prev.reembolso !== ahora.reembolso && ahora.reembolso === 'rechazado' && r.atiende === 'caja') {
+            await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reembolso-no-${r.reembolso?.autorizadoAt || ''}`, tipo: 'reclamo',
+              title: '💸 Reembolso no autorizado', body: `Administración no autorizó el reembolso del pedido${n}. Propón otra solución.` })
+          }
+          if (prev.estado !== ahora.estado) {
+            if (ahora.estado === 'propuesta' && r.clientUid) {
+              const msg = { title: `💬 Te propusimos una solución${n}`, body: String(r.propuesta?.texto || '').slice(0, 120) || 'Entra al caso para verla.', tipo: 'reclamo' }
+              const url = enlacePedido(r.orderId)
+              if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'propuesta', r.propuesta?.at || ''), { ...msg, pedidoId: r.orderId, url })) {
+                await pushApp(r.clientUid, msg, url, { orderId: r.orderId, reclamoId: id, tipo: 'reclamo' })
+                await pushWebCliente(r.clientUid, msg, r.orderId, 'propuesta de reclamo')
+              }
+            }
+            if (ahora.estado === 'en_revision' && prev.estado === 'propuesta') {
+              const body = `${r.clientNombre || 'El cliente'} dice que el problema del pedido${n} sigue. Revísalo.`
+              if (r.atiende === 'caja') await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: `reclamo-sigue-${r.propuestaRechazadaAt || ''}`, tipo: 'reclamo', title: '⚠️ El problema sigue', body })
+              await avisarAdmins(id, r, `reclamo-sigue-${r.propuestaRechazadaAt || ''}`, '⚠️ El problema sigue', body)
+            }
+            if (ahora.estado === 'resuelto') {
+              const body = `${r.clientNombre || 'El cliente'} aceptó la solución del pedido${n}${r.reembolso?.estado === 'faltan_datos' ? `. Eligió ${pesos(r.reembolso.monto)} por transferencia, pero aún no deja sus datos.` : r.reembolso?.eleccion === 'transferencia' ? `. Pidió ${pesos(r.reembolso.monto)} por transferencia: está en Devoluciones.` : r.reembolso?.eleccion === 'saldo' ? `. ${pesos(r.reembolso.monto)} quedaron como saldo a favor.` : '.'}`
+              if (r.atiende === 'caja') await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: 'reclamo-resuelto', tipo: 'reclamo', title: '✅ Caso resuelto', body })
+              await avisarAdmins(id, r, 'reclamo-resuelto', '✅ Caso resuelto', body)
+            }
+            if (ahora.estado === 'cierre_administrativo' && r.clientUid) {
+              const msg = { title: `Caso cerrado${n}`, body: `Administración cerró tu caso: ${String(r.cierre?.motivo || '').slice(0, 100)}`, tipo: 'reclamo' }
+              const url = enlacePedido(r.orderId)
+              if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'cierre'), { ...msg, pedidoId: r.orderId, url })) {
+                await pushApp(r.clientUid, msg, url, { orderId: r.orderId, reclamoId: id, tipo: 'reclamo' })
+                await pushWebCliente(r.clientUid, msg, r.orderId, 'cierre de reclamo')
+              }
+            }
+          }
+        } catch (e) { console.error('[scheduler] aviso reclamo error:', e?.message || e) }
+      }
+      baseline = false
+    }, (err) => {
+      console.error('[scheduler] watch reclamos error:', err?.message || err)
+      setTimeout(() => { try { watchReclamos() } catch (e) { console.error('[scheduler] reclamos reintento error:', e?.message || e) } }, 60000)
+    })
+  console.log('[scheduler] avisos de reclamos activos')
+}
+
 // ─── Devoluciones: aviso al celular de la caja ──────────────────────────────
 // Elegir la devolución no cambia el estado del pedido (sigue rechazado o
 // cancelado), así que watchOrdersForPush no lo ve. Además ese vigía solo mira
@@ -1082,6 +1214,7 @@ function mensajeDevolucion(o, tipo) {
     return { rol: 'cashier', title: '💸 Devolución por transferencia', body: `${o.name || 'El cliente'} (pedido${n}) pidió que le transfieran ${monto}. Ábrelo para ver sus datos.` }
   }
   if (tipo === 'saldo_cuenta') {
+    if (o.origen === 'reclamo') return { rol: 'cashier', title: '💸 Devolución de un reclamo', body: `Hay que transferirle ${monto} a ${o.nombre || 'un cliente'} (pedido${o.orderNumber ? ` #${o.orderNumber}` : ''}). Ábrelo en la caja para ver sus datos.` }
     return { rol: 'cashier', title: '💸 Transferir saldo a favor', body: `${o.nombre || 'Un cliente'} eliminó su cuenta: hay que transferirle ${monto}. Ábrelo en la caja para ver sus datos.` }
   }
   if (tipo === 'cancelacion_solicitada') {
@@ -1164,6 +1297,10 @@ async function main() {
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
       try { watchChatDomiciliario() }
       catch (err) { console.error('[scheduler] avisos del chat del domiciliario deshabilitados:', err?.message || err) }
+      try { watchReclamos() }
+      catch (err) { console.error('[scheduler] avisos de reclamos deshabilitados:', err?.message || err) }
+      try { watchCuadres() }
+      catch (err) { console.error('[scheduler] avisos de cuadres deshabilitados:', err?.message || err) }
       try { watchDevoluciones() }
       catch (err) { console.error('[scheduler] avisos de devoluciones deshabilitados:', err?.message || err) }
       try { watchSolicitudesAcceso() }

@@ -33,12 +33,12 @@ export async function llamarPedidos(ruta, cuerpo = {}, clave = nuevaClave()) {
 }
 
 /** Cualquier ruta de /api/v1 con el token de la cuenta (GET, POST, DELETE). */
-export async function llamarApi(metodo, ruta, cuerpo) {
+export async function llamarApi(metodo, ruta, cuerpo, clave) {
   const token = await auth.currentUser?.getIdToken()
   if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
   const res = await fetch(`/api/v1/${ruta}`, {
     method: metodo,
-    headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}) },
+    headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}), ...(clave ? { 'Idempotency-Key': clave } : {}) },
     ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
   })
   let datos = {}
