@@ -359,7 +359,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
         )}
         {(pago.metodo === 'Efectivo' || pago.metodo === 'Mixto') && (
           <div className="flex items-center gap-2">
-            <input className="input-field w-36 text-sm" inputMode="numeric" value={pago.billete} onChange={(e) => setPago((p) => ({ ...p, billete: soloDigitos(e.target.value) }))} placeholder="¿Con cuánto paga?" />
+            <input className="input-field w-48 text-sm" inputMode="numeric" value={pago.billete} onChange={(e) => setPago((p) => ({ ...p, billete: soloDigitos(e.target.value) }))} placeholder="¿Con cuánto paga?" />
             {cambio != null && <span className={`font-body text-sm ${cambio < 0 ? 'text-pepper' : 'text-coal/70'}`}>{cambio < 0 ? 'No alcanza' : `Cambio: ${pesos(cambio)}`}</span>}
           </div>
         )}
