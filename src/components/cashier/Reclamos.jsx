@@ -175,8 +175,12 @@ function FichaEquipo({ r, esAdmin, onClose }) {
               {r.reembolso.motivoRechazo && <p className="font-body text-xs text-coal/70 mt-1">No autorizado: {r.reembolso.motivoRechazo}</p>}
               {r.reembolso.eleccion && (
                 <p className="font-body text-xs text-coal/70 mt-1">
-                  El cliente eligió {r.reembolso.eleccion === 'saldo' ? 'saldo a favor (ya quedó en su cuenta)' : `transferencia a ${r.reembolso.datos?.medio || ''} ${r.reembolso.datos?.numero || ''} (${r.reembolso.datos?.titular || ''})`}.
-                  {r.reembolso.eleccion === 'transferencia' && r.reembolso.estado !== 'ejecutado' && ' Está en la franja de devoluciones de la caja.'}
+                  {r.reembolso.estado === 'faltan_datos'
+                    ? 'El cliente eligió transferencia pero todavía no deja sus datos. Cuando los complete, aparece en la franja de devoluciones de la caja.'
+                    : <>
+                        El cliente eligió {r.reembolso.eleccion === 'saldo' ? 'saldo a favor (ya quedó en su cuenta)' : `transferencia a ${r.reembolso.datos?.medio || ''} ${r.reembolso.datos?.numero || ''} (${r.reembolso.datos?.titular || ''})`}.
+                        {r.reembolso.eleccion === 'transferencia' && r.reembolso.estado !== 'ejecutado' && ' Está en la franja de devoluciones de la caja.'}
+                      </>}
                 </p>
               )}
               {esperaAdmin && !esAdmin && <p className="font-body text-xs text-coal/70 mt-1">Esperando que administración lo autorice. El cliente todavía no ve la propuesta.</p>}

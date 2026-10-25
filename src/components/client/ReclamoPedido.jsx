@@ -106,9 +106,52 @@ function FormularioReclamo({ order, onCancel }) {
   )
 }
 
+// Cómo quiere el cliente su plata: saldo (solo con cuenta con correo) o
+// transferencia con sus datos. Se usa al aceptar la propuesta y al completar
+// una transferencia que eligió sin datos desde el reloj.
+function ElegirDevolucion({ monto, sedeName, conCorreo, eleccion, setElec, datos, setDatos }) {
+  return (
+    <>
+      <p className="font-body text-sm text-coal flex items-center gap-2">
+        <Banknote size={16} className="text-coal/50" aria-hidden="true" /> Te devolvemos <strong>{fmt(monto)}</strong>. ¿Cómo la quieres?
+      </p>
+      <div className="flex flex-col gap-2">
+        {conCorreo && (
+          <button type="button" onClick={() => setElec('saldo')}
+            className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${eleccion === 'saldo' ? 'border-mint bg-mint/10' : 'border-coal/15 bg-cream'}`}>
+            <p className="text-sm font-bold text-coal flex items-center gap-2"><Wallet size={16} className="text-mint" aria-hidden="true" /> Saldo a favor para mi próximo pedido</p>
+            <p className="text-xs text-coal/60">Queda ya mismo en tu cuenta para pedir en {sedeName || 'esta sede'}. No vence.</p>
+          </button>
+        )}
+        <button type="button" onClick={() => setElec('transferencia')}
+          className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${eleccion === 'transferencia' ? 'border-cherry bg-cherry/10' : 'border-coal/15 bg-cream'}`}>
+          <p className="text-sm font-bold text-coal flex items-center gap-2"><Building2 size={16} className="text-coal/50" aria-hidden="true" /> Transferencia</p>
+          <p className="text-xs text-coal/60">La caja te la envía a tu cuenta o Nequi.</p>
+        </button>
+      </div>
+      {eleccion === 'transferencia' && (
+        <div className="flex flex-col gap-2">
+          <select className="input-field" value={datos.medio} onChange={e => setDatos(d => ({ ...d, medio: e.target.value }))}>
+            <option value="">¿A dónde te transferimos?</option>
+            {MEDIOS_DEVOLUCION.map(m => <option key={m}>{m}</option>)}
+          </select>
+          <input className="input-field" inputMode="numeric" value={datos.numero} placeholder="Número de cuenta o celular"
+            onChange={e => setDatos(d => ({ ...d, numero: e.target.value }))} />
+          <input className="input-field" value={datos.titular} placeholder="Nombre del titular"
+            onChange={e => setDatos(d => ({ ...d, titular: e.target.value }))} />
+          {['Bancolombia', 'Otro banco'].includes(datos.medio) && (
+            <input className="input-field" inputMode="numeric" value={datos.documento} placeholder="Cédula del titular (opcional)"
+              onChange={e => setDatos(d => ({ ...d, documento: e.target.value }))} />
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 function FichaReclamo({ reclamo: r, order }) {
   const [texto, setTexto]     = useState('')
-  const [eleccion, setElec]   = useState('')
+  const [eleccion, setElec]   = useState(r.reembolso?.estado === 'faltan_datos' ? 'transferencia' : '')
   const [datos, setDatos]     = useState({ medio: '', numero: '', titular: '', documento: '' })
   const [sigue, setSigue]     = useState(false)
   const [error, setError]     = useState('')
@@ -116,6 +159,8 @@ function FichaReclamo({ reclamo: r, order }) {
   const final = !!ESTADOS[r.estado]?.final
   const mensajes = (r.mensajes || []).filter(m => !m.interno)
   const reembolsoAutorizado = r.estado === 'propuesta' && r.reembolso?.estado === 'autorizado'
+  // Eligió transferencia desde el reloj sin dejar sus datos (W-6): los completa aquí.
+  const faltanDatos = r.reembolso?.estado === 'faltan_datos'
   const conCorreo = !!r.clientEmail
 
   const llamar = async (accion, cuerpo) => {
@@ -124,22 +169,31 @@ function FichaReclamo({ reclamo: r, order }) {
     catch (e) { setError(e instanceof ErrorApi ? e.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.'); return false }
     finally { setBusy(false) }
   }
+  // Elección y datos validados, o null si falta algo (deja el error en pantalla).
+  const eleccionValida = () => {
+    if (!eleccion) { setError('Elige cómo quieres tu plata'); return null }
+    if (eleccion !== 'transferencia') return { eleccion }
+    const errs = erroresDatosDevolucion(datos)
+    if (errs.length) { setError(errs.join('. ')); return null }
+    return { eleccion, datos: { medio: datos.medio, numero: datos.numero.trim(), titular: datos.titular.trim(), documento: datos.documento.trim() || null } }
+  }
   const aceptar = async () => {
-    const cuerpo = { acepta: true }
+    let cuerpo = { acepta: true }
     if (reembolsoAutorizado) {
-      if (!eleccion) { setError('Elige cómo quieres tu plata'); return }
-      cuerpo.eleccion = eleccion
-      if (eleccion === 'transferencia') {
-        const errs = erroresDatosDevolucion(datos)
-        if (errs.length) { setError(errs.join('. ')); return }
-        cuerpo.datos = { medio: datos.medio, numero: datos.numero.trim(), titular: datos.titular.trim(), documento: datos.documento.trim() || null }
-      }
+      const e = eleccionValida()
+      if (!e) return
+      cuerpo = { ...cuerpo, ...e }
     }
     await llamar('responder', cuerpo)
   }
+  const completar = async () => {
+    const e = eleccionValida()
+    if (e) await llamar('reembolso', e)
+  }
+  // El comentario es opcional: «el problema sigue» basta.
   const noSirve = async () => {
-    if (texto.trim().length < 5) { setError('Cuéntanos qué sigue mal'); return }
-    if (await llamar('responder', { acepta: false, texto: texto.trim() })) { setTexto(''); setSigue(false) }
+    const t = texto.trim()
+    if (await llamar('responder', t ? { acepta: false, texto: t } : { acepta: false })) { setTexto(''); setSigue(false) }
   }
   const mensaje = async () => {
     if (!texto.trim()) return
@@ -177,41 +231,8 @@ function FichaReclamo({ reclamo: r, order }) {
           <p className="font-display text-base tracking-wide text-cherry">Nuestra propuesta</p>
           <p className="font-body text-sm text-coal/85 whitespace-pre-line">{r.propuesta?.texto}</p>
           {reembolsoAutorizado && (
-            <>
-              <p className="font-body text-sm text-coal flex items-center gap-2">
-                <Banknote size={16} className="text-coal/50" aria-hidden="true" /> Te devolvemos <strong>{fmt(r.reembolso.monto)}</strong>. ¿Cómo la quieres?
-              </p>
-              <div className="flex flex-col gap-2">
-                {conCorreo && (
-                  <button type="button" onClick={() => setElec('saldo')}
-                    className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${eleccion === 'saldo' ? 'border-mint bg-mint/10' : 'border-coal/15 bg-cream'}`}>
-                    <p className="text-sm font-bold text-coal flex items-center gap-2"><Wallet size={16} className="text-mint" aria-hidden="true" /> Saldo a favor para mi próximo pedido</p>
-                    <p className="text-xs text-coal/60">Queda ya mismo en tu cuenta para pedir en {r.sedeName || 'esta sede'}. No vence.</p>
-                  </button>
-                )}
-                <button type="button" onClick={() => setElec('transferencia')}
-                  className={`w-full text-left rounded-xl border-2 px-4 py-3 font-body ${eleccion === 'transferencia' ? 'border-cherry bg-cherry/10' : 'border-coal/15 bg-cream'}`}>
-                  <p className="text-sm font-bold text-coal flex items-center gap-2"><Building2 size={16} className="text-coal/50" aria-hidden="true" /> Transferencia</p>
-                  <p className="text-xs text-coal/60">La caja te la envía a tu cuenta o Nequi.</p>
-                </button>
-              </div>
-              {eleccion === 'transferencia' && (
-                <div className="flex flex-col gap-2">
-                  <select className="input-field" value={datos.medio} onChange={e => setDatos(d => ({ ...d, medio: e.target.value }))}>
-                    <option value="">¿A dónde te transferimos?</option>
-                    {MEDIOS_DEVOLUCION.map(m => <option key={m}>{m}</option>)}
-                  </select>
-                  <input className="input-field" inputMode="numeric" value={datos.numero} placeholder="Número de cuenta o celular"
-                    onChange={e => setDatos(d => ({ ...d, numero: e.target.value }))} />
-                  <input className="input-field" value={datos.titular} placeholder="Nombre del titular"
-                    onChange={e => setDatos(d => ({ ...d, titular: e.target.value }))} />
-                  {['Bancolombia', 'Otro banco'].includes(datos.medio) && (
-                    <input className="input-field" inputMode="numeric" value={datos.documento} placeholder="Cédula del titular (opcional)"
-                      onChange={e => setDatos(d => ({ ...d, documento: e.target.value }))} />
-                  )}
-                </div>
-              )}
-            </>
+            <ElegirDevolucion monto={r.reembolso.monto} sedeName={r.sedeName} conCorreo={conCorreo}
+              eleccion={eleccion} setElec={setElec} datos={datos} setDatos={setDatos} />
           )}
           {!sigue ? (
             <div className="flex flex-col gap-2">
@@ -223,7 +244,7 @@ function FichaReclamo({ reclamo: r, order }) {
           ) : (
             <div className="flex flex-col gap-2">
               <textarea className="textarea-field h-20 scroll-custom text-sm" value={texto} onChange={e => setTexto(e.target.value)}
-                placeholder="Cuéntanos qué sigue mal" />
+                placeholder="Cuéntanos qué sigue mal (opcional)" />
               <button type="button" onClick={noSirve} disabled={busy} className="btn-primary w-full">{busy ? 'Enviando…' : 'Enviar'}</button>
               <button type="button" onClick={() => setSigue(false)} className="btn-ghost w-full">Volver</button>
             </div>
@@ -231,7 +252,18 @@ function FichaReclamo({ reclamo: r, order }) {
         </div>
       )}
 
-      {r.estado === 'resuelto' && r.reembolso?.monto > 0 && (
+      {faltanDatos && (
+        <div className="bg-cherry/5 border-2 border-cherry rounded-2xl p-4 flex flex-col gap-3">
+          <p className="font-body text-sm text-coal/80">Elegiste transferencia desde tu reloj. Falta que nos digas a dónde, o cámbiala por saldo a favor.</p>
+          <ElegirDevolucion monto={r.reembolso.monto} sedeName={r.sedeName} conCorreo={conCorreo}
+            eleccion={eleccion} setElec={setElec} datos={datos} setDatos={setDatos} />
+          <button type="button" onClick={completar} disabled={busy} className="btn-primary w-full">
+            {busy ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      )}
+
+      {r.estado === 'resuelto' && r.reembolso?.monto > 0 && !faltanDatos && (
         <p className="font-body text-sm text-coal/80 bg-mint/10 border border-mint/30 rounded-xl px-3 py-2 flex items-start gap-2">
           <Banknote size={16} className="text-mint flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>

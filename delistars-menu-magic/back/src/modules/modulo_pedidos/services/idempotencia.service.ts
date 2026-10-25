@@ -38,3 +38,14 @@ export async function conIdempotencia(uid: string, clave: unknown, cuerpo: unkno
     throw err;
   }
 }
+
+/**
+ * Igual, pero la clave es opcional (W-4): sin `Idempotency-Key` se ejecuta
+ * directo, como antes; con clave, un reintento devuelve la misma respuesta y no
+ * repite la acción (un mensaje no sale dos veces). Para rutas que la web ya
+ * usaba sin clave y que el reloj necesita poder reintentar.
+ */
+export async function conIdempotenciaOpcional(uid: string, clave: unknown, cuerpo: unknown, fn: () => Promise<Respuesta>): Promise<Respuesta> {
+  if (clave == null || clave === '') return fn();
+  return conIdempotencia(uid, clave, cuerpo, fn);
+}

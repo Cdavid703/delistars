@@ -50,12 +50,15 @@ export const ABIERTOS = Object.keys(ESTADOS).filter((e) => !ESTADOS[e].final)
 
 // Reembolso (§14.2): solicitado por la caja → autorizado (o rechazado) por
 // administración → el cliente elige saldo o transferencia → ejecutado.
+// faltan_datos: eligió transferencia sin dejar sus datos (desde el reloj); la
+// caja no transfiere hasta que los complete.
 export const REEMBOLSO = {
-  solicitado: 'Pendiente de autorización',
-  autorizado: 'Autorizado',
-  rechazado:  'No autorizado',
-  elegido:    'Por transferir',
-  ejecutado:  'Devuelto',
+  solicitado:   'Pendiente de autorización',
+  autorizado:   'Autorizado',
+  rechazado:    'No autorizado',
+  faltan_datos: 'Faltan los datos del cliente',
+  elegido:      'Por transferir',
+  ejecutado:    'Devuelto',
 }
 
 /**

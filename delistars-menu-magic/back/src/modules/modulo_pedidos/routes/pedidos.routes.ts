@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { requireUser } from '../../../middlewares/require-user';
 import { pedidosApiActiva } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
-import { conIdempotencia } from '../services/idempotencia.service';
+import { conIdempotencia, conIdempotenciaOpcional } from '../services/idempotencia.service';
 import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
@@ -195,7 +195,10 @@ router.post('/:id/pago', activa, requireUser, async (req: Request, res: Response
  *     tags: [Pedidos]
  *     summary: La caja propone un cambio al cliente (antes de preparar)
  *     description: >
- *       { items, quotedPrice, deliveryPrice?, motivo, version? }. El pedido queda con la excepción
+ *       { items, quotedPrice, deliveryPrice?, motivo, version?, direccion? }. `direccion` (W-5, solo domicilio):
+ *       { texto, coords: { lat, lng }, barrio?, referencia? }; el servidor mide el recorrido desde la sede del pedido
+ *       y pone la tarifa (409 fuera_de_cobertura | sin_medicion); items y quotedPrice quedan como están si no se mandan.
+ *       La propuesta guarda `direccion` y `anterior.direccion`. El pedido queda con la excepción
  *       `cambio_pendiente` y la propuesta en `cambioPropuesto`; el original no se toca hasta que el
  *       cliente acepte. Con pago adelantado o saldo aplicado el total no puede cambiar (409 `pagado` / `saldo`).
  *     responses:
@@ -205,7 +208,7 @@ router.post('/:id/cambio', activa, requireUser, async (req: Request, res: Respon
   try {
     const cuerpo = { id: req.params.id, cambio: true, ...req.body };
     const r = await conIdempotencia(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
-      status: 200, body: await proponerCambio(req.usuario!, req.params.id, req.body),
+      status: 200, body: await proponerCambio(req.usuario!, req.params.id, req.body, req.ip || ''),
     }));
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }
@@ -217,12 +220,23 @@ router.post('/:id/cambio', activa, requireUser, async (req: Request, res: Respon
  *   post:
  *     tags: [Pedidos]
  *     summary: El cliente acepta o rechaza el cambio propuesto
- *     description: "{ acepta: true | false }. Aceptar aplica lo propuesto; rechazar conserva el original."
+ *     description: >
+ *       { acepta: true | false, propuestaId?, version? }. Aceptar aplica lo propuesto; rechazar conserva el
+ *       original. `propuestaId` (cambioPropuesto.id) y `version` (la del pedido que vio el cliente) son
+ *       opcionales y recomendados (W-3): si la caja retiró esa propuesta o hizo otra → 409
+ *       `propuesta_reemplazada` / `version`. Acepta `Idempotency-Key` opcional: el reintento devuelve la
+ *       misma respuesta en vez de 409 `sin_propuesta`.
  *     responses:
- *       200: { description: "{ id, aceptado, etapa, version }" }
+ *       200: { description: "{ id, aceptado, etapa, version, propuestaId }" }
  */
 router.post('/:id/cambio/responder', activa, requireUser, async (req: Request, res: Response) => {
-  try { res.json(await responderCambio(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
+  try {
+    const cuerpo = { id: req.params.id, responderCambio: true, ...req.body };
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+      status: 200, body: await responderCambio(req.usuario!, req.params.id, req.body),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
 });
 
 /**
@@ -250,11 +264,18 @@ router.post('/:id/agregar', activa, requireUser, async (req: Request, res: Respo
  *       caja: cliente ↔ caja (queda en clientMessages). domiciliario: cliente ↔ domiciliario asignado
  *       (subcolección chat_domiciliario; la caja no la lee). Abierto hasta 3 h después de la entrega.
  *       Errores: 422 canal | texto | largo, 409 rechazado | vencido | sin_domiciliario, 403 sin_permiso.
+ *       `Idempotency-Key` opcional (W-4): con la misma clave, un reintento no repite el mensaje.
  *     responses:
  *       200: { description: "{ id, canal, mensaje: { role, name, text, ts } }" }
  */
 router.post('/:id/mensajes', activa, requireUser, async (req: Request, res: Response) => {
-  try { res.json(await enviarMensaje(req.usuario!, req.params.id, req.body)); } catch (err) { responderError(res, err); }
+  try {
+    const cuerpo = { id: req.params.id, mensaje: true, ...req.body };
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+      status: 200, body: await enviarMensaje(req.usuario!, req.params.id, req.body),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
 });
 
 /**

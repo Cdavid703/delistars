@@ -111,6 +111,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   const [searchingAddr,  setSearchingAddr]  = useState(false)
   const [addrSearched,   setAddrSearched]   = useState(false)
   const [savingAddr,     setSavingAddr]     = useState(false)
+  // Sugerencias de Google con su ubicación: con ella la caja puede proponerle la
+  // dirección nueva al cliente (W-5) y el servidor calcula la tarifa.
+  const [addrLugares,    setAddrLugares]    = useState([])
+  const [addrPunto,      setAddrPunto]      = useState(null)
+  const [addrMotivo,     setAddrMotivo]     = useState('')
+  const [addrError,      setAddrError]      = useState('')
 
   const orderSede = SEDES[order.sedeId]
   const pickup    = order.deliveryMode === 'pickup'
@@ -220,6 +226,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
     setAddrSearched(false)
     // Google primero: entiende el "#45-10" y devuelve la dirección completa.
     const google = await ubicarDireccion(addrDraft.trim())
+    setAddrLugares(google || [])
     if (google) {
       setAddrSuggestions(google.map(l => l.direccion))
       setAddrSearched(true)
@@ -470,6 +477,21 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
       setProponiendo(false); setPropMotivo('')
     } catch (err) {
       setPropError(err instanceof ErrorApi ? err.message : 'No se pudo enviar. Revisa la conexión e intenta de nuevo.')
+    } finally { setLoading(false) }
+  }
+  // Cambio de dirección propuesto al cliente (W-5): el servidor mide el
+  // recorrido desde la sede y pone la tarifa; los productos quedan igual.
+  const proponerDireccion = async () => {
+    if (!addrPunto) return
+    setAddrError(''); setLoading(true)
+    try {
+      await llamarPedidos(`${order.id}/cambio`, {
+        direccion: { texto: addrDraft.trim(), coords: addrPunto },
+        motivo: addrMotivo.trim(), version: order.version ?? 0,
+      })
+      setEditingAddr(false); setAddrPunto(null); setAddrMotivo('')
+    } catch (err) {
+      setAddrError(err instanceof ErrorApi ? err.message : 'No se pudo enviar. Revisa la conexión e intenta de nuevo.')
     } finally { setLoading(false) }
   }
   const retirarCambio = async () => {
@@ -746,7 +768,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     <input
                       className="input-field flex-1 text-sm"
                       value={addrDraft}
-                      onChange={e => { setAddrDraft(e.target.value); setAddrSuggestions([]); setAddrSearched(false) }}
+                      onChange={e => { setAddrDraft(e.target.value); setAddrSuggestions([]); setAddrSearched(false); setAddrPunto(null) }}
                       placeholder="Calle, número, barrio…"
                       autoComplete="off"
                     />
@@ -765,7 +787,11 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                       <p className="font-body text-[10px] text-coal/40 uppercase tracking-wider">Sugerencias</p>
                       {addrSuggestions.map((s, i) => (
                         <button key={i} type="button"
-                          onClick={() => { setAddrDraft(s); setAddrSuggestions([]) }}
+                          onClick={() => {
+                            setAddrDraft(s); setAddrSuggestions([])
+                            const l = addrLugares[i]
+                            setAddrPunto(l && l.direccion === s && Number.isFinite(l.lat) ? { lat: l.lat, lng: l.lng } : null)
+                          }}
                           className="text-left text-xs font-body text-cherry/80 bg-cherry/5 rounded-lg px-3 py-1.5 border border-cherry/10 hover:bg-cherry/10 transition-colors">
                           {s}
                         </button>
@@ -779,8 +805,23 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     </p>
                   )}
 
+                  {/* Proponerla al cliente (W-5): él acepta la dirección y la tarifa nuevas. */}
+                  {puedeProponer && addrPunto && (
+                    <div className="flex flex-col gap-1.5 rounded-xl bg-tangelo/10 p-2.5">
+                      <p className="font-body text-xs text-coal/70">
+                        O propónsela al cliente: el sistema calcula la tarifa nueva y él acepta o rechaza.
+                      </p>
+                      <input className="input-field text-sm" value={addrMotivo} onChange={e => setAddrMotivo(e.target.value)}
+                        placeholder="Por qué cambia (ej. Nos pidió entregar en su trabajo)" maxLength={300} />
+                      <button onClick={proponerDireccion} disabled={loading || addrMotivo.trim().length < 3} className="btn-secondary btn-sm">
+                        {loading ? 'Enviando…' : 'Proponer al cliente'}
+                      </button>
+                      {addrError && <p className="font-body text-xs text-pepper">{addrError}</p>}
+                    </div>
+                  )}
+
                   <div className="flex gap-2 mt-1">
-                    <button onClick={() => { setEditingAddr(false); setAddrSuggestions([]); setAddrSearched(false) }} className="btn-secondary flex-1 btn-sm">
+                    <button onClick={() => { setEditingAddr(false); setAddrSuggestions([]); setAddrSearched(false); setAddrPunto(null); setAddrError('') }} className="btn-secondary flex-1 btn-sm">
                       Cancelar
                     </button>
                     <button onClick={saveAddr} disabled={savingAddr || !addrDraft.trim()} className="btn-primary flex-1 btn-sm">
@@ -1700,6 +1741,12 @@ function BloqueDevolucion({ order, user }) {
             <p className="font-body text-sm text-coal/75">
               El cliente pagó por transferencia. <strong>Esperando que elija</strong> cómo quiere la devolución
               {order.clientEmail ? ' (transferencia o saldo a favor)' : ' (transferencia)'}. Ya se le escribió por el chat.
+            </p>
+          )}
+          {dev.estado === 'transferencia_sin_datos' && (
+            <p className="font-body text-sm text-coal/75">
+              El cliente <strong>eligió transferencia</strong> pero todavía no deja sus datos. No transfieras aún: le
+              aparecen en su pedido para completarlos.
             </p>
           )}
           {dev.estado === 'transferencia_solicitada' && (

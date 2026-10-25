@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planCrear, planRevisar, planProponer, planAutorizar, planResponder, planCerrar, planMensaje, ladoDe } from './reglas';
+import { planCrear, planRevisar, planProponer, planAutorizar, planResponder, planCompletarReembolso, planCerrar, planMensaje, ladoDe } from './reglas';
 import { ErrorPedido } from '../modulo_pedidos/reglas/armado';
 
 const falla = (fn: () => unknown, codigo: string, status?: number) => {
@@ -81,8 +81,10 @@ describe('reclamos (§14)', () => {
     falla(() => planResponder(r, cliente, { acepta: true }, T), 'eleccion', 422);
     const saldo = planResponder(r, cliente, { acepta: true, eleccion: 'saldo' }, T);
     expect(saldo).toMatchObject({ estado: 'resuelto', resolucion: 'aceptada', 'reembolso.eleccion': 'saldo', 'reembolso.estado': 'ejecutado' });
-    const transf = planResponder(r, cliente, { acepta: true, eleccion: 'transferencia' }, T);
+    const transf = planResponder(r, cliente, { acepta: true, eleccion: 'transferencia', datos: { medio: 'Nequi' } }, T);
     expect(transf['reembolso.estado']).toBe('elegido');
+    // Sin datos (W-6): la caja todavía no ve nada por transferir.
+    expect(planResponder(r, cliente, { acepta: true, eleccion: 'transferencia' }, T)['reembolso.estado']).toBe('faltan_datos');
     const sigue = planResponder(r, cliente, { acepta: false, texto: 'Sigue faltando la gaseosa' }, T);
     expect(sigue.estado).toBe('en_revision');
     expect(planResponder({ ...r, reembolso: null }, cliente, { acepta: true }, T).estado).toBe('resuelto');
@@ -98,5 +100,24 @@ describe('reclamos (§14)', () => {
     expect(planMensaje(r, cliente, 'Hola', T)['__union:mensajes']).toMatchObject({ role: 'client' });
     falla(() => planMensaje({ ...r, estado: 'resuelto' }, cliente, 'Hola', T), 'cerrado', 409);
     falla(() => planMensaje(r, cajaOtra, 'Hola', T), 'sin_permiso', 403);
+  });
+});
+
+describe('reloj: comentario opcional y transferencia sin datos (W-6, W-7)', () => {
+  const r = { ...planCrear(pedido, 'o1', cliente, base, T), estado: 'propuesta', reembolso: { monto: 4500, estado: 'autorizado' } };
+  it('«el problema sigue» no exige texto', () => {
+    const sin = planResponder(r, cliente, { acepta: false }, T);
+    expect(sin.estado).toBe('en_revision');
+    expect(sin['__union:mensajes'].text).toBe('El problema sigue.');
+    expect(planResponder(r, cliente, { acepta: false, texto: '  Sigue frío ' }, T)['__union:mensajes'].text).toBe('Sigue frío');
+    falla(() => planResponder(r, cliente, { acepta: false, texto: 'x'.repeat(900) }, T), 'largo', 422);
+  });
+  it('completa los datos o cambia a saldo solo si faltaban', () => {
+    const faltan = { ...r, estado: 'resuelto', reembolso: { monto: 4500, estado: 'faltan_datos', eleccion: 'transferencia' } };
+    expect(planCompletarReembolso(faltan, cliente, { eleccion: 'transferencia', datos: { medio: 'Nequi' } }, T)['reembolso.estado']).toBe('elegido');
+    expect(planCompletarReembolso(faltan, cliente, { eleccion: 'saldo' }, T)).toMatchObject({ 'reembolso.estado': 'ejecutado', 'reembolso.eleccion': 'saldo' });
+    falla(() => planCompletarReembolso(faltan, cliente, { eleccion: 'transferencia' }, T), 'datos', 422);
+    falla(() => planCompletarReembolso(faltan, caja, { eleccion: 'saldo' }, T), 'sin_permiso', 403);
+    falla(() => planCompletarReembolso({ ...faltan, reembolso: { monto: 4500, estado: 'elegido' } }, cliente, { eleccion: 'saldo' }, T), 'estado', 409);
   });
 });

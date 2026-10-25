@@ -137,7 +137,9 @@ export function planResponder(r: Doc, u: Usuario, b: Doc, ahora = Date.now()): D
   if (ladoDe(r, u) !== 'cliente') throw new ErrorPedido('sin_permiso', 'Solo el cliente responde a la propuesta', 403);
   if (r.estado !== 'propuesta') throw new ErrorPedido('estado', 'No hay una propuesta por responder', 409);
   if (!b?.acepta) {
-    const t = texto(b?.texto, 5);
+    // El comentario es opcional (W-7): sin texto, el hilo dice que el problema sigue.
+    const crudo = String(b?.texto ?? '').trim();
+    const t = crudo ? texto(crudo, 1) : 'El problema sigue.';
     return { estado: 'en_revision', '__union:mensajes': { role: 'client', name: nombre(u, 'cliente'), text: t, ts: ahora }, propuestaRechazadaAt: ahora };
   }
   const plan: Doc = { estado: 'resuelto', resolucion: 'aceptada', resueltoAt: ahora };
@@ -147,9 +149,27 @@ export function planResponder(r: Doc, u: Usuario, b: Doc, ahora = Date.now()): D
     if (eleccion === 'saldo' && !r.clientEmail) throw new ErrorPedido('eleccion', 'El saldo a favor necesita una cuenta con correo', 422);
     plan['reembolso.eleccion'] = eleccion;
     plan['reembolso.elegidoAt'] = ahora;
-    plan['reembolso.estado'] = eleccion === 'saldo' ? 'ejecutado' : 'elegido';
+    // Transferencia sin datos (W-6, desde el reloj): queda «faltan_datos» y la
+    // caja todavía no ve nada por transferir; el cliente los completa después.
+    plan['reembolso.estado'] = eleccion === 'saldo' ? 'ejecutado' : b.datos == null ? 'faltan_datos' : 'elegido';
     if (eleccion === 'saldo') plan['reembolso.ejecutadoAt'] = ahora;
   }
+  return plan;
+}
+
+/**
+ * El cliente eligió transferencia sin dejar sus datos (W-6): los completa, o
+ * cambia a saldo a favor. Los datos los valida el servicio.
+ */
+export function planCompletarReembolso(r: Doc, u: Usuario, b: Doc, ahora = Date.now()): Doc {
+  if (ladoDe(r, u) !== 'cliente') throw new ErrorPedido('sin_permiso', 'Solo el cliente completa su devolución', 403);
+  if (r.reembolso?.estado !== 'faltan_datos') throw new ErrorPedido('estado', 'Esta devolución no está esperando tus datos', 409);
+  const eleccion = b?.eleccion;
+  if (eleccion !== 'saldo' && eleccion !== 'transferencia') throw new ErrorPedido('eleccion', 'Elige cómo quieres tu plata: saldo o transferencia', 422);
+  if (eleccion === 'saldo' && !r.clientEmail) throw new ErrorPedido('eleccion', 'El saldo a favor necesita una cuenta con correo', 422);
+  if (eleccion === 'transferencia' && b?.datos == null) throw new ErrorPedido('datos', 'Escribe a dónde te transferimos', 422);
+  const plan: Doc = { 'reembolso.eleccion': eleccion, 'reembolso.elegidoAt': ahora, 'reembolso.estado': eleccion === 'saldo' ? 'ejecutado' : 'elegido' };
+  if (eleccion === 'saldo') plan['reembolso.ejecutadoAt'] = ahora;
   return plan;
 }
 

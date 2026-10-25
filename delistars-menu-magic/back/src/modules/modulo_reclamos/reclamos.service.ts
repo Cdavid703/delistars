@@ -5,7 +5,7 @@ import type { PedidoDoc } from '../modulo_pedidos/reglas/transiciones';
 import type { Usuario } from '../../middlewares/require-user';
 import { datosDevolucion } from '../modulo_cuenta/reglas';
 import { ABIERTOS } from '../../shared/reclamos';
-import { planCrear, planRevisar, planProponer, planAutorizar, planResponder, planCerrar, planMensaje, Doc } from './reglas';
+import { planCrear, planRevisar, planProponer, planAutorizar, planResponder, planCompletarReembolso, planCerrar, planMensaje, Doc } from './reglas';
 
 /**
  * Reclamos (§14): la ficha vive en reclamos/{id}; solo la escribe el servidor.
@@ -80,41 +80,61 @@ function marcarPedido(tx: FirebaseFirestore.Transaction, r: Doc, plan: Doc) {
 }
 
 /**
- * El cliente responde. Si acepta con reembolso: saldo → crédito en su cuenta
- * ya mismo (id fijo: no se duplica); transferencia → queda para la caja en
- * devoluciones_saldo (la misma franja que ya usa para el saldo de cuentas
- * eliminadas), con los datos bancarios validados.
+ * Lo que mueve la plata cuando el cliente ya eligió: saldo → crédito en su
+ * cuenta ya mismo (id fijo: no se duplica); transferencia con datos → queda
+ * para la caja en devoluciones_saldo (la misma franja que ya usa para el saldo
+ * de cuentas eliminadas). Transferencia sin datos (W-6) → nada todavía.
  */
+function moverReembolso(tx: FirebaseFirestore.Transaction, id: string, r: Doc, plan: Doc, datos: Doc | null) {
+  const db = firestore();
+  const monto = Number(r.reembolso?.monto) || 0;
+  const ahora = FieldValue.serverTimestamp();
+  if (plan['reembolso.eleccion'] === 'saldo' && monto > 0) {
+    tx.set(db.doc(`customers/${r.clientUid}/credits/rec_${id}`), {
+      sedeId: r.sedeId || '', monto, estado: 'disponible', origenOrderId: r.orderId, motivo: 'reclamo', reclamoId: id,
+      creadoPor: 'servidor', createdAt: ahora, usadoEnOrderId: null, usadoAt: null,
+    }, { merge: true });
+  }
+  if (plan['reembolso.estado'] === 'elegido' && plan['reembolso.eleccion'] === 'transferencia' && datos && monto > 0) {
+    tx.set(db.doc(`devoluciones_saldo/rec_${id}`), {
+      uid: r.clientUid, nombre: r.clientNombre || 'Cliente', sedeId: r.sedeId || '', monto, datos,
+      estado: 'por_transferir', origen: 'reclamo', reclamoId: id, orderId: r.orderId, orderNumber: r.orderNumber ?? null, creadoAt: ahora,
+    });
+  }
+}
+
+/** Valida los datos bancarios cuando la elección es transferencia con datos. */
+function conDatos(plan: Doc, b: Doc): Doc | null {
+  if (plan['reembolso.estado'] !== 'elegido' || plan['reembolso.eleccion'] !== 'transferencia') return null;
+  const d = datosDevolucion(b?.datos);
+  if ('errores' in d) throw new ErrorPedido('datos', d.errores.join('. '), 422);
+  plan['reembolso.datos'] = d.datos;
+  return d.datos;
+}
+
+/** El cliente responde: acepta (y elige cómo recibir la plata) o dice que el problema sigue. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function responder(u: Usuario, id: string, b: any) {
-  const db = firestore();
   let datos: Doc | null = null;
   return aplicar(id, u, 'responder', (r) => {
     const plan = planResponder(r, u, b);
-    if (plan['reembolso.eleccion'] === 'transferencia') {
-      const d = datosDevolucion(b?.datos);
-      if ('errores' in d) throw new ErrorPedido('datos', d.errores.join('. '), 422);
-      datos = d.datos;
-      plan['reembolso.datos'] = datos;
-    }
+    datos = conDatos(plan, b);
     return plan;
   }, (tx, r, plan) => {
     marcarPedido(tx, r, plan);
-    const monto = Number(r.reembolso?.monto) || 0;
-    const ahora = FieldValue.serverTimestamp();
-    if (plan['reembolso.eleccion'] === 'saldo' && monto > 0) {
-      tx.set(db.doc(`customers/${r.clientUid}/credits/rec_${id}`), {
-        sedeId: r.sedeId || '', monto, estado: 'disponible', origenOrderId: r.orderId, motivo: 'reclamo', reclamoId: id,
-        creadoPor: 'servidor', createdAt: ahora, usadoEnOrderId: null, usadoAt: null,
-      }, { merge: true });
-    }
-    if (plan['reembolso.eleccion'] === 'transferencia' && monto > 0) {
-      tx.set(db.doc(`devoluciones_saldo/rec_${id}`), {
-        uid: r.clientUid, nombre: r.clientNombre || 'Cliente', sedeId: r.sedeId || '', monto, datos,
-        estado: 'por_transferir', origen: 'reclamo', reclamoId: id, orderId: r.orderId, orderNumber: r.orderNumber ?? null, creadoAt: ahora,
-      });
-    }
+    moverReembolso(tx, id, r, plan, datos);
   });
+}
+
+/** POST /reclamos/:id/reembolso (W-6): completa los datos de la transferencia o cambia a saldo. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function completarReembolso(u: Usuario, id: string, b: any) {
+  let datos: Doc | null = null;
+  return aplicar(id, u, 'completar_reembolso', (r) => {
+    const plan = planCompletarReembolso(r, u, b);
+    datos = conDatos(plan, b);
+    return plan;
+  }, (tx, r, plan) => moverReembolso(tx, id, r, plan, datos));
 }
 
 /** La caja marcó la transferencia del reclamo como hecha: el reembolso queda ejecutado. */

@@ -25,12 +25,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() { return request.auth != null; }
+    // Sesión del Apple Watch (W-1/W-2, POST /api/v1/auth/reloj): el token trae el
+    // claim `reloj` = id en sesiones_reloj. Vale solo mientras ese registro siga
+    // activo: al cerrar sesión en el iPhone, el reloj ya no lee ni escribe nada
+    // aunque su token no haya vencido. Las demás sesiones no hacen esta lectura.
+    function esReloj() { return 'reloj' in request.auth.token; }
+    function relojVigente() {
+      return !esReloj() || (
+        get(/databases/$(database)/documents/sesiones_reloj/$(request.auth.token.reloj)).data.activa == true
+        && get(/databases/$(database)/documents/sesiones_reloj/$(request.auth.token.reloj)).data.uid == request.auth.uid
+      );
+    }
+    function isSignedIn() { return request.auth != null && relojVigente(); }
+    // El reloj solo actúa como cliente: ningún rol del equipo pasa por él.
+    function isTeamSession() { return isSignedIn() && !esReloj(); }
     function userEmail()  { return request.auth.token.email; }
 
     // Admins hardcodeados (sincronizar con ADMIN_EMAILS del front).
     function isAdmin() {
-      return isSignedIn() && userEmail() in [
+      return isTeamSession() && userEmail() in [
         'thebesta4321@gmail.com',
         'cdavid.jaramillo@gmail.com'
       ];
@@ -39,7 +52,7 @@ service cloud.firestore {
     // src/services/roles.js). Pueden NO tener doc en Firestore, por eso se
     // reconocen aquí además del exists() de la colección dinámica.
     function isCashier() {
-      return isSignedIn() && (
+      return isTeamSession() && (
         userEmail() in [
           'lluis02martinez@gmail.com',
           'vvillegasmazo@gmail.com',
@@ -50,7 +63,7 @@ service cloud.firestore {
       );
     }
     function isDriver() {
-      return isSignedIn() && (
+      return isTeamSession() && (
         userEmail() in [
           'cdavid.jaramillo@gmail.com'
         ]
@@ -64,7 +77,7 @@ service cloud.firestore {
     // la audiencia (conteos sin datos personales, en config/mercadeo_audiencia).
     // Espejo de MARKETING_EMAILS en delistars-menu-magic/admin/src/lib/team.ts.
     function isMarketing() {
-      return isSignedIn() && !exists(/databases/$(database)/documents/roles_disabled/$(userEmail())) && (
+      return isTeamSession() && !exists(/databases/$(database)/documents/roles_disabled/$(userEmail())) && (
         userEmail() in [
           'valenthina5431@gmail.com'
         ]
@@ -77,7 +90,7 @@ service cloud.firestore {
     // A propósito no es admin ni cajero: solo puede tocar config/client_platform
     // y solo los campos active/updatedBy/updatedAt — nada más en toda la base.
     function isAutoOpenBot() {
-      return isSignedIn() && userEmail() == 'auto-open@delistars-domicilios.app';
+      return isTeamSession() && userEmail() == 'auto-open@delistars-domicilios.app';
     }
 
     // Admins de confianza total — pueden modificar fidelización (corregir
@@ -86,7 +99,7 @@ service cloud.firestore {
     // no la modifiquen (hoy la lista coincide con isAdmin()).
     // Espejo de SUPER_ADMIN_EMAILS en delistars-menu-magic/admin/src/lib/team.ts.
     function isSuperAdmin() {
-      return isSignedIn() && userEmail() in [
+      return isTeamSession() && userEmail() in [
         'thebesta4321@gmail.com',
         'cdavid.jaramillo@gmail.com'
       ];
@@ -129,7 +142,13 @@ service cloud.firestore {
         && (!('devolucion' in cambiados())
             || ('devolucion' in antes
                 && d.devolucion.diff(antes.devolucion).affectedKeys().hasOnly(['estado', 'datos', 'elegidaAt'])
-                && d.devolucion.estado in ['transferencia_solicitada', 'saldo_solicitado']));
+                // Elige desde por_elegir, o completa lo que dejó a medias en el reloj
+                // (transferencia_sin_datos, W-6). Pedir transferencia exige los datos:
+                // sin ellos la caja no puede transferir.
+                && antes.devolucion.estado in ['por_elegir', 'transferencia_sin_datos']
+                && (d.devolucion.estado in ['transferencia_solicitada', 'saldo_solicitado']
+                    || (d.devolucion.estado == 'transferencia_sin_datos' && antes.devolucion.estado == 'por_elegir'))
+                && (d.devolucion.estado != 'transferencia_solicitada' || 'datos' in d.devolucion)));
     }
     function domiciliarioPuedeActualizar() {
       return cambiados().hasOnly([
@@ -501,6 +520,11 @@ service cloud.firestore {
     }
 
     // ── Todo lo demás: denegado ────────────────────────────────────────────
+    // Sesiones del Apple Watch: solo el servidor las crea y cierra (admin SDK).
+    match /sesiones_reloj/{id} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

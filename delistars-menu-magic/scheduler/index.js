@@ -346,7 +346,7 @@ async function tomarCupo(uid, campanaId, canal) {
 async function pushPromo(uid, c, campanaId) {
   const url = promos.enlaceDestino(c, campanaId)
   const msg = { title: String(c.push?.titulo || '').slice(0, 65), body: String(c.push?.texto || '').slice(0, 180) }
-  await pushApp(uid, msg, url)
+  await pushApp(uid, msg, url, { tipo: 'promo' })
   const cust = await adminDb.doc(`customers/${uid}`).get()
   const tokens = cust.exists ? (cust.data().fcmTokens || []) : []
   if (tokens.length) {
@@ -710,7 +710,7 @@ async function guardarAviso(destino, evento, aviso) {
 // Push a la app (aparatos registrados en dispositivos/{destino}/tokens):
 // Expo para la app; FCM nativo si algún día se usa. No se mezclan con los
 // tokens de la web.
-async function pushApp(destino, msg, url) {
+async function pushApp(destino, msg, url, datos = {}) {
   if (!destino || !adminDb) return
   const snap = await adminDb.collection(`dispositivos/${destino}/tokens`).get().catch(() => null)
   if (!snap || snap.empty) return
@@ -721,7 +721,7 @@ async function pushApp(destino, msg, url) {
     try {
       const r = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify(mensajesExpo(tokens, msg, url)),
+        body: JSON.stringify(mensajesExpo(tokens, msg, url, datos)),
       })
       const muertos = expoMuertos(tokens, await r.json().catch(() => null))
       for (const d of expo.filter((x) => muertos.includes(x.data().token))) await deleteDoc(doc(db, 'dispositivos', destino, 'tokens', d.id)).catch(() => {})
@@ -729,7 +729,8 @@ async function pushApp(destino, msg, url) {
   }
   if (fcm.length) {
     const res = await getMessaging().sendEachForMulticast({
-      tokens: fcm.map((d) => d.data().token), notification: { title: msg.title, body: msg.body }, data: { url },
+      tokens: fcm.map((d) => d.data().token), notification: { title: msg.title, body: msg.body },
+      data: { url, tipo: datos.tipo || msg.tipo || 'pedido', ...(datos.orderId ? { orderId: String(datos.orderId) } : {}), ...(datos.reclamoId ? { reclamoId: String(datos.reclamoId) } : {}) },
     }).catch(() => null)
     res?.responses.forEach((x, i) => {
       if (!x.success && (x.error?.code || '').includes('registration-token-not-registered')) deleteDoc(doc(db, 'dispositivos', destino, 'tokens', fcm[i].id)).catch(() => {})
@@ -740,7 +741,7 @@ async function pushApp(destino, msg, url) {
 /** Aviso a una persona del equipo o a la caja de una sede: centro de avisos + app. */
 async function avisoEquipo(destino, evento, msg, pedidoId) {
   const nuevo = await guardarAviso(destino, evento, { ...msg, pedidoId, url: msg.url || 'https://delistars.com/domicilios/' })
-  if (nuevo) await pushApp(destino, msg, msg.url || 'https://delistars.com/domicilios/')
+  if (nuevo) await pushApp(destino, msg, msg.url || 'https://delistars.com/domicilios/', { orderId: pedidoId, tipo: msg.tipo || 'pedido' })
   return nuevo
 }
 
@@ -751,7 +752,7 @@ async function sendPushForOrder(orderId, o, soloEtapa = false) {
   const url = enlacePedido(orderId)
   const nuevo = await guardarAviso(o.clientUid, idEvento('pedido', orderId, soloEtapa ? `etapa-${o.etapa}` : `estado-${o.status}`), { ...msg, pedidoId: orderId, url })
   if (!nuevo) return
-  await pushApp(o.clientUid, msg, url)
+  await pushApp(o.clientUid, msg, url, { orderId, tipo: 'pedido' })
   await pushWebCliente(o.clientUid, msg, orderId, soloEtapa ? `etapa ${o.etapa}` : o.status)
 }
 
@@ -906,7 +907,7 @@ async function avisarMensaje(id, o, m) {
     const msg = { title: `💬 Mensaje de ${o.sedeName || 'la sede'}`, body: m.texto || `Te escribieron sobre tu pedido${n}.`, tipo: 'mensaje' }
     const url = enlacePedido(id)
     if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'msg', m.n), { ...msg, pedidoId: id, url })) {
-      await pushApp(o.clientUid, msg, url)
+      await pushApp(o.clientUid, msg, url, { orderId: id, tipo: msg.tipo })
       await pushWebCliente(o.clientUid, msg, id, `mensaje ${m.n}`)
     }
   } else if (m.de === 'cliente') {
@@ -931,7 +932,7 @@ async function avisarExcepcion(id, o, anterior) {
     const url = enlacePedido(id)
     const evento = idEvento('pedido', id, 'cambio', c.propuestoAt?.toMillis?.() || Date.now())
     if (await guardarAviso(o.clientUid, evento, { ...msg, pedidoId: id, url })) {
-      await pushApp(o.clientUid, msg, url)
+      await pushApp(o.clientUid, msg, url, { orderId: id, tipo: msg.tipo, propuestaId: c.id })
       await pushWebCliente(o.clientUid, msg, id, 'cambio propuesto')
     }
     return
@@ -1049,7 +1050,7 @@ function watchChatDomiciliario() {
             const msg = { title: `💬 Mensaje de tu domiciliario${n}`, body: body || `${m.name || 'Tu domiciliario'} te escribió.`, tipo: 'mensaje' }
             const url = enlacePedido(id)
             if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'msgdomi', chg.doc.id), { ...msg, pedidoId: id, url })) {
-              await pushApp(o.clientUid, msg, url)
+              await pushApp(o.clientUid, msg, url, { orderId: id, tipo: msg.tipo })
               await pushWebCliente(o.clientUid, msg, id, `mensaje del domiciliario`)
             }
           } else if (m.role === 'client' && o.driverEmail) {
@@ -1168,7 +1169,7 @@ function watchReclamos() {
               const msg = { title: `💬 Te propusimos una solución${n}`, body: String(r.propuesta?.texto || '').slice(0, 120) || 'Entra al caso para verla.', tipo: 'reclamo' }
               const url = enlacePedido(r.orderId)
               if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'propuesta', r.propuesta?.at || ''), { ...msg, pedidoId: r.orderId, url })) {
-                await pushApp(r.clientUid, msg, url)
+                await pushApp(r.clientUid, msg, url, { orderId: r.orderId, reclamoId: id, tipo: 'reclamo' })
                 await pushWebCliente(r.clientUid, msg, r.orderId, 'propuesta de reclamo')
               }
             }
@@ -1178,7 +1179,7 @@ function watchReclamos() {
               await avisarAdmins(id, r, `reclamo-sigue-${r.propuestaRechazadaAt || ''}`, '⚠️ El problema sigue', body)
             }
             if (ahora.estado === 'resuelto') {
-              const body = `${r.clientNombre || 'El cliente'} aceptó la solución del pedido${n}${r.reembolso?.eleccion === 'transferencia' ? `. Pidió ${pesos(r.reembolso.monto)} por transferencia: está en Devoluciones.` : r.reembolso?.eleccion === 'saldo' ? `. ${pesos(r.reembolso.monto)} quedaron como saldo a favor.` : '.'}`
+              const body = `${r.clientNombre || 'El cliente'} aceptó la solución del pedido${n}${r.reembolso?.estado === 'faltan_datos' ? `. Eligió ${pesos(r.reembolso.monto)} por transferencia, pero aún no deja sus datos.` : r.reembolso?.eleccion === 'transferencia' ? `. Pidió ${pesos(r.reembolso.monto)} por transferencia: está en Devoluciones.` : r.reembolso?.eleccion === 'saldo' ? `. ${pesos(r.reembolso.monto)} quedaron como saldo a favor.` : '.'}`
               if (r.atiende === 'caja') await sendPushForStaff(id, pedidoFalso, { rol: 'cashier', clave: 'reclamo-resuelto', tipo: 'reclamo', title: '✅ Caso resuelto', body })
               await avisarAdmins(id, r, 'reclamo-resuelto', '✅ Caso resuelto', body)
             }
@@ -1186,7 +1187,7 @@ function watchReclamos() {
               const msg = { title: `Caso cerrado${n}`, body: `Administración cerró tu caso: ${String(r.cierre?.motivo || '').slice(0, 100)}`, tipo: 'reclamo' }
               const url = enlacePedido(r.orderId)
               if (await guardarAviso(r.clientUid, idEvento('reclamo', id, 'cierre'), { ...msg, pedidoId: r.orderId, url })) {
-                await pushApp(r.clientUid, msg, url)
+                await pushApp(r.clientUid, msg, url, { orderId: r.orderId, reclamoId: id, tipo: 'reclamo' })
                 await pushWebCliente(r.clientUid, msg, r.orderId, 'cierre de reclamo')
               }
             }
