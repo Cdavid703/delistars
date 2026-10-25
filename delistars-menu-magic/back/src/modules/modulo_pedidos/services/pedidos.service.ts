@@ -59,10 +59,8 @@ async function catalogo(): Promise<ProductoCatalogo[]> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function crearPedido(u: Usuario, b: any, ip: string) {
   if (u.anonimo || !u.email) throw new ErrorPedido('cuenta_obligatoria', 'Para pedir necesitas entrar con tu cuenta', 403);
-  // Cuenta de correo y contraseña: primero confirmar el correo (especificación §6.1).
-  if (u.proveedor === 'password' && !u.correoVerificado) {
-    throw new ErrorPedido('correo_sin_verificar', 'Confirma tu correo para enviar el pedido: abre el enlace que te enviamos', 403);
-  }
+  // Confirmar el correo ya no es obligatorio para pedir (25 oct 2026): el enlace
+  // de Firebase no les llegaba a algunos clientes (Hotmail) y no podían comprar.
   // Pidió eliminar su cuenta: mientras corre el plazo no puede pedir (puede arrepentirse en Mi cuenta).
   if (await eliminacionPendiente(u.uid)) {
     throw new ErrorPedido('cuenta_en_eliminacion', 'Pediste eliminar tu cuenta. Para pedir, cancela la eliminación en «Mi cuenta»', 409);
