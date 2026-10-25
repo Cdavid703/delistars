@@ -90,6 +90,8 @@ export function contenidoComanda(o, { tipo = 'original', motivo = null, prueba =
   const creado = horaCol(msDe(o.createdAt))
   add(`${creado ? `Pedido ${creado} · ` : ''}Impresa ${horaCol(ahora)}`)
   if (o.name || o.clientName) add(`Cliente: ${o.name || o.clientName}`)
+  // Para otra persona (§7.3): a quién se entrega.
+  if (o.destinatario?.nombre) add(`Recibe: ${o.destinatario.nombre}`, 'negrita')
   add('', 'linea')
   for (const l of lineasProductos(o.items)) add(l, l.startsWith(' ') ? undefined : 'negrita')
   if (o.notes) { add('', 'linea'); add(`Nota: ${o.notes}`, 'negrita') }

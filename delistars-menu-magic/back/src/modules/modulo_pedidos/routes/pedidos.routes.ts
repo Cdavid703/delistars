@@ -6,6 +6,7 @@ import { conIdempotencia, conIdempotenciaOpcional } from '../services/idempotenc
 import { crearPedidoCaja } from '../services/pedidoCaja.service';
 import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje, editorPedido } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
+import { verComoDestinatario } from '../services/destinatario.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
 
@@ -73,6 +74,30 @@ router.post('/codigo/ver', activa, async (req: Request, res: Response) => {
 
 /**
  * @swagger
+ * /api/v1/pedidos/destinatario/ver:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Lo que ve quien recibe un pedido para otra persona (sin cuenta)
+ *     description: >
+ *       Público (sin token de Firebase). `token` = el de `destinatario.token` del pedido
+ *       (enlace /domicilios/?recibe=<token>). Estado, mapa mientras va en camino y lo que
+ *       tiene que pagar (o `noPaga: true`); sin chats, datos de cuenta ni desglose.
+ *       Vence 3 h después de que el pedido termina (410 `vencido`).
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "token": "Xk3...24 caracteres" }
+ *     responses:
+ *       200: { description: "{ id, orderNumber, sedeName, etapa, excepcion, recibe, envia, direccion, domiciliario, ubicacion, destino, noPaga, aPagar, billete, cambio, venceAt }" }
+ */
+router.post('/destinatario/ver', activa, async (req: Request, res: Response) => {
+  try {
+    res.set('Cache-Control', 'no-store').json(await verComoDestinatario(req.body?.token));
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
  * /api/v1/pedidos/codigo/vincular:
  *   post:
  *     tags: [Pedidos]
@@ -117,7 +142,8 @@ router.post('/:id/codigo', activa, requireUser, async (req: Request, res: Respon
  *       Precios del catálogo del servidor; domicilio por recorrido si llega `coords`.
  *       Opcionales: `revisarDomicilio: true` (la caja cotiza el domicilio a mano),
  *       `pinFuente` (mapa | google | photon | app), `codigo`, `premios` (cantidad), `usarSaldo`,
- *       `origen` ('web' | 'app'; por defecto 'app').
+ *       `origen` ('web' | 'app'; por defecto 'app'),
+ *       `destinatario` ({ nombre, telefono, paga: 'comprador' | 'destinatario' }: lo recibe otra persona, solo domicilio).
  *       Encabezados: Authorization: Bearer <idToken>, Idempotency-Key: <uuid>.
  *     requestBody:
  *       content:

@@ -35,8 +35,10 @@ export function totalAPagar({ menuTotal, deliveryMode, precioDomicilio }) {
 /**
  * Errores que impiden enviar el pedido con pago adelantado.
  * `billete`: con cuánto paga en efectivo. `comprobante`: el archivo elegido.
+ * `billeteOpcional`: lo paga otra persona al recibir (§7.3) y quien pide puede
+ * no saber con qué billete; el domiciliario lleva cambio.
  */
-export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransferencia, comprobante }) {
+export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransferencia, comprobante, billeteOpcional = false }) {
   const errs = []
   // El saldo a favor cubre todo el pedido: no hay nada que pagar.
   if (Number(total) === 0) return errs
@@ -46,7 +48,7 @@ export function erroresPago({ metodo, total, billete, mixtoEfectivo, mixtoTransf
   }
   if (metodo === 'Efectivo') {
     const b = Number(billete)
-    if (!(b > 0)) errs.push('Dinos con qué billete vas a pagar, o elige "Exacto"')
+    if (!(b > 0)) { if (!billeteOpcional) errs.push('Dinos con qué billete vas a pagar, o elige "Exacto"') }
     else if (b < total) errs.push('El billete no alcanza para el total del pedido')
   }
   if (metodo === 'Mixto') {

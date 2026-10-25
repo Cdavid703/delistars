@@ -58,6 +58,10 @@ import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import ReclamoPedido from './ReclamoPedido'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
+import {
+  revisarDestinatario, METODOS_POR_QUIEN_PAGA, metodosPermitidos, pagaQuienRecibe, esParaOtro,
+  enlaceDestinatario, enlaceVigente, mensajeParaQuienRecibe, primerNombre,
+} from '../../utils/destinatario'
 import { LogoWhatsApp, LogoGoogleMaps, LogoNequi, LogoPago } from '../common/LogosApps'
 
 const STATUS_STEPS = [
@@ -1060,6 +1064,93 @@ function DatosTransferencia({ sedeId }) {
   )
 }
 
+// ¿Quién recibe el pedido? (§7.3). Si es otra persona: su nombre y teléfono
+// (los de quien pide se conservan) y quién paga. Es opcional: por defecto lo
+// recibe quien pide, como siempre.
+function QuienRecibe({ form, set }) {
+  const otro = form.paraOtro
+  const nombre = primerNombre(form.destNombre) || 'quien recibe'
+  const opcion = (activo) => `btn btn-sm w-full justify-center border-2 ${
+    activo ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/15 text-coal/60 bg-cream'}`
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="label-field">¿Quién recibe el pedido?</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => set('paraOtro', false)} className={opcion(!otro)}>
+            <UserRound size={16} aria-hidden="true" /> Yo
+          </button>
+          <button type="button" onClick={() => set('paraOtro', true)} className={opcion(otro)}>
+            <Gift size={16} aria-hidden="true" /> Otra persona
+          </button>
+        </div>
+      </div>
+      {otro && (
+        <div className="bg-mustard/10 border border-mustard/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="label-field">Nombre de quien recibe *</label>
+              <input className="input-field" value={form.destNombre} onChange={e => set('destNombre', e.target.value)}
+                placeholder="Nombre y apellido" autoComplete="off" />
+            </div>
+            <div className="col-span-2">
+              <label className="label-field">Teléfono de quien recibe *</label>
+              <input className="input-field" value={form.destTelefono} onChange={e => set('destTelefono', e.target.value)}
+                placeholder="3001234567" type="tel" autoComplete="off" />
+            </div>
+          </div>
+          <div>
+            <label className="label-field">¿Quién paga? *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button type="button" onClick={() => set('destPaga', 'comprador')}
+                className={`${opcion(form.destPaga === 'comprador')} flex-col !items-start text-left h-auto py-2.5`}>
+                <span className="font-semibold">Yo, ahora</span>
+                <span className="text-[11px] font-normal opacity-80">Por Transferencia o Nequi</span>
+              </button>
+              <button type="button" onClick={() => set('destPaga', 'destinatario')}
+                className={`${opcion(form.destPaga === 'destinatario')} flex-col !items-start text-left h-auto py-2.5`}>
+                <span className="font-semibold">{form.destNombre.trim() ? primerNombre(form.destNombre) : 'Quien recibe'}, al recibir</span>
+                <span className="text-[11px] font-normal opacity-80">En efectivo</span>
+              </button>
+            </div>
+          </div>
+          <p className="font-body text-xs text-coal/65 leading-relaxed">
+            El domiciliario le avisa a {nombre} cuando llegue. Si hay dudas del pedido o del pago, te escribe a ti.
+            Al enviarlo te damos un enlace para que {nombre} vea cuándo llega.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Resumen antes de enviar un pedido para otra persona: a quién, dónde y quién paga.
+function ResumenParaOtro({ form, total }) {
+  const nombre = form.destNombre.trim()
+  const pagaRecibe = form.destPaga === 'destinatario'
+  const fila = (etiqueta, valor, clase = 'font-semibold') => (
+    <div className="flex justify-between gap-3"><span className="text-coal/60">{etiqueta}</span><span className={`${clase} text-right`}>{valor}</span></div>
+  )
+  return (
+    <div className="bg-white border-2 border-mustard/50 rounded-2xl p-4 flex flex-col gap-1.5 font-body text-sm">
+      <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+        <Gift size={17} className="text-mustard" aria-hidden="true" /> Lo recibe otra persona
+      </p>
+      {fila('Recibe', nombre)}
+      {form.destTelefono.trim() && fila('Teléfono', form.destTelefono.trim())}
+      {form.fullAddress.trim() && fila('Dirección', form.fullAddress.trim())}
+      {form.destPaga && fila('Paga', pagaRecibe
+        ? `${primerNombre(nombre)}, en efectivo al recibir`
+        : `Tú${form.payment ? `, por ${form.payment}` : ''}`)}
+      {pagaRecibe && (
+        <div className="border-t border-coal/10 pt-1.5">
+          {fila('A cobrarle', total != null ? `$${total.toLocaleString('es-CO')}` : 'Cuando la sede cotice', 'font-bold text-cherry')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Con qué billete paga el cliente un monto en efectivo, y cuánto cambio lleva.
 // Se usa para el total (Efectivo) y para la parte en efectivo del Mixto.
 function SelectorBillete({ monto, billete, onChange, titulo }) {
@@ -1110,7 +1201,7 @@ function SelectorBillete({ monto, billete, onChange, titulo }) {
 
 // Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
 // la caja le llega el pedido completo para aceptarlo.
-function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante, sedeId }) {
+function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante, sedeId, metodos = null, pagaOtro = null }) {
   const [archivoError, setArchivoError] = useState('')
   const metodo = form.payment
   const billete = form.billete
@@ -1126,7 +1217,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
   return (
     <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
       <p className="font-display text-base tracking-wide text-cherry flex items-center gap-2">
-        <CreditCard size={18} aria-hidden="true" /> Paga tu pedido
+        <CreditCard size={18} aria-hidden="true" /> {pagaOtro ? `Lo paga ${pagaOtro} al recibir` : 'Paga tu pedido'}
       </p>
 
       {/* Resumen del valor */}
@@ -1166,7 +1257,7 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
             ['Transferencia', Building2],
             ['Nequi',         LogoNequi],
             ['Mixto',         Shuffle],
-          ].map(([valor, IconoPago]) => (
+          ].filter(([valor]) => !metodos || metodos.includes(valor)).map(([valor, IconoPago]) => (
             <button key={valor} type="button" onClick={() => set('payment', valor)}
               className={`btn btn-sm w-full justify-center border-2 ${
                 metodo === valor ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/15 text-coal/60 bg-cream'
@@ -1183,8 +1274,12 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
           monto={total}
           billete={billete}
           onChange={v => set('billete', v)}
-          titulo={pickup ? '¿Con qué billete vas a pagar en la sede?' : '¿Con qué billete le vas a pagar al domiciliario?'}
+          titulo={pagaOtro ? `¿Sabes con qué billete va a pagar ${pagaOtro}?`
+            : pickup ? '¿Con qué billete vas a pagar en la sede?' : '¿Con qué billete le vas a pagar al domiciliario?'}
         />
+      )}
+      {metodo === 'Efectivo' && pagaOtro && billete == null && (
+        <p className="font-body text-xs text-coal/60 -mt-1">Si no sabes, déjalo así: el domiciliario lleva cambio.</p>
       )}
 
       {/* Mixto: cuánto va en cada forma (tiene que sumar el total) */}
@@ -1286,6 +1381,11 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
     mixtoEfectivo:      '',
     mixtoTransferencia: '',
     billete:            null,   // con cuánto paga en efectivo (pago adelantado)
+    // Lo recibe otra persona (§7.3): sus datos y quién paga ('comprador' | 'destinatario').
+    paraOtro:           false,
+    destNombre:         '',
+    destTelefono:       '',
+    destPaga:           '',
   })
   // Archivo del comprobante: no va en el borrador (un archivo no se puede
   // guardar en localStorage); si recarga, lo vuelve a elegir.
@@ -1377,6 +1477,16 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   const saldoCalc = aplicarSaldo(totalBruto, conSaldo ? saldo : 0, conSaldo ? limiteSaldo : null)
   // Con pago adelantado el cliente paga el total ya descontado.
   const total = saldoCalc.aPagar
+
+  // Para otra persona (§7.3): quien recibe paga en efectivo; quien pide, por
+  // Transferencia o Nequi. Con un solo medio posible, se elige solo.
+  const paraOtro = form.deliveryMode === 'delivery' && form.paraOtro
+  const metodosOk = paraOtro && form.destPaga ? METODOS_POR_QUIEN_PAGA[form.destPaga] : null
+  useEffect(() => {
+    if (!metodosOk || metodosOk.includes(form.payment)) return
+    setForm(f => ({ ...f, payment: metodosOk.length === 1 ? metodosOk[0] : '', billete: null }))
+  }, [metodosOk?.join(), form.payment]) // eslint-disable-line react-hooks/exhaustive-deps
+  const nombreRecibe = primerNombre(form.destNombre) || 'quien recibe'
 
   useEffect(() => {
     // 1) Restaurar el borrador si la página se recargó a mitad del formulario
@@ -1505,6 +1615,10 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
     else if (carritoApi.rearmar.length) errs.push(`Vuelve a agregar desde el menú: ${carritoApi.rearmar.join(', ')}. El menú cambió desde que lo pusiste en el carrito.`)
     if (agotadosEnCarrito.length) errs.push(`Se agotó en esta sede: ${nombresAgotados(agotadosEnCarrito, agotadosSede.nombres)}. Vuelve al menú, quítalo del carrito o cámbialo por otro.`)
     if (!user || user.isAnonymous) errs.push('Entra a tu cuenta para enviar el pedido (tu carrito se conserva).')
+    const rd = paraOtro
+      ? revisarDestinatario({ nombre: form.destNombre, telefono: form.destTelefono, paga: form.destPaga }, { deliveryMode: form.deliveryMode })
+      : { ok: true, destinatario: null }
+    if (!rd.ok) errs.push(rd.error)
     // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
     if (codigoAplicado) {
       const r = validarCodigo(codigoAplicado, { items: form.items, tieneCuenta: !!user?.email && !user?.isAnonymous })
@@ -1516,7 +1630,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       errs.push(...erroresPago({
         metodo: form.payment, total, billete: form.billete,
         mixtoEfectivo: form.mixtoEfectivo, mixtoTransferencia: form.mixtoTransferencia,
-        comprobante,
+        comprobante, billeteOpcional: paraOtro && form.destPaga === 'destinatario',
       }))
     }
     if (errs.length) { setErrors(errs); return }
@@ -1549,6 +1663,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           usarSaldo:    conSaldo ? (limiteSaldo ?? true) : false,
           // Campaña de Mercadeo abierta en las últimas 24 h (§17.4).
           ...(campanaParaPedido() ? { campana: campanaParaPedido() } : {}),
+          ...(rd.destinatario ? { destinatario: rd.destinatario } : {}),
         },
         // Pago adelantado: se registra en cuanto el pedido existe (el comprobante
         // va a la carpeta del pedido, que el servidor crea).
@@ -1646,14 +1761,18 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
 
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="label-field">Nombre completo *</label>
+          <label className="label-field">{paraOtro ? 'Tu nombre (quien pide) *' : 'Nombre completo *'}</label>
           <input className="input-field" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Tu nombre" />
         </div>
         <div className="col-span-2">
-          <label className="label-field">Teléfono / WhatsApp *</label>
+          <label className="label-field">{paraOtro ? 'Tu teléfono / WhatsApp *' : 'Teléfono / WhatsApp *'}</label>
           <input className="input-field" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="3001234567" type="tel" />
         </div>
       </div>
+
+      {form.deliveryMode === 'delivery' && (
+        <QuienRecibe form={form} set={set} />
+      )}
 
       {ofrecerPromos && (
         <label className="flex items-start gap-2.5 cursor-pointer select-none -mt-1">
@@ -1942,6 +2061,8 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
           pickup={form.deliveryMode === 'pickup'}
           comprobante={comprobante}
           setComprobante={setComprobante}
+          metodos={metodosOk}
+          pagaOtro={paraOtro && form.destPaga === 'destinatario' ? nombreRecibe : null}
         />
       )}
 
@@ -1992,6 +2113,10 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
             <button type="button" onClick={() => setPreguntarAdicional(false)} className="btn-secondary">No, volver</button>
           </div>
         </div>
+      )}
+
+      {paraOtro && form.destNombre.trim() && (
+        <ResumenParaOtro form={form} total={pagoAhora ? total : null} />
       )}
 
       <div className="flex flex-col gap-2 pt-2">
@@ -2454,6 +2579,47 @@ function DevolucionCliente({ order }) {
 }
 
 // ─── Order detail ─────────────────────────────────────────────────────────────
+// Pedido para otra persona (§7.3): a quién va, quién paga y el enlace para que
+// quien recibe vea cuándo llega (estado y mapa, sin precios ni chats). El
+// comprador se lo manda por su WhatsApp: la app no le escribe a ese teléfono.
+function TarjetaParaOtro({ order }) {
+  const d = order.destinatario
+  const [copiado, setCopiado] = useState(false)
+  const url = d.token ? enlaceDestinatario(window.location.origin, d.token) : null
+  const vigente = url && enlaceVigente(order)
+  const tel = String(d.telefono || '').replace(/\D/g, '')
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(url); setCopiado(true); setTimeout(() => setCopiado(false), 2500) }
+    catch { window.prompt('Copia el enlace:', url) }
+  }
+  return (
+    <div className="bg-mustard/10 border-2 border-mustard/40 rounded-2xl p-4 flex flex-col gap-2">
+      <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
+        <Gift size={17} className="text-mustard" aria-hidden="true" /> Lo recibe {d.nombre}
+      </p>
+      <p className="font-body text-sm text-coal/70">
+        {tel && <>{tel} · </>}
+        {pagaQuienRecibe(order) ? `Paga ${primerNombre(d.nombre)} en efectivo al recibir` : 'Lo pagas tú'}
+      </p>
+      {vigente && (<>
+        <p className="font-body text-xs text-coal/60 leading-relaxed">
+          Mándale este enlace para que vea cuándo llega. No muestra precios, tus datos ni tus chats.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <a href={`https://wa.me/57${tel}?text=${encodeURIComponent(mensajeParaQuienRecibe(order, url))}`}
+            target="_blank" rel="noreferrer"
+            className="btn btn-sm justify-center bg-[#25D366] text-white border-0">
+            <LogoWhatsApp size={16} blanco /> Mandárselo
+          </a>
+          <button type="button" onClick={copiar} className="btn-secondary btn-sm justify-center">
+            {copiado ? <><Check size={15} aria-hidden="true" /> Copiado</> : 'Copiar enlace'}
+          </button>
+        </div>
+      </>)}
+    </div>
+  )
+}
+
 function ClientOrderDetail({ order, onClose }) {
   const { user } = useAuth()
   useBackClose(true, onClose) // "atrás" cierra el detalle, no saca de la app
@@ -2816,6 +2982,8 @@ function ClientOrderDetail({ order, onClose }) {
             <AvisoInvitado siguiendo compacto />
           )}
 
+          {esParaOtro(order) && <TarjetaParaOtro order={order} />}
+
           {/* Selector de método de pago — aparece tras la cotización de la caja */}
           {hasQuote && !order.payment && !isDelivered && !CLOSED_STATUSES.includes(order.status) && (
             <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
@@ -2828,11 +2996,14 @@ function ClientOrderDetail({ order, onClose }) {
               <select className={`input-field ${!payMethod ? 'text-coal/40' : ''}`}
                 value={payMethod} onChange={e => setPayMethod(e.target.value)}>
                 <option value="" disabled>— Selecciona cómo vas a pagar —</option>
-                <option>Efectivo</option>
-                <option>Transferencia</option>
-                <option>Nequi</option>
-                <option value="Mixto">Mixto (Efectivo + Transferencia)</option>
+                {/* Para otra persona (§7.3): solo los medios de quien paga. */}
+                {[['Efectivo', 'Efectivo'], ['Transferencia', 'Transferencia'], ['Nequi', 'Nequi'], ['Mixto', 'Mixto (Efectivo + Transferencia)']]
+                  .filter(([v]) => !metodosPermitidos(order) || metodosPermitidos(order).includes(v))
+                  .map(([v, t]) => <option key={v} value={v}>{t}</option>)}
               </select>
+              {pagaQuienRecibe(order) && (
+                <p className="font-body text-xs text-coal/60">Lo paga {primerNombre(order.destinatario.nombre)} en efectivo cuando le llegue.</p>
+              )}
 
               {payMethod === 'Mixto' && (
                 <div className="bg-smoked/50 rounded-2xl p-4 flex flex-col gap-3">
@@ -3704,6 +3875,17 @@ const CLIENT_HELP_SECTIONS = [
         ['Nequi',         'Pago por Nequi a la cuenta de DeliStars antes de la entrega'],
       ]},
       { type: 'tip', text: 'Para Transferencia y Nequi: al seleccionar ese método de pago en el formulario, aparece un código QR de Bancolombia (DELISTARS · Ahorros *3891) para escanear y pagar de inmediato.' },
+    ],
+  },
+  {
+    id: 'para-otro', icon: Gift, title: '¿Puedo mandarle un pedido a otra persona?',
+    content: [
+      { type: 'p', text: 'Sí. En el pedido, en «¿Quién recibe el pedido?», toca «Otra persona» y escribe su nombre y teléfono. Luego elige quién paga:' },
+      { type: 'table', rows: [
+        ['Yo, ahora',      'Pagas tú por Transferencia o Nequi. A quien recibe no se le cobra nada'],
+        ['Quien recibe',   'Paga en efectivo cuando le llega'],
+      ]},
+      { type: 'tip', text: 'Cuando envíes el pedido, ábrelo y toca «Mandárselo»: le llega por WhatsApp un enlace para ver cuándo llega. No muestra precios, tus datos ni tus chats.' },
     ],
   },
   {

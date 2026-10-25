@@ -86,3 +86,9 @@ test('campos de transferencia: sin efectivo ni cambio', () => {
   assert.equal(llevaComprobante('Transferencia'), true)
   assert.equal(llevaComprobante('Efectivo'), false)
 })
+
+test('para otra persona que paga al recibir, el billete puede quedar sin decir', () => {
+  assert.deepEqual(erroresPago({ metodo: 'Efectivo', total: 41000, billeteOpcional: true }), [])
+  assert.equal(erroresPago({ metodo: 'Efectivo', total: 41000, billete: 20000, billeteOpcional: true }).length, 1)
+  assert.equal(erroresPago({ metodo: 'Efectivo', total: 41000 }).length, 1)
+})

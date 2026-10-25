@@ -148,7 +148,12 @@ export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFac
 
       {/* 3. Quién y a dónde */}
       <div className="min-w-0">
-        <p className="font-body text-sm font-semibold text-coal truncate">{order.name || order.clientName || 'Cliente'}</p>
+        <p className="font-body text-sm font-semibold text-coal truncate">
+          {order.name || order.clientName || 'Cliente'}
+          {order.destinatario?.nombre && (
+            <span className="font-normal text-[#8a5a00]"> · <Gift size={12} className="inline -mt-0.5" aria-hidden="true" /> para {order.destinatario.nombre.split(' ')[0]}</span>
+          )}
+        </p>
         <p className="font-body text-xs text-coal/55 truncate">
           {pickup ? 'Recoge en la sede' : (order.barrio || order.fullAddress || 'Sin dirección')}
           {!tablero && order.phone ? ` · ${order.phone}` : ''}
