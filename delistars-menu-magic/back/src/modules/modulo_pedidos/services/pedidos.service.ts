@@ -6,7 +6,7 @@ import { estadoSede } from '../../../shared/horarios';
 import { etapaDe } from '../../../shared/etapas';
 import { precioDomicilio, RECORRIDO } from '../../../shared/tarifaDomicilio';
 import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
-import { planTransicion, esAhora, PedidoDoc, rolesDe } from '../reglas/transiciones';
+import { planTransicion, esAhora, PedidoDoc, rolesDe, yaEsta } from '../reglas/transiciones';
 import { planPago } from '../reglas/pago';
 import { planCotizar, planAsignar, planAceptar, planCuadre, PlanCaja } from '../reglas/caja';
 import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, limiteDeSaldo, Premio, Credito } from '../reglas/beneficios';
@@ -24,10 +24,18 @@ import { nuevoTokenDestinatario, indiceDestinatario } from './destinatario.servi
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
 export function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
+  // También dentro de objetos (ej. incidencia.at, CP-1).
+  const valor = (v: unknown): unknown => {
+    if (esAhora(v) || v === '__ahora__') return ahora;
+    if (v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype) {
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, valor(x)]));
+    }
+    return v;
+  };
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(extras)) {
     if (k.startsWith('__union:')) out[k.slice('__union:'.length)] = FieldValue.arrayUnion(v);
-    else out[k] = esAhora(v) || v === '__ahora__' ? ahora : v;
+    else out[k] = valor(v);
   }
   return out;
 }
@@ -272,6 +280,11 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
     const p = snap.data() as PedidoDoc;
     const versionActual = Number(p.version) || 0;
+    // Ya está así (un reintento tras un corte, CP-5): se responde lo que hay, sin repetir nada.
+    if (rolesDe(u, p).length && yaEsta(p, String(b?.a || ''), b?.motivo)) {
+      const e = etapaDe(p);
+      return { id, etapa: e.etapa, excepcion: e.excepcion, version: versionActual, sinCambios: true, entregaDomicilio: null };
+    }
     if (b?.version != null && Number(b.version) !== versionActual) {
       throw new ErrorPedido('version', `El pedido cambió mientras tanto (versión ${versionActual}). Recárgalo e intenta de nuevo`, 409);
     }

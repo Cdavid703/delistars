@@ -41,10 +41,26 @@ export const EXCEPCIONES = {
   cancelacion_solicitada: { texto: 'Cancelación solicitada',             final: false },
   cambio_pendiente:       { texto: 'Cambio pendiente de tu aprobación',  final: false },
   no_entregado:           { texto: 'No se pudo entregar',                final: false },
+  // El domiciliario dice que volvió con el pedido; la caja confirma al recibirlo (CP-3).
+  regreso_declarado:      { texto: 'Regresando a la sede',               final: false },
   devuelto:               { texto: 'Devuelto a la sede',                 final: true },
 }
 
 export const ORIGENES = ['web', 'app', 'caja']
+
+/** «No puedo entregar» del domiciliario (CP-1): motivos cerrados → texto. */
+export const MOTIVOS_NO_ENTREGA = {
+  no_responde:      'El cliente no responde',
+  no_puedo_acceder: 'No puedo acceder a la dirección',
+  rechaza_pedido:   'El cliente rechaza el pedido',
+}
+
+/** Instrucción de la caja tras «No puedo entregar» (CP-2). */
+export const INSTRUCCIONES_CAJA = {
+  esperar:    'Espera en el lugar',
+  reintentar: 'Intenta entregar de nuevo',
+  regresar:   'Regresa a la sede con el pedido',
+}
 
 /** Estado viejo (`status`) → etapa nueva. Las excepciones viejas van aparte. */
 export const DESDE_ESTADO_VIEJO = {
@@ -148,7 +164,10 @@ export const TRANSICIONES = [
   // La caja propone un cambio (productos o total) antes de preparar; el cliente
   // lo acepta o lo rechaza (§9.2). Mientras tanto no se puede preparar.
   { a: 'excepcion:cambio_pendiente',       desde: ['enviado', 'confirmado'],                     roles: ['caja'], motivo: true },
+  // «No puedo entregar» con un motivo de MOTIVOS_NO_ENTREGA; luego la caja da
+  // una instrucción. «Regresé con el pedido» y la caja confirma que lo recibió.
   { a: 'excepcion:no_entregado',           desde: ['llego'],                                     roles: ['domiciliario'], motivo: true },
+  { a: 'excepcion:regreso_declarado',      desde: ['llego'],                                     roles: ['domiciliario'], solo: ['no_entregado'] },
   { a: 'excepcion:devuelto',               desde: ['llego'],                                     roles: ['caja'] },
   // Quitar una excepción temporal sin mover la etapa: la caja niega la
   // solicitud de cancelación o resuelve el cambio pendiente (Fase 4, 20 oct 2026).

@@ -4,7 +4,7 @@ import { requireUser, TODAS_LAS_SEDES } from '../../../middlewares/require-user'
 import { firestore } from '../../../config/firestore';
 import { ErrorPedido } from '../../modulo_pedidos/reglas/armado';
 import { rolesDeUsuario, validarSolicitud, sedesAlAprobar, ROLES_SOLICITABLES, RolSolicitable } from '../reglas';
-import { cambiarTurno } from '../../modulo_pedidos/services/domiciliarios.service';
+import { cambiarTurno, guardarOrdenRuta } from '../../modulo_pedidos/services/domiciliarios.service';
 
 /**
  * Equipo: quién soy, solicitudes de acceso y su aprobación.
@@ -190,6 +190,26 @@ router.get('/domiciliarios', requireUser, async (req: Request, res: Response) =>
  */
 router.post('/turno', requireUser, async (req: Request, res: Response) => {
   try { res.json(await cambiarTurno(req.usuario!, req.body?.accion)); } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/turno/orden:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: El domiciliario guarda el orden manual de su ruta («Poner primero», CP-7)
+ *     description: >
+ *       Queda en turnos_domiciliario/{correo}.ordenRuta (lo lee en Firestore). `[]` lo borra.
+ *       Máximo 10 ids, sin repetidos.
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "ordenRuta": ["Y20OTc5DSSz10ut7g4cE", "oFEay2Qd5NQ8vI7OJFzI"] }
+ *     responses:
+ *       200: { description: "{ ordenRuta }" }
+ */
+router.post('/turno/orden', requireUser, async (req: Request, res: Response) => {
+  try { res.json(await guardarOrdenRuta(req.usuario!, req.body?.ordenRuta)); } catch (err) { responder(res, err); }
 });
 
 export default router;

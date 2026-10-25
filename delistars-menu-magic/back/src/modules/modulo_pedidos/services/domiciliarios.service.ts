@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { firestore } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
-import { siguienteEstado, elegirDomiciliario, EN_REPARTO, POR_RECOGER, Candidato, EstadoTurno } from '../reglas/domiciliarios';
+import { siguienteEstado, elegirDomiciliario, EN_REPARTO, POR_RECOGER, Candidato, EstadoTurno, revisarOrdenRuta } from '../reglas/domiciliarios';
 import type { Usuario } from '../../../middlewares/require-user';
 
 /**
@@ -48,6 +48,16 @@ export async function cambiarTurno(u: Usuario, accion: unknown) {
       ? 'Terminaste el turno: no te llegan pedidos nuevos, pero termina los que tienes (o pídele a la caja que los reasigne)'
       : null,
   };
+}
+
+/** Guarda el orden manual de la ruta del domiciliario (CP-7). [] lo borra. */
+export async function guardarOrdenRuta(u: Usuario, ids: unknown) {
+  if (!u.esDomiciliario || !u.email) throw new ErrorPedido('sin_permiso', 'Solo para domiciliarios', 403);
+  const ordenRuta = revisarOrdenRuta(ids);
+  await firestore().doc(`turnos_domiciliario/${u.email}`).set({
+    ordenRuta, ordenRutaAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { ordenRuta };
 }
 
 /** Quién recibe un domicilio nuevo de esa sede ahora mismo (o null). */

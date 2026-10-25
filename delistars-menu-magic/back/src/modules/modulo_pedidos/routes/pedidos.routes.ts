@@ -7,6 +7,7 @@ import { crearPedidoCaja } from '../services/pedidoCaja.service';
 import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje, editorPedido } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { verComoDestinatario } from '../services/destinatario.service';
+import { darInstruccion, entenderInstruccion, fijarIndicaciones } from '../services/incidencias.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
 
@@ -343,6 +344,72 @@ router.post('/:id/mensajes', activa, requireUser, async (req: Request, res: Resp
       status: 200, body: await enviarMensaje(req.usuario!, req.params.id, req.body),
     }));
     res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/instruccion:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: La caja le da una instrucción al domiciliario tras «No puedo entregar» (CP-2)
+ *     description: >
+ *       Caja de la sede o admin. Solo con la excepción `no_entregado`. `tipo`: esperar | reintentar | regresar.
+ *       No mueve la etapa; sube la versión. La misma instrucción otra vez → `sinCambios: true`.
+ *       `Idempotency-Key` opcional. El scheduler avisa al domiciliario (push con `tipo: 'instruccion'`).
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "tipo": "regresar" }
+ *     responses:
+ *       200: { description: "{ id, instruccionCaja: { tipo, texto, at, por, entendidoAt }, version, sinCambios }" }
+ */
+router.post('/:id/instruccion', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const cuerpo = { id: req.params.id, instruccion: true, ...req.body };
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
+      status: 200, body: await darInstruccion(req.usuario!, req.params.id, req.body?.tipo),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/instruccion/entendido:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: El domiciliario acusa la instrucción de la caja (CP-2)
+ *     description: Solo marca `instruccionCaja.entendidoAt`; no mueve la etapa ni la versión. Repetirlo no hace nada.
+ *     responses:
+ *       200: { description: "{ id, tipo, entendido: true, sinCambios }" }
+ */
+router.post('/:id/instruccion/entendido', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), { id: req.params.id, entendido: true }, async () => ({
+      status: 200, body: await entenderInstruccion(req.usuario!, req.params.id),
+    }));
+    res.status(r.status).json(r.body);
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/indicaciones:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: Indicaciones breves de la caja para el domiciliario (CP-4)
+ *     description: Caja de la sede o admin. Máximo 90 caracteres (se leen manejando). `""` las borra.
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "texto": "Portería norte, timbre 3" }
+ *     responses:
+ *       200: { description: "{ id, indicacionesBreves, sinCambios }" }
+ */
+router.post('/:id/indicaciones', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    res.json(await fijarIndicaciones(req.usuario!, req.params.id, req.body?.texto));
   } catch (err) { responderError(res, err); }
 });
 

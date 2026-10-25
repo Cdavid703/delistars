@@ -29,6 +29,7 @@ import {
 import ComandaPedido from './ComandaPedido'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
+import { IncidenciaCaja, EditorIndicaciones } from '../common/IncidenciaReparto'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -743,6 +744,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
               a la derecha lo que la caja HACE (la acción de la etapa arriba). */}
           <div className="flex flex-col gap-4 min-w-0">
             <p className="font-body text-xs text-coal/40">{time}</p>
+            {/* No se pudo entregar / regresa con el pedido (CP-8) */}
+            <IncidenciaCaja order={order} />
             {/* Client info */}
             <Section title={order.destinatario?.nombre ? 'Lo pidió' : 'Cliente'}>
               <Row icon={User}  label="Nombre"   value={order.name || order.clientName} />
@@ -769,6 +772,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                     <strong>Recoge en sede</strong>{orderSede?.name ? ` — ${orderSede.name}` : (order.sedeName ? ` — ${order.sedeName}` : '')}
                   </p>
                 </div>
+              </Section>
+            )}
+            {/* Indicaciones breves para el domiciliario (CP-4) */}
+            {!pickup && pedidoActivo && (
+              <Section title="Para el domiciliario">
+                <EditorIndicaciones key={order.id} order={order} />
               </Section>
             )}
             {/* Address + distance */}

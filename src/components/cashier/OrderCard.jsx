@@ -57,6 +57,9 @@ function Aviso({ tono, icono: Icono, children }) {
 function avisosDe(order, unreadCount) {
   const a = []
   if (order.excepcion === 'cancelacion_solicitada') a.push({ k: 'cancelar', tono: 'urgente', icono: AlertCircle, texto: 'Pidió cancelar · ábrelo para resolver' })
+  // Reparto (CP-1, CP-3): el domiciliario no pudo entregar o regresa con el pedido.
+  if (order.excepcion === 'no_entregado') a.push({ k: 'no_entregado', tono: 'urgente', icono: AlertCircle, texto: order.instruccionCaja?.tipo ? `No se pudo entregar · le dijiste: ${order.instruccionCaja.texto}` : 'No se pudo entregar · dale una instrucción' })
+  if (order.excepcion === 'regreso_declarado') a.push({ k: 'regreso', tono: 'urgente', icono: AlertCircle, texto: 'Regresa con el pedido · confirma que lo recibiste' })
   if (unreadCount > 0) a.push({ k: 'chat', tono: 'urgente', icono: MessageCircle, texto: unreadCount === 1 ? '1 mensaje nuevo del cliente' : `${unreadCount} mensajes nuevos del cliente` })
   if (order.loyaltyRedemption?.count > 0) a.push({ k: 'premio', tono: 'premio', icono: Gift, texto: `Premio ×${order.loyaltyRedemption.count} · Hamburguesa Especial + Perro Grande · NO cobrar` })
   if (order.needsRequote) a.push({ k: 'recotizar', tono: 'atencion', icono: Plus, texto: 'Agregó productos · vuelve a cotizar' })
@@ -127,7 +130,7 @@ export default function OrderCard({ order, onClick, unreadCount = 0, onToggleFac
 
   return (
     <button onClick={onClick}
-      className={`w-full text-left bg-white rounded-2xl shadow-card p-3.5 flex flex-col gap-2.5 cursor-pointer transition-[transform,box-shadow] duration-200 [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/50 ${unreadCount > 0 || order.excepcion === 'cancelacion_solicitada' ? 'ring-2 ring-cherry/50' : ''}`}
+      className={`w-full text-left bg-white rounded-2xl shadow-card p-3.5 flex flex-col gap-2.5 cursor-pointer transition-[transform,box-shadow] duration-200 [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cherry/50 ${unreadCount > 0 || ['cancelacion_solicitada', 'no_entregado', 'regreso_declarado'].includes(order.excepcion) ? 'ring-2 ring-cherry/50' : ''}`}
       style={{ transitionTimingFunction: 'var(--ease-out)' }}>
       {/* 1. Número, etapa y demora */}
       <div className="flex items-center gap-2">

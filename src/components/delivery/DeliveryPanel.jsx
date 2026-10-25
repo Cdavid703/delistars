@@ -35,6 +35,7 @@ import CuadresEfectivo from '../common/CuadresEfectivo'
 import { transferenciaPendiente } from '../../utils/cuadres'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
+import { IncidenciaDomiciliario, IndicacionesBreves } from '../common/IncidenciaReparto'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
 // el pedido llega ya asignado y aparece directo en "En curso".
@@ -977,6 +978,9 @@ function DriverOrderDetail({ order, onClose }) {
             </div>
           )}
 
+          {/* Indicaciones breves de la caja (CP-4) */}
+          <IndicacionesBreves order={order} />
+
           {/* Para otra persona: los dos contactos, identificados (§7.3) */}
           {order.destinatario?.nombre ? <ContactosParaOtro order={order} rol="domiciliario" /> : (
           <div className="card">
@@ -1266,11 +1270,13 @@ function DriverOrderDetail({ order, onClose }) {
                 <span><strong>Transferencia pendiente de verificar.</strong> No entregues hasta que la caja confirme que la plata llegó.</span>
               </p>
             )}
-            {order.status === 'arrived' && (
+            {order.status === 'arrived' && order.excepcion !== 'regreso_declarado' && (
               <button onClick={markDelivered} disabled={loading || transferenciaPendiente(order)} className="btn-mint w-full btn-lg">
                 <CheckCircle size={20} /> Marcar como entregado
               </button>
             )}
+            {/* No puedo entregar, instrucción de la caja y regreso (CP-1 a CP-3) */}
+            {order.status === 'arrived' && <IncidenciaDomiciliario order={order} />}
             {['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
               <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 text-center">
                 <CheckCircle size={28} className="text-mint mx-auto mb-2" />

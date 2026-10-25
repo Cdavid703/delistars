@@ -37,6 +37,9 @@ test('push de Expo: mensajes y tokens muertos', () => {
   assert.equal(c[0].categoryId, 'cambio_pedido')
   const r = mensajesExpo(['x'], { title: 'T', body: 'B' }, 'u', { orderId: 'o1', reclamoId: 'r1', tipo: 'reclamo' })
   assert.deepEqual([r[0].data.reclamoId, r[0].categoryId], ['r1', 'reclamo'])
+  // CarPlay (CP-2): instrucción de la caja con su tipo y categoría propia.
+  const i = mensajesExpo(['x'], { title: 'T', body: 'B' }, 'u', { orderId: 'o1', tipo: 'instruccion', instruccion: 'regresar' })
+  assert.deepEqual([i[0].data.instruccion, i[0].data.orderId, i[0].categoryId], ['regresar', 'o1', 'instruccion_caja'])
   // Promoción: sin categoría.
   assert.equal(mensajesExpo(['x'], { title: 'T', body: 'B' }, 'u', { tipo: 'promo' })[0].categoryId, undefined)
   assert.deepEqual(expoMuertos(['a', 'b'], { data: [{ status: 'ok' }, { status: 'error', details: { error: 'DeviceNotRegistered' } }] }), ['b'])

@@ -84,3 +84,15 @@ export function camposAsignacion(c: { email: string; nombre: string; telefono: s
     acceptedAt: '__ahora__',
   };
 }
+
+/**
+ * Orden manual de la ruta («Poner primero», CarPlay CP-7): ids de pedidos en el
+ * orden que el domiciliario quiere, sin repetidos. Máximo 10 (lleva hasta 5).
+ */
+export function revisarOrdenRuta(ids: unknown): string[] {
+  if (!Array.isArray(ids)) throw new ErrorPedido('orden', 'ordenRuta debe ser una lista de ids de pedidos');
+  if (ids.length > 10) throw new ErrorPedido('orden', 'Máximo 10 pedidos en el orden de la ruta');
+  const limpios = ids.map((x) => (typeof x === 'string' ? x.trim() : ''));
+  if (limpios.some((x) => !/^[A-Za-z0-9]{10,40}$/.test(x))) throw new ErrorPedido('orden', 'Hay un id de pedido que no es válido');
+  return [...new Set(limpios)];
+}

@@ -741,7 +741,7 @@ async function pushApp(destino, msg, url, datos = {}) {
 /** Aviso a una persona del equipo o a la caja de una sede: centro de avisos + app. */
 async function avisoEquipo(destino, evento, msg, pedidoId) {
   const nuevo = await guardarAviso(destino, evento, { ...msg, pedidoId, url: msg.url || 'https://delistars.com/domicilios/' })
-  if (nuevo) await pushApp(destino, msg, msg.url || 'https://delistars.com/domicilios/', { orderId: pedidoId, tipo: msg.tipo || 'pedido' })
+  if (nuevo) await pushApp(destino, msg, msg.url || 'https://delistars.com/domicilios/', { ...(msg.datos || {}), orderId: pedidoId, tipo: msg.tipo || 'pedido' })
   return nuevo
 }
 
@@ -809,6 +809,8 @@ function notifyStaffFor(o) {
     case 'rejected':
       return { rol: 'cashier', title: '⚠️ Rechazaron un pedido', body: `El pedido${n} fue rechazado. Hay que reasignarlo.` }
     case 'cancelled':
+      // Devuelto a la sede (CP-3): lo confirmó la misma caja, no fue el cliente.
+      if (o.excepcion === 'devuelto') return null
       return { rol: 'cashier', title: '🚫 El cliente canceló', body: `Canceló el pedido${n}.` }
     case 'delivered_paid':
     case 'delivered_cash':
@@ -947,6 +949,42 @@ async function avisarExcepcion(id, o, anterior) {
     }
     return
   }
+  // Reparto (CarPlay CP-1 y CP-3): no se pudo entregar → caja y cliente; el
+  // domiciliario regresa → caja; la caja lo recibió → cliente.
+  if (o.excepcion === 'no_entregado') {
+    const at = o.incidencia?.at?.toMillis?.() || Date.now()
+    await sendPushForStaff(id, o, {
+      rol: 'cashier', clave: `no-entregado-${at}`, tipo: 'incidencia',
+      title: `⚠️ No se pudo entregar${n}`,
+      body: `${o.driverName || 'El domiciliario'}: ${o.excepcionMotivo || 'no pudo entregar'}. Dale una instrucción: esperar, reintentar o regresar.`,
+    })
+    if (o.clientUid) {
+      const msg = { title: '📍 El domiciliario no pudo entregarte', tipo: 'pedido', body: `${o.excepcionMotivo || 'No pudo entregar tu pedido'}. Escríbele desde tu pedido${n}.` }
+      const url = enlacePedido(id)
+      if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'no-entregado', at), { ...msg, pedidoId: id, url })) {
+        await pushApp(o.clientUid, msg, url, { orderId: id, tipo: 'pedido' })
+        await pushWebCliente(o.clientUid, msg, id, 'no entregado')
+      }
+    }
+    return
+  }
+  if (o.excepcion === 'regreso_declarado') {
+    await sendPushForStaff(id, o, {
+      rol: 'cashier', clave: `regreso-${o.regresoDeclaradoAt?.toMillis?.() || ''}`, tipo: 'incidencia',
+      title: `↩️ ${o.driverName || 'El domiciliario'} regresa con el pedido${n}`,
+      body: 'Cuando lo tengas en la sede, confirma que lo recibiste.',
+    })
+    return
+  }
+  if (o.excepcion === 'devuelto' && o.clientUid) {
+    const msg = { title: '↩️ Tu pedido volvió a la sede', tipo: 'pedido', body: `No pudimos entregarte el pedido${n}. Escríbenos por WhatsApp para acordar qué hacemos.` }
+    const url = enlacePedido(id)
+    if (await guardarAviso(o.clientUid, idEvento('pedido', id, 'devuelto'), { ...msg, pedidoId: id, url })) {
+      await pushApp(o.clientUid, msg, url, { orderId: id, tipo: 'pedido' })
+      await pushWebCliente(o.clientUid, msg, id, 'devuelto')
+    }
+    return
+  }
   if (o.excepcion === 'cancelacion_solicitada' && ['en_camino', 'llego'].includes(o.etapa)) {
     for (const email of ADMIN_EMAILS) {
       await sendPushForStaff(id, o, {
@@ -984,7 +1022,8 @@ function watchOrdersForPush() {
         const id = chg.doc.id
         const o  = chg.doc.data()
         const prev = seen.get(id)
-        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null, msgs: (o.clientMessages || []).length, exc: o.excepcion || null })
+        const instr = o.instruccionCaja?.tipo ? `${o.instruccionCaja.tipo}-${o.instruccionCaja.at?.toMillis?.() || ''}` : null
+        seen.set(id, { status: o.status, etapa: o.etapa, driver: o.driverEmail || null, msgs: (o.clientMessages || []).length, exc: o.excepcion || null, instr })
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
@@ -992,6 +1031,15 @@ function watchOrdersForPush() {
         // Cambió la excepción (Fase 7): cambio propuesto, respuesta del cliente,
         // cancelación pedida en reparto.
         if (prev && (prev.exc || null) !== (o.excepcion || null)) avisarExcepcion(id, o, prev.exc || null).catch((e) => console.error('[scheduler] aviso de excepción error:', e?.message || e))
+        // Instrucción nueva de la caja (CarPlay CP-2): al domiciliario del pedido.
+        if (prev && instr && prev.instr !== instr && o.driverEmail) {
+          sendPushForStaff(id, o, {
+            rol: 'driver', soloA: o.driverEmail, clave: `instruccion-${instr}`, tipo: 'instruccion',
+            title: `📣 Caja: ${o.instruccionCaja.texto || o.instruccionCaja.tipo}`,
+            body: `Pedido${o.orderNumber ? ` #${o.orderNumber}` : ''}. Toca «Entendido» cuando lo leas.`,
+            datos: { instruccion: o.instruccionCaja.tipo },
+          }).catch((e) => console.error('[scheduler] aviso instrucción error:', e?.message || e))
+        }
         // Mensaje nuevo en el chat del pedido (Fase 6): al cliente o a la caja.
         const msgNuevo = mensajeNuevo(prev ? prev.msgs : null, o)
         if (msgNuevo) avisarMensaje(id, o, msgNuevo).catch((e) => console.error('[scheduler] aviso de mensaje error:', e?.message || e))
