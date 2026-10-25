@@ -50,13 +50,12 @@ import { SEDES } from '../../services/roles'
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../utils/datosTransferencia'
 import { usePWAInstall } from '../../hooks/usePWAInstall'
 import AccesoCuenta from '../common/AccesoCuenta'
-import { AvisoVerificarCorreo, CompletarPerfil } from './CuentaCliente'
+import { CompletarPerfil } from './CuentaCliente'
 import MiCuenta from './MiCuenta'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import ReclamoPedido from './ReclamoPedido'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
-import { faltaVerificarCorreo } from '../../utils/erroresAuth'
 
 const STATUS_STEPS = [
   { key: 'pending',       label: 'Pedido enviado' },
@@ -313,7 +312,6 @@ export default function ClientPanel() {
       snap => setEliminacion(snap.exists() && snap.data().estado === 'pendiente' ? snap.data() : null), () => {})
   }, [user?.uid, user?.isAnonymous])
   // Sube cuando el cliente confirma su correo (Firebase actualiza la cuenta sin avisar).
-  const [, setCorreoConfirmado] = useState(0)
 
   // Premios recién ganados que el cliente todavía no ha visto.
   useEffect(() => {
@@ -756,10 +754,9 @@ export default function ClientPanel() {
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
       {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" siguiendo />}
-      {/* Cuenta de correo sin confirmar: no puede enviar el primer pedido */}
-      {faltaVerificarCorreo(user) && (
-        <AvisoVerificarCorreo email={user.email} className="mx-4 mt-3" onVerificado={() => setCorreoConfirmado(n => n + 1)} />
-      )}
+      {/* Confirmar el correo ya no es obligatorio para pedir (25 oct 2026): el
+          enlace de Firebase no les llegaba a algunos clientes (Hotmail) y no
+          podían comprar. */}
       {completarPerfil}
 
       {/* Devolución esperando que el cliente elija cómo la quiere */}
@@ -1258,8 +1255,6 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
 }
 
 function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewards = [], creditos = [], onCambiarSede }) {
-  // Sube cuando confirma el correo (Firebase actualiza la cuenta sin avisar a React).
-  const [, setCorreoListo] = useState(0)
   const [redeemCount, setRedeemCount] = useState(0)
   const sortedRewards = [...availableRewards].sort(
     (a, b) => (a.expiresAt?.toMillis?.() || 0) - (b.expiresAt?.toMillis?.() || 0)
@@ -1493,9 +1488,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!carritoApi?.items.length && !carritoApi?.rearmar.length) errs.push('Elige tus productos en el menú para hacer el pedido')
     else if (carritoApi.rearmar.length) errs.push(`Vuelve a agregar desde el menú: ${carritoApi.rearmar.join(', ')}. El menú cambió desde que lo pusiste en el carrito.`)
-    // Cuenta de correo sin confirmar: primero el enlace (el borrador se conserva).
     if (!user || user.isAnonymous) errs.push('Entra a tu cuenta para enviar el pedido (tu carrito se conserva).')
-    if (faltaVerificarCorreo(user)) errs.push('Confirma tu correo para enviar el pedido: abre el enlace que te enviamos.')
     // Si el cliente cambió el pedido después de aplicar el código, se revisa de nuevo.
     if (codigoAplicado) {
       const r = validarCodigo(codigoAplicado, { items: form.items, tieneCuenta: !!user?.email && !user?.isAnonymous })
@@ -1622,11 +1615,6 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       )}
 
       {user?.isAnonymous && <AvisoInvitado compacto />}
-      {/* Cuenta de correo sin confirmar: el aviso va aquí también (el formulario
-          ocupa toda la pantalla y tapa el del panel) */}
-      {faltaVerificarCorreo(user) && (
-        <AvisoVerificarCorreo email={user.email} onVerificado={() => { setCorreoListo(n => n + 1); setErrors([]) }} />
-      )}
 
       {errors.length > 0 && (
         <div ref={errorsRef} className="bg-pepper/10 border border-pepper/30 rounded-xl p-3 flex flex-col gap-1">
