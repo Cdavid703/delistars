@@ -3,8 +3,7 @@ import {
   collection, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, updateDoc, getDocs
 } from 'firebase/firestore'
-import { db, createOrderWithNumber } from '../../services/firebase'
-import { llamarPedidos } from '../../services/pedidosApi'
+import { db } from '../../services/firebase'
 import DevolucionesSaldo from './DevolucionesSaldo'
 import Reclamos from './Reclamos'
 import CuadresEfectivo from '../common/CuadresEfectivo'
@@ -28,7 +27,7 @@ import ChipEstado from './ChipEstado'
 import AgotadosCaja from './AgotadosCaja'
 import useAgotados from '../../hooks/useAgotados'
 import { porAsignar } from '../../utils/tableroCaja'
-import OrderForm from './OrderForm'
+import PedidoCaja from './PedidoCaja'
 import OrderDetail from './OrderDetail'
 import AssignDeliveryDetail from './AssignDeliveryDetail'
 import StatusBadge from '../common/StatusBadge'
@@ -113,6 +112,8 @@ export default function CashierPanel() {
   const [alarmActive,     setAlarmActive]    = useState(false)
   const [showManual,      setShowManual]     = useState(false)
   const [showAgotados,    setShowAgotados]   = useState(false)
+  // Buscar un pedido de hoy por número, nombre o teléfono (entrega en sede por número, §10.1).
+  const [buscar,          setBuscar]         = useState('')
   const [showCuadreTurno, setShowCuadreTurno] = useState(false)
   const [showTracking,    setShowTracking]   = useState(false)
   const [historyDate,     setHistoryDate]    = useState('')
@@ -369,7 +370,15 @@ export default function CashierPanel() {
     }, () => {})
   }, [])
 
-  const filteredOrders = orders.filter(o => {
+  const busqueda = buscar.trim()
+  const coincide = (o) => {
+    const dig = busqueda.replace(/\D/g, '')
+    if (dig && dig.length <= 4) return String(o.orderNumber || '').replace(/^0+/, '') === dig.replace(/^0+/, '')
+    if (dig.length >= 5) return String(o.phone || '').replace(/\D/g, '').includes(dig)
+    const t = busqueda.toLowerCase()
+    return String(o.name || o.clientName || '').toLowerCase().includes(t)
+  }
+  const filteredOrders = busqueda ? orders.filter(o => isToday(o.createdAt) && coincide(o)) : orders.filter(o => {
     // Los cotizados también son activos: los de recoger siguen hasta la entrega y
     // los domicilios sin domiciliario muestran «Asignar» en su tarjeta (antes
     // vivían en una pestaña aparte y el tablero no los veía).
@@ -390,39 +399,6 @@ export default function CashierPanel() {
   const sinDomiciliario = orders.filter(o => porAsignar(o) && isToday(o.createdAt))
   const agotados = useAgotados(sede?.id)
   const cuadreCount   = orders.filter(o => CUADRE_STATUSES.includes(o.status)        && isToday(o.createdAt)).length
-
-  const handleCreateOrder = async (data) => {
-    const driver = drivers.find(d => d.id === data.driverId)
-    const driverEmail = (driver?.id || data.driverId || '').toLowerCase().trim()
-    const orderData = {
-      ...data,
-      sedeId:        sede.id,
-      sedeName:      sede.name,
-      status:        'assigned',
-      origen:        'caja',
-      cashierId:     user.uid,
-      cashierEmail:  user.email || '',
-      cashierName:   user.displayName,
-      driverEmail,
-      driverName:    driver?.name || driver?.id || '',
-      cashOnDelivery: data.payment === 'Efectivo' || data.payment === 'Mixto',
-      assignedAt:    serverTimestamp(),
-      createdAt:     serverTimestamp(),
-      updatedAt:     serverTimestamp(),
-    }
-    try {
-      // El N° de pedido lo asigna SIEMPRE el sistema: número + pedido en una
-      // sola transacción atómica siguiendo la numeración del día de la sede.
-      const { orderRef } = await createOrderWithNumber(sede.id, orderData)
-      setShowForm(false)
-      // Código privado para que el cliente siga su pedido sin cuenta (Fase 4,
-      // P-16). Si falla, se genera después desde el detalle del pedido.
-      llamarPedidos(`${orderRef.id}/codigo`).catch(err => console.warn('[CashierPanel] código privado:', err?.message || err))
-    } catch (err) {
-      console.error('[CashierPanel] crear pedido ERROR:', err)
-      throw err   // re-lanzar para que OrderForm muestre el error
-    }
-  }
 
   const handleAddDriver = async () => {
     if (!newDriverEmail.trim()) return
@@ -663,6 +639,16 @@ export default function CashierPanel() {
             )}
           </button>
         ))}
+        <label className="relative ml-auto my-1.5 flex-shrink-0">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-coal/40" aria-hidden="true" />
+          <input value={buscar} onChange={e => setBuscar(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setBuscar('')
+              if (e.key === 'Enter' && filteredOrders.length === 1) { openOrderDetail(filteredOrders[0].id); setBuscar('') }
+            }}
+            placeholder="Buscar #, nombre o celular" aria-label="Buscar pedido de hoy"
+            className="w-44 xl:w-56 rounded-full border border-coal/15 bg-white py-1.5 pl-8 pr-3 font-body text-xs outline-none focus:border-cherry/50" />
+        </label>
         {!showForm && (
           <button onClick={() => setShowForm(true)} className="btn-primary btn-sm hidden xl:inline-flex ml-3 my-1.5 whitespace-nowrap flex-shrink-0">
             <Plus size={16} aria-hidden="true" /> Nuevo pedido
@@ -794,7 +780,13 @@ export default function CashierPanel() {
       )}
 
       {/* Orders list */}
-      {tab === 'active' && ancho ? (
+      {busqueda && (
+        <p className="mx-4 mt-2 font-body text-xs text-coal/60">
+          {filteredOrders.length === 0 ? `Ningún pedido de hoy coincide con «${busqueda}».` : `${filteredOrders.length === 1 ? 'Un pedido' : `${filteredOrders.length} pedidos`} de hoy con «${busqueda}» (todas las etapas). Enter abre el pedido si hay uno solo.`}
+          <button onClick={() => setBuscar('')} className="ml-2 font-semibold text-cherry underline underline-offset-2">Quitar búsqueda</button>
+        </p>
+      )}
+      {tab === 'active' && ancho && !busqueda ? (
         <main className="flex-1 min-h-0 p-4 pt-3">
           <TableroCaja orders={filteredOrders} ahora={ahora} unreadChatMap={unreadChatMap}
             onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} onAsignar={(o) => openAssign(o)} />
@@ -843,11 +835,11 @@ export default function CashierPanel() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm">
           <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
             <div className="sticky top-0 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
-              <p className="font-display text-xl text-coal tracking-wide">Nuevo domicilio</p>
+              <p className="font-display text-xl text-coal tracking-wide">Nuevo pedido</p>
               <button onClick={() => setShowForm(false)} className="btn-icon"><Plus size={20} className="rotate-45" /></button>
             </div>
             <div className="p-5">
-              <OrderForm drivers={drivers} onSubmit={handleCreateOrder} onCancel={() => setShowForm(false)} />
+              <PedidoCaja sede={sede} onCancel={() => setShowForm(false)} />
             </div>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { estadoSede } from '../../../shared/horarios';
 import { etapaDe } from '../../../shared/etapas';
 import { precioDomicilio, RECORRIDO } from '../../../shared/tarifaDomicilio';
 import { armarItems, ErrorPedido, ProductoCatalogo } from '../reglas/armado';
-import { planTransicion, esAhora, PedidoDoc } from '../reglas/transiciones';
+import { planTransicion, esAhora, PedidoDoc, rolesDe } from '../reglas/transiciones';
 import { planPago } from '../reglas/pago';
 import { planCotizar, planAsignar, planAceptar, planCuadre, PlanCaja } from '../reglas/caja';
 import { elegirPremios, lineaPremio, revisarCodigo, lineaCodigo, elegirSaldo, aplicarSaldo, Premio, Credito } from '../reglas/beneficios';
@@ -15,12 +15,13 @@ import type { Usuario } from '../../../middlewares/require-user';
 import { eliminacionPendiente } from '../../modulo_cuenta/cuenta.service';
 import { candidatoPara, cargaDe } from './domiciliarios.service';
 import { camposAsignacion, revisarCapacidad, Candidato } from '../reglas/domiciliarios';
+import { revisarEditor, planEditor } from '../reglas/editor';
 import { validarPropuesta, camposAlAceptar, camposAlRechazar, validarAgregado, camposAlAgregar, idPropuesta, revisarRespuesta, validarDireccionPropuesta, direccionAnterior, DireccionPropuesta } from '../reglas/cambios';
 import { validarMensaje } from '../reglas/chat';
 import { atribuible } from '../../modulo_mercadeo/campanas.reglas';
 
 /** Marcadores del plan → valores de Firestore ('__ahora__' y '__union:<campo>'). */
-function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
+export function valoresFirestore(extras: Record<string, unknown>, ahora: FieldValue): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(extras)) {
     if (k.startsWith('__union:')) out[k.slice('__union:'.length)] = FieldValue.arrayUnion(v);
@@ -36,9 +37,9 @@ const FUENTES_PIN = ['mapa', 'google', 'photon', 'app'];
 const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Fecha de hoy en Colombia (yyyy-mm-dd), para el consecutivo diario por sede. */
-const hoyColombia = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+export const hoyColombia = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
 
-async function catalogo(): Promise<ProductoCatalogo[]> {
+export async function catalogo(): Promise<ProductoCatalogo[]> {
   const productos = await new ProductsRepository().getAll();
   return productos.map((p) => ({
     id_producto: p.id_producto,
@@ -529,6 +530,8 @@ export async function accionCaja(u: Usuario, id: string, accion: Accion, b: any)
     if (b?.version != null && Number(b.version) !== versionActual) {
       throw new ErrorPedido('version', `El pedido cambió mientras tanto (versión ${versionActual}). Recárgalo e intenta de nuevo`, 409);
     }
+    // Un solo editor (§10.3): cotizar, asignar y cuadrar los hace quien tiene el control.
+    if (accion !== 'aceptar') revisarEditor(p, u);
     // Saldo real usado en este pedido (como saldoVerificado de la web).
     let saldoReal: number | null = null;
     if (accion === 'cotizar' && p.clientUid && (p.saldoAplicado?.ids?.length ?? 0) > 0) {
@@ -581,3 +584,41 @@ async function domiciliarioExiste(email: unknown): Promise<boolean> {
   return (await firestore().doc(`roles_drivers/${e}`).get()).exists;
 }
 
+/**
+ * POST /pedidos/:id/editor { accion: 'tomar' | 'soltar', motivo? } (§10.3).
+ * Caja de la sede o admin. Tomar el control de otro exige motivo, queda en el
+ * historial y se le avisa al anterior en su campana.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function editorPedido(u: Usuario, id: string, b: any) {
+  const db = firestore();
+  const ref = db.doc(`orders/${id}`);
+  const r = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
+    const p = snap.data() as PedidoDoc;
+    const roles = rolesDe(u, p);
+    if (!roles.includes('caja') && !roles.includes('admin')) throw new ErrorPedido('sin_permiso', 'Solo la caja de la sede o administración editan el pedido', 403);
+    const plan = planEditor(p, { uid: u.uid, email: u.email, nombre: u.nombre || u.email }, b?.accion, b?.motivo);
+    if (!plan.cambio) return { plan, p };
+    const ahora = FieldValue.serverTimestamp();
+    tx.update(ref, { editor: plan.editor ? { ...plan.editor, desde: ahora } : null, updatedAt: ahora });
+    if (plan.accion === 'tomar_control') {
+      tx.set(ref.collection('historial').doc(), {
+        at: ahora, por: u.email || u.uid, rol: 'caja', accion: 'tomar_control',
+        de: null, a: null, motivo: plan.motivo, anterior: plan.anterior?.email ?? null, status: p.status ?? null, version: Number(p.version) || 0,
+      });
+    }
+    return { plan, p };
+  });
+  // Aviso al que perdió el control (centro de avisos; no bloquea la respuesta).
+  if (r.plan.cambio && r.plan.accion === 'tomar_control' && r.plan.anterior?.email) {
+    const n = r.p.orderNumber ? ` #${r.p.orderNumber}` : '';
+    db.doc(`avisos/${r.plan.anterior.email.toLowerCase()}/items/control-${id}-${Date.now()}`).set({
+      tipo: 'pedido', titulo: `${u.nombre || u.email} tomó el control del pedido${n}`, cuerpo: `Motivo: ${r.plan.motivo}`,
+      pedidoId: id, enlace: null, leido: false, creadoAt: FieldValue.serverTimestamp(),
+    }).catch(() => undefined);
+  }
+  const e = r.plan.cambio ? r.plan.editor : (r.p.editor ?? null);
+  return { id, editor: e ? { uid: e.uid, email: e.email, nombre: e.nombre } : null, cambio: r.plan.cambio };
+}

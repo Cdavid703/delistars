@@ -9,6 +9,7 @@ import { etapaDe, terminado, TRANSICIONES, EXCEPCIONES as EXC } from '../../../s
 const EXCEPCIONES = EXC as Record<string, { texto: string; final: boolean }>;
 import { transferenciaPendiente } from '../../modulo_cuadres/reglas';
 import { ErrorPedido } from './armado';
+import { revisarEditor } from './editor';
 import { totalConocido } from './pago';
 import { aplicarSaldo, devolucionInicial } from '../../../shared/devolucion';
 import type { Usuario } from '../../../middlewares/require-user';
@@ -61,6 +62,8 @@ export function planTransicion(p: PedidoDoc, a: string, u: Usuario, motivoRaw?: 
   if (t.motivo && !motivo) throw new ErrorPedido('motivo', 'Este cambio necesita un motivo');
 
   const rol = t.roles.find((r: string) => roles.includes(r as Rol)) as Rol;
+  // Un solo editor (§10.3): la caja o el admin no cambian un pedido que tiene otro.
+  if (rol === 'caja' || rol === 'admin') revisarEditor(p, u);
   const extras: Record<string, unknown> = {};
 
   // Seguir: la caja quita la excepción temporal y el pedido sigue donde estaba.
