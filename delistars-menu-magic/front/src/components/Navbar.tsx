@@ -85,7 +85,7 @@ export const Navbar = () => {
     >
       <div className="container flex items-center justify-between gap-2 py-3 px-4 sm:px-6">
         <a href="#top" className="flex items-center gap-2 hover-scale shrink-0">
-          <img src={logo} alt="DeliStars logo" width={56} height={56} className="w-11 h-11 sm:w-14 sm:h-14 object-contain" />
+          <img src={logo} alt="DeliStars logo" width={64} height={64} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" />
           {/* Entre 1280 y 1535 px el nombre se oculta para que quepan los enlaces */}
           <span className="hidden sm:flex xl:hidden 2xl:flex flex-col leading-none">
             <span className="font-display text-base tracking-widest text-foreground">DELISTARS</span>

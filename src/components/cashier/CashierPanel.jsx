@@ -466,7 +466,7 @@ export default function CashierPanel() {
       {/* Header */}
       <header className="page-header gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Logo variant="light" size="sm" />
+          <Logo variant="light" size="md" className="flex-shrink-0 xl:h-14" />
           <div className="min-w-0">
             <p className="font-display text-base text-coal tracking-wide leading-tight">
               {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Cajero'}

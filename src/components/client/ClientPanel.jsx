@@ -14,7 +14,7 @@ import { etapaDe, ETAPAS, EXCEPCIONES } from '../../utils/etapas'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../common/Logo'
-import estrellaCrema from '../../assets/logos/estrella-crema.svg'
+import logoCrema from '../../assets/logos/logo_dark.png'
 import RoleSwitcher from '../common/RoleSwitcher'
 import AddressBook from './AddressBook'
 import useBackClose from '../../hooks/useBackClose'
@@ -639,11 +639,11 @@ export default function ClientPanel() {
           ))}
         </div>
         <div className="relative z-10 flex items-center justify-between mb-4">
-          {/* Marca sobre el rojo: la estrella en vector (crema) y el nombre en la
-              letra de la marca. Los PNG traían fondo negro y dejaban un recuadro. */}
-          <span className="inline-flex items-center gap-2">
-            <img src={estrellaCrema} alt="" className="h-9 w-auto" />
-            <span className="hidden min-[430px]:inline font-display text-2xl leading-none tracking-wide text-cream">DeliStars</span>
+          {/* Marca sobre el rojo: la marca completa en crema, fondo transparente.
+              Si los iconos no dejan espacio (admin viendo como cliente), se
+              encoge sola en vez de empujarlos. */}
+          <span className="min-w-0 flex-1 mr-2 flex">
+            <img src={logoCrema} alt="DeliStars · Tasty & Cool" className="h-12 w-auto max-w-full object-contain object-left" />
           </span>
           <div className="flex items-center gap-0 min-[400px]:gap-1 -mr-2">
             <BotonSilencio oscuro />
