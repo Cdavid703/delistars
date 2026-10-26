@@ -8,6 +8,7 @@ import { Minus, Plus, Trash2, ShoppingBag, Clock, ArrowLeft, Mail } from "lucide
 import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { usePlatformStatus } from "@/hooks/usePlatformStatus";
+import { useSinDomicilio } from "@/components/AvisoSinDomicilio";
 import { optimizeImage } from "@/lib/utils";
 import { agotadoEnItem } from "@/lib/agotados";
 
@@ -18,6 +19,7 @@ export const CartSheet = () => {
   const hayAgotados = items.some((it) => agotadoEnItem(it, agotados).length > 0);
   const { user, login, loginMs } = useStaffAuth();
   const { abierta: platformActive, texto: textoHorario } = usePlatformStatus();
+  const sinDomicilio = useSinDomicilio();
   const [needsLogin, setNeedsLogin] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -206,6 +208,12 @@ export const CartSheet = () => {
                 >
                   <ArrowLeft className="w-4 h-4" /> Seguir pidiendo
                 </Button>
+
+                {sinDomicilio && !closed && (
+                  <p role="status" className="rounded-2xl bg-mustard/20 border border-mustard/50 p-3 text-xs text-foreground text-center leading-relaxed font-semibold">
+                    {sinDomicilio.texto}
+                  </p>
+                )}
 
                 {closed ? (
                   <div className="rounded-2xl bg-cherry/10 border border-cherry/30 p-4 text-center space-y-1">

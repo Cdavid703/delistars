@@ -27,6 +27,7 @@ import { sugerirOtraSede } from '../../utils/checkoutRuta'
 import { debeOfrecerPromos } from '../../utils/promociones'
 import { validarCodigo, CODIGOS } from '../../utils/codigos'
 import { estadoSede, textoEstado } from '../../utils/horarios'
+import { sinDomicilioHoy } from '../../utils/sinDomicilio'
 import {
   aplicaPagoAdelantado, totalAPagar, erroresPago, llevaComprobante,
 } from '../../utils/pagoAdelantado'
@@ -1387,7 +1388,9 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
   const [form, setForm] = useState({
     name:               user?.displayName || '',
     phone:              '',
-    deliveryMode:       'delivery',   // 'delivery' = domicilio · 'pickup' = recoger en sede
+    // 'delivery' = domicilio · 'pickup' = recoger en sede. Los días sin
+    // domicilios (lunes, pico y placa) empieza en recoger.
+    deliveryMode:       sinDomicilioHoy() ? 'pickup' : 'delivery',
     fullAddress:        '',
     // Coordenadas de la dirección cuando el cliente elige una sugerencia
     // geocodificada — permiten que el pin del domiciliario caiga exacto en vez
@@ -1632,6 +1635,8 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
     const errs = []
     if (!form.name.trim())        errs.push('El nombre es obligatorio')
     if (!form.phone.trim())       errs.push('El teléfono / WhatsApp es obligatorio')
+    const sinDomicilio = sinDomicilioHoy()
+    if (form.deliveryMode === 'delivery' && sinDomicilio) errs.push(`${sinDomicilio.texto.replace('Puedes pedir y recoger en la sede.', 'Elige «Recoger» para hacer tu pedido.')}`)
     if (form.deliveryMode === 'delivery' && !form.fullAddress.trim()) errs.push('La dirección es obligatoria')
     if (form.deliveryMode === 'delivery' && midiendoRuta) errs.push('Estamos calculando el valor del domicilio, intenta de nuevo en un segundo')
     if (!carritoApi?.items.length && !carritoApi?.rearmar.length) errs.push('Elige tus productos en el menú para hacer el pedido')
@@ -1736,15 +1741,23 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
       {/* Tipo de entrega: domicilio o recoger en sede */}
       <div>
         <label className="label-field">¿Cómo quieres recibir tu pedido? *</label>
+        {/* Días sin domicilios (lunes: pico y placa del domiciliario, 26 oct 2026) */}
+        {sinDomicilioHoy() && (
+          <p role="status" className="mb-2 rounded-xl bg-mustard/20 border border-mustard/50 px-3 py-2.5 font-body text-sm font-semibold text-coal flex items-start gap-2">
+            <Bike size={17} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{sinDomicilioHoy().texto}</span>
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => set('deliveryMode', 'delivery')}
-            className={`btn w-full justify-center border-2 ${
+            disabled={!!sinDomicilioHoy()}
+            className={`btn w-full justify-center border-2 disabled:opacity-60 disabled:cursor-not-allowed ${
               form.deliveryMode === 'delivery' ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/20 text-coal/50'
             }`}
           >
-            <Bike size={18} aria-hidden="true" /> Domicilio
+            <Bike size={18} aria-hidden="true" /> {sinDomicilioHoy() ? 'Domicilio: hoy no' : 'Domicilio'}
           </button>
           <button
             type="button"
