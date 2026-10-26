@@ -45,6 +45,9 @@ export const loginAnon = () => signInAnonymously(auth)
 // tenía cuenta propia, no se puede enlazar: se entra normal, que es lo que
 // pasaba antes, y el cliente recupera su historial de esa cuenta de Google.
 export const loginGoogle = () => entrarCon(provider)
+// «Cambiar de empleado» (§6.3): otra persona elige SU cuenta de Google y queda
+// en lugar de la anterior en este aparato. Si cancela, sigue la anterior.
+export const elegirOtraCuentaGoogle = () => signInWithPopup(auth, provider)
 
 // Microsoft (cuentas personales y de trabajo), igual que en el menú y el panel.
 export const microsoftProvider = new OAuthProvider('microsoft.com')
