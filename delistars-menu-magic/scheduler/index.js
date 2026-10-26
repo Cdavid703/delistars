@@ -1092,7 +1092,8 @@ function watchChatDomiciliario() {
           if (!o) continue
           const id = pedidoRef.id
           const n = o.orderNumber ? ` #${o.orderNumber}` : ''
-          const texto = String(m.text || '').trim()
+          // Un mensaje puede ser solo una foto: «📷 Foto».
+          const texto = String(m.text || '').trim() || (m.foto ? '📷 Foto' : '')
           const body = texto.length > 120 ? `${texto.slice(0, 117)}…` : texto
           if (m.role === 'driver' && o.clientUid) {
             const msg = { title: `💬 Mensaje de tu domiciliario${n}`, body: body || `${m.name || 'Tu domiciliario'} te escribió.`, tipo: 'mensaje' }

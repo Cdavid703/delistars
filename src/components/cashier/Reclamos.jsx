@@ -5,6 +5,7 @@ import { db } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 import { ESTADOS, ABIERTOS, REEMBOLSO } from '../../utils/reclamos'
 import useBackClose from '../../hooks/useBackClose'
+import { BotonFoto, FotosMensaje } from '../common/FotosChat'
 
 const fmt = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
 const hora = (ts) => (ts ? new Date(ts).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '')
@@ -130,6 +131,10 @@ function FichaEquipo({ r, esAdmin, onClose }) {
     if (!texto.trim()) return
     if (await llamar('mensaje', { texto: texto.trim() })) setTexto('')
   }
+  // Foto para el cliente: sale con lo que esté escrito.
+  const enviarFoto = async (foto) => {
+    if (await llamar('mensaje', { texto: texto.trim(), foto })) setTexto('')
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
@@ -150,6 +155,8 @@ function FichaEquipo({ r, esAdmin, onClose }) {
           <div className="card-quiet">
             <p className="font-body text-[10px] uppercase tracking-wider text-coal/45 mb-1">Lo que contó el cliente</p>
             <p className="font-body text-sm text-coal whitespace-pre-line">{r.descripcion}</p>
+            {/* Fotos que mandó el cliente con el reporte */}
+            <FotosMensaje fotos={r.fotos} />
             <p className="font-body text-[11px] text-coal/45 mt-2">Pedido de {fmt(r.totalPrice)} · {r.payment || 'sin forma de pago'} · {hace(r.creadoAt)}</p>
           </div>
 
@@ -160,7 +167,8 @@ function FichaEquipo({ r, esAdmin, onClose }) {
                   <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'client' ? 'text-cherry' : 'text-tangelo'}`}>
                     {m.role === 'client' ? 'Cliente' : m.role === 'admin' ? 'Administración' : 'Caja'} · {m.name} · {hora(m.ts)}
                   </p>
-                  <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>
+                  {m.text && <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>}
+                  <FotosMensaje foto={m.foto} fotos={m.fotos} />
                 </div>
               ))}
             </div>
@@ -244,6 +252,7 @@ function FichaEquipo({ r, esAdmin, onClose }) {
           {!final && modo === null && (
             <div className="flex gap-2">
               <textarea className="textarea-field flex-1 h-14 scroll-custom text-sm" value={texto} onChange={e => setTexto(e.target.value)} placeholder="Mensaje al cliente…" />
+              <BotonFoto orderId={r.orderId} onSubida={enviarFoto} disabled={busy} etiqueta="Mandarle una foto al cliente" />
               <button onClick={mensaje} disabled={busy || !texto.trim()} className="btn-primary px-3 self-end" aria-label="Enviar"><Send size={16} aria-hidden="true" /></button>
             </div>
           )}

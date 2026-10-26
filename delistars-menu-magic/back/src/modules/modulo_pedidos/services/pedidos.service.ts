@@ -470,7 +470,8 @@ export async function enviarMensaje(u: Usuario, id: string, b: any) {
   const snap = await ref.get();
   if (!snap.exists) throw new ErrorPedido('no_existe', 'El pedido no existe', 404);
   const p = snap.data() as PedidoDoc;
-  const { canal, mensaje } = validarMensaje(p, u, b?.canal, b?.texto);
+  const bucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || '';
+  const { canal, mensaje } = validarMensaje(p, u, b?.canal, b?.texto, Date.now(), { foto: b?.foto, orderId: id, bucket });
   const ahora = FieldValue.serverTimestamp();
   if (canal === 'caja') {
     await ref.update({ clientMessages: FieldValue.arrayUnion(mensaje), updatedAt: ahora });

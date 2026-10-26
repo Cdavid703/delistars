@@ -2,6 +2,7 @@ import { ErrorPedido } from '../modulo_pedidos/reglas/armado';
 import type { PedidoDoc } from '../modulo_pedidos/reglas/transiciones';
 import type { Usuario } from '../../middlewares/require-user';
 import { motivoNoReclamable, revisarReclamo, ESTADOS } from '../../shared/reclamos';
+import { revisarFoto, revisarFotos, MAX_FOTOS_RECLAMO } from '../../shared/fotos';
 
 /**
  * Reclamos (especificación §14). Reglas puras, sin Firestore: quién puede
@@ -28,7 +29,11 @@ const T: Record<string, string> = {
   sin_cuenta: 'Para reportar un problema primero vincula el pedido a tu cuenta',
   no_entregado: 'Solo se puede reportar un pedido ya entregado',
   vencido: 'Los problemas se reportan hasta 24 horas después de la entrega',
+  foto: 'Una foto no se pudo adjuntar. Vuelve a elegirla',
+  muchas_fotos: `Máximo ${MAX_FOTOS_RECLAMO} fotos`,
 };
+/** Bucket del proyecto: las fotos tienen que estar en fotos/{orderId}/ de este bucket. */
+const bucket = () => process.env.VITE_FIREBASE_STORAGE_BUCKET || '';
 
 const texto = (v: unknown, min: number, codigo = 'texto'): string => {
   const t = String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -60,13 +65,18 @@ export function planCrear(p: PedidoDoc & Doc, orderId: string, u: Usuario, b: Do
   if (no) throw new ErrorPedido(no, T[no], 409);
   const r = revisarReclamo((b || {}) as { categoria: string; motivo: string; descripcion: string }) as Doc;
   if (r.error) throw new ErrorPedido(r.error, T[r.error], 422);
+  // Fotos del problema (hasta 3): quedan en la ficha y en el primer mensaje.
+  const f = revisarFotos(b?.fotos, orderId, bucket()) as { error?: string; fotos?: Doc[] };
+  if (f.error) throw new ErrorPedido(f.error, T[f.error], 422);
+  const fotos = f.fotos ?? [];
   return {
     orderId, orderNumber: p.orderNumber ?? null, sedeId: p.sedeId || '', sedeName: p.sedeName || '',
     clientUid: u.uid, clientEmail: u.email || p.clientEmail || null, clientNombre: u.nombre || p.name || 'Cliente',
     driverEmail: p.driverEmail || null, totalPrice: Number(p.totalPrice) || 0, payment: p.payment || null,
     categoria: r.categoria, motivo: r.motivo, descripcion: r.descripcion, atiende: r.atiende,
     estado: 'recibido', propuesta: null, reembolso: null, cierre: null, resueltoAt: null, resolucion: null,
-    mensajes: [{ role: 'client', name: u.nombre || p.name || 'Cliente', text: r.descripcion, ts: ahora }],
+    fotos,
+    mensajes: [{ role: 'client', name: u.nombre || p.name || 'Cliente', text: r.descripcion, ts: ahora, ...(fotos.length ? { fotos } : {}) }],
   };
 }
 
@@ -186,10 +196,17 @@ export function planCerrar(r: Doc, u: Usuario, b: Doc, ahora = Date.now()): Doc 
 }
 
 /** Mensaje en el hilo del caso (cliente o quien lo atiende), mientras siga abierto. */
-export function planMensaje(r: Doc, u: Usuario, textoCrudo: unknown, ahora = Date.now()): Doc {
+export function planMensaje(r: Doc, u: Usuario, textoCrudo: unknown, ahora = Date.now(), fotoCruda?: unknown): Doc {
   const lado = ladoDe(r, u);
   if (!lado) throw new ErrorPedido('sin_permiso', 'No puedes escribir en este caso', 403);
   if (finalizado(r)) throw new ErrorPedido('cerrado', 'Este caso ya está cerrado', 409);
-  const t = texto(textoCrudo, 1);
-  return { '__union:mensajes': { role: lado === 'cliente' ? 'client' : lado === 'admin' ? 'admin' : 'cashier', name: nombre(u, lado), text: t, ts: ahora } };
+  // Con foto el texto es opcional.
+  let foto: Doc | undefined;
+  if (fotoCruda != null) {
+    const f = revisarFoto(fotoCruda, r.orderId, bucket()) as { error?: string; foto?: Doc };
+    if (f.error) throw new ErrorPedido('foto', T.foto, 422);
+    foto = f.foto;
+  }
+  const t = foto && String(textoCrudo ?? '').trim() === '' ? '' : texto(textoCrudo, 1);
+  return { '__union:mensajes': { role: lado === 'cliente' ? 'client' : lado === 'admin' ? 'admin' : 'cashier', name: nombre(u, lado), text: t, ts: ahora, ...(foto ? { foto } : {}) } };
 }

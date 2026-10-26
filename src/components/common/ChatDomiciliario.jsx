@@ -4,6 +4,7 @@ import { MessageSquare, Send, Lock } from 'lucide-react'
 import { db } from '../../services/firebase'
 import { llamarPedidos, ErrorApi } from '../../services/pedidosApi'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
+import { BotonFoto, FotosMensaje } from './FotosChat'
 
 // Chat cliente ↔ domiciliario de un pedido (especificación §8.3, Fase 7). Vive
 // en orders/{id}/chat_domiciliario y la caja no lo lee: aquí lo ven el cliente
@@ -49,6 +50,12 @@ export default function ChatDomiciliario({ order, rol, soloLectura = false, clas
       setError(e instanceof ErrorApi ? e.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
     } finally { setEnviando(false) }
   }
+  // Foto (§8.3): sale con lo que esté escrito.
+  const enviarFoto = async (foto) => {
+    setError('')
+    await llamarPedidos(`${order.id}/mensajes`, { canal: 'domiciliario', texto: texto.trim(), foto })
+    setTexto('')
+  }
 
   return (
     <div className={`card border-2 border-mint/30 flex flex-col gap-3 ${className}`}>
@@ -72,7 +79,8 @@ export default function ChatDomiciliario({ order, rol, soloLectura = false, clas
               <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${mio(m) ? 'text-mint' : 'text-coal/55'}`}>
                 {quien(m)}
               </p>
-              <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>
+              {m.text && <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>}
+              <FotosMensaje foto={m.foto} />
             </div>
           ))}
           <div ref={finRef} />
@@ -97,6 +105,7 @@ export default function ChatDomiciliario({ order, rol, soloLectura = false, clas
               maxLength={MAX_TEXTO}
               onChange={e => setTexto(e.target.value)}
             />
+            <BotonFoto orderId={order.id} onSubida={enviarFoto} disabled={enviando} />
             <button onClick={enviar} disabled={enviando || !texto.trim()} className="btn-mint px-3 self-end" aria-label="Enviar">
               <Send size={16} aria-hidden="true" />
             </button>

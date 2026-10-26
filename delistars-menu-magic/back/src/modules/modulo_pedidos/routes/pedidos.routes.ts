@@ -339,6 +339,7 @@ router.post('/:id/agregar', activa, requireUser, async (req: Request, res: Respo
  */
 router.post('/:id/mensajes', activa, requireUser, async (req: Request, res: Response) => {
   try {
+    // `foto` opcional: { url, path } subida antes a Storage en fotos/{id}/ (con foto, el texto es opcional).
     const cuerpo = { id: req.params.id, mensaje: true, ...req.body };
     const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), cuerpo, async () => ({
       status: 200, body: await enviarMensaje(req.usuario!, req.params.id, req.body),

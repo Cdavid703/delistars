@@ -57,6 +57,7 @@ import MiCuenta from './MiCuenta'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import ReclamoPedido from './ReclamoPedido'
+import { BotonFoto, FotosMensaje } from '../common/FotosChat'
 import { motivoCerrado, textoCerrado, MAX_TEXTO } from '../../utils/chat'
 import {
   revisarDestinatario, METODOS_POR_QUIEN_PAGA, metodosPermitidos, pagaQuienRecibe, esParaOtro,
@@ -2756,6 +2757,12 @@ function ClientOrderDetail({ order, onClose }) {
     } finally { setSendingClientMsg(false) }
   }
   const chatCajaCerrado = motivoCerrado(order, 'caja')
+  // Foto para la sede (§8.3): sale con lo que esté escrito.
+  const enviarFotoCaja = async (foto) => {
+    setChatError('')
+    await llamarPedidos(`${order.id}/mensajes`, { canal: 'caja', texto: clientMsgText.trim(), foto })
+    setClientMsgText('')
+  }
 
   const handleUploadReceipt = (e) => {
     const file = e.target.files?.[0]
@@ -3427,7 +3434,8 @@ function ClientOrderDetail({ order, onClose }) {
                       <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
                         {m.role === 'cashier' ? 'Cajero' : 'Tú'}
                       </p>
-                      <p className="font-body text-sm text-coal">{m.text}</p>
+                      {m.text && <p className="font-body text-sm text-coal">{m.text}</p>}
+                      <FotosMensaje foto={m.foto} />
                     </div>
                   ))}
                 </div>
@@ -3449,6 +3457,7 @@ function ClientOrderDetail({ order, onClose }) {
                       maxLength={MAX_TEXTO}
                       onChange={e => setClientMsgText(e.target.value)}
                     />
+                    <BotonFoto orderId={order.id} onSubida={enviarFotoCaja} disabled={sendingClientMsg} etiqueta="Mandarle una foto a la sede" />
                     <button onClick={sendClientMessage} disabled={sendingClientMsg || !clientMsgText.trim()}
                       className="btn-primary px-3 self-end">
                       <Send size={16} />

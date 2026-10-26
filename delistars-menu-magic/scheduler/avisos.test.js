@@ -52,3 +52,8 @@ test('cambio propuesto sin respuesta: aviso a la caja a los 10 minutos', () => {
   assert.equal(sinRespuestaDemasiado(o, ahora, 15), false)
   assert.equal(sinRespuestaDemasiado({ ...o, excepcion: null, cambioPropuesto: { ...o.cambioPropuesto, estado: 'aceptado' } }, ahora), false)
 })
+
+test('mensaje que es solo una foto: el aviso dice «📷 Foto»', () => {
+  const o = { clientMessages: [{ role: 'client', text: '', foto: { url: 'u', path: 'fotos/o/a.jpg' } }] }
+  assert.equal(mensajeNuevo(0, o).texto, '📷 Foto')
+})

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
-import { AlertCircle, Check, ClipboardList, Lock, MessageSquare, Send, Wallet, Building2, Banknote } from 'lucide-react'
+import { AlertCircle, Check, ClipboardList, Lock, MessageSquare, Send, Wallet, Building2, Banknote, Camera, X, Loader2 } from 'lucide-react'
 import { db } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 import { CATEGORIAS, ESTADOS, REEMBOLSO, MAX_DESCRIPCION, motivoNoReclamable, textoNoReclamable, textoParaCliente } from '../../utils/reclamos'
 import { MEDIOS_DEVOLUCION, erroresDatosDevolucion } from '../../utils/devolucion'
+import { MAX_FOTOS_RECLAMO } from '../../utils/fotos'
+import { subirFoto } from '../../services/fotos'
+import { BotonFoto, FotosMensaje } from '../common/FotosChat'
 
 const fmt = (v) => `$${Number(v || 0).toLocaleString('es-CO')}`
 const hora = (ts) => (ts ? new Date(ts).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '')
@@ -54,7 +57,19 @@ function FormularioReclamo({ order, onCancel }) {
   const [descripcion, setDesc]    = useState('')
   const [error, setError]         = useState('')
   const [busy, setBusy]           = useState(false)
+  // Fotos del problema (opcionales, hasta 3): se suben al elegirlas.
+  const [fotos, setFotos]         = useState([])
+  const [subiendo, setSubiendo]   = useState(null)
   const puedeEntrega = order.deliveryMode !== 'pickup'
+  const agregarFoto = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(''); setSubiendo(0)
+    try { const f = await subirFoto(order.id, file, setSubiendo); setFotos(l => [...l, f]) }
+    catch (err) { setError(err?.message || 'No se pudo subir la foto. Intenta de nuevo.') }
+    finally { setSubiendo(null) }
+  }
 
   const enviar = async () => {
     setError('')
@@ -63,7 +78,7 @@ function FormularioReclamo({ order, onCancel }) {
     if (descripcion.trim().length < 10) { setError('Cuéntanos un poco más (mínimo 10 letras)'); return }
     setBusy(true)
     try {
-      await llamarApi('POST', 'reclamos', { orderId: order.id, categoria, motivo, descripcion: descripcion.trim() })
+      await llamarApi('POST', 'reclamos', { orderId: order.id, categoria, motivo, descripcion: descripcion.trim(), ...(fotos.length ? { fotos } : {}) })
     } catch (e) {
       setError(e instanceof ErrorApi ? e.message : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.')
       setBusy(false)
@@ -95,9 +110,30 @@ function FormularioReclamo({ order, onCancel }) {
       )}
       <textarea className="textarea-field h-24 scroll-custom text-sm" value={descripcion} maxLength={MAX_DESCRIPCION}
         onChange={e => setDesc(e.target.value)} placeholder="Cuéntanos qué pasó con el mayor detalle posible" />
+      {/* Fotos (opcionales): ayudan a la sede a entender el problema */}
+      <div className="flex flex-wrap items-center gap-2">
+        {fotos.map((f, i) => (
+          <span key={f.path} className="relative">
+            <img src={f.url} alt={`Foto ${i + 1}`} className="w-16 h-16 rounded-lg object-cover border border-coal/15" />
+            <button type="button" onClick={() => setFotos(l => l.filter(x => x.path !== f.path))}
+              className="absolute -top-1.5 -right-1.5 bg-coal text-cream rounded-full w-5 h-5 flex items-center justify-center" aria-label="Quitar foto">
+              <X size={12} aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        {fotos.length < MAX_FOTOS_RECLAMO && (
+          <label className={`w-16 h-16 rounded-lg border-2 border-dashed border-coal/25 flex flex-col items-center justify-center text-coal/55 ${subiendo !== null ? 'opacity-60' : 'cursor-pointer hover:border-tangelo/60'}`}>
+            <input type="file" accept="image/*" className="hidden" onChange={agregarFoto} disabled={subiendo !== null} />
+            {subiendo !== null
+              ? <><Loader2 size={18} className="animate-spin" aria-hidden="true" /><span className="font-body text-[10px]">{subiendo}%</span></>
+              : <><Camera size={18} aria-hidden="true" /><span className="font-body text-[10px]">Foto</span></>}
+          </label>
+        )}
+        <span className="font-body text-[11px] text-coal/50">Puedes agregar hasta {MAX_FOTOS_RECLAMO} fotos (opcional).</span>
+      </div>
       {error && <p className="font-body text-xs text-pepper flex items-start gap-1.5"><AlertCircle size={13} className="flex-shrink-0 mt-0.5" aria-hidden="true" /> {error}</p>}
       <div className="flex flex-col gap-2">
-        <button type="button" onClick={enviar} disabled={busy} className="btn-primary w-full">
+        <button type="button" onClick={enviar} disabled={busy || subiendo !== null} className="btn-primary w-full">
           {busy ? 'Enviando…' : <><Send size={16} aria-hidden="true" /> Enviar el reporte</>}
         </button>
         <button type="button" onClick={onCancel} className="btn-ghost w-full">Cancelar</button>
@@ -199,6 +235,10 @@ function FichaReclamo({ reclamo: r, order }) {
     if (!texto.trim()) return
     if (await llamar('mensaje', { texto: texto.trim() })) setTexto('')
   }
+  // Foto en el hilo del caso: sale con lo que esté escrito.
+  const enviarFoto = async (foto) => {
+    if (await llamar('mensaje', { texto: texto.trim(), foto })) setTexto('')
+  }
 
   return (
     <div className={`card border-2 flex flex-col gap-3 ${final ? 'border-coal/10' : 'border-tangelo/40'}`}>
@@ -219,7 +259,8 @@ function FichaReclamo({ reclamo: r, order }) {
               <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'client' ? 'text-cherry' : 'text-tangelo'}`}>
                 {m.role === 'client' ? 'Tú' : m.role === 'admin' ? 'Administración' : 'La sede'} · {hora(m.ts)}
               </p>
-              <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>
+              {m.text && <p className="font-body text-sm text-coal whitespace-pre-line">{m.text}</p>}
+              <FotosMensaje foto={m.foto} fotos={m.fotos} />
             </div>
           ))}
         </div>
@@ -283,6 +324,7 @@ function FichaReclamo({ reclamo: r, order }) {
         <div className="flex gap-2">
           <textarea className="textarea-field flex-1 h-14 scroll-custom text-sm" value={texto} maxLength={MAX_DESCRIPCION}
             onChange={e => setTexto(e.target.value)} placeholder="Agregar algo al caso…" />
+          <BotonFoto orderId={order.id} onSubida={enviarFoto} disabled={busy} etiqueta="Agregar una foto al caso" />
           <button type="button" onClick={mensaje} disabled={busy || !texto.trim()} className="btn-primary px-3 self-end" aria-label="Enviar">
             <Send size={16} aria-hidden="true" />
           </button>

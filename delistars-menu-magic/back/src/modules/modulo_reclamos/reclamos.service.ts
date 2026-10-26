@@ -71,7 +71,7 @@ export const proponer = (u: Usuario, id: string, b: any) => aplicar(id, u, 'prop
 export const autorizar = (u: Usuario, id: string, b: any) => aplicar(id, u, 'autorizar', (r) => planAutorizar(r, u, b), marcarPedido);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const cerrar = (u: Usuario, id: string, b: any) => aplicar(id, u, 'cerrar', (r) => planCerrar(r, u, b), marcarPedido);
-export const mensaje = (u: Usuario, id: string, texto: unknown) => aplicar(id, u, 'mensaje', (r) => planMensaje(r, u, texto));
+export const mensaje = (u: Usuario, id: string, texto: unknown, foto?: unknown) => aplicar(id, u, 'mensaje', (r) => planMensaje(r, u, texto, Date.now(), foto));
 
 /** El estado del caso también va en el pedido, para la tarjeta sin otra consulta. */
 function marcarPedido(tx: FirebaseFirestore.Transaction, r: Doc, plan: Doc) {

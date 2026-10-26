@@ -24,7 +24,8 @@ function responderError(res: Response, err: unknown) {
  *     tags: [Reclamos]
  *     summary: El cliente reporta un problema de un pedido entregado (hasta 24 h después)
  *     description: >
- *       { orderId, categoria: 'producto' | 'entrega', motivo, descripcion } → { id, estado: 'recibido' }.
+ *       { orderId, categoria: 'producto' | 'entrega', motivo, descripcion, fotos? } → { id, estado: 'recibido' }.
+ *       fotos: hasta 3 { url, path } subidas antes a Storage en fotos/{orderId}/.
  *       Errores: 409 no_entregado | vencido | sin_cuenta | abierto (ya hay un caso abierto), 422 categoria | motivo | descripcion | largo.
  */
 router.post('/', activa, requireUser, async (req: Request, res: Response) => {
@@ -44,7 +45,7 @@ router.post('/', activa, requireUser, async (req: Request, res: Response) => {
  *       responder (cliente): { acepta: true, eleccion?: 'saldo' | 'transferencia', datos? } → resuelto; { acepta: false, texto? } → en_revision
  *       (texto opcional, W-7). Transferencia sin `datos` → reembolso.estado `faltan_datos` (W-6): la caja no ve nada por transferir
  *       hasta que el cliente complete con reembolso { eleccion: 'transferencia', datos } o cambie a { eleccion: 'saldo' }.
- *       cerrar (admin): { motivo } → cierre_administrativo. mensaje (cliente o quien atiende): { texto }.
+ *       cerrar (admin): { motivo } → cierre_administrativo. mensaje (cliente o quien atiende): { texto, foto? } (con foto el texto es opcional).
  *     responses:
  *       200: { description: "{ id, estado, reembolso }" }
  */
@@ -80,8 +81,8 @@ router.post('/:id/cerrar', activa, requireUser, async (req: Request, res: Respon
 });
 router.post('/:id/mensaje', activa, requireUser, async (req: Request, res: Response) => {
   try {
-    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), { id: req.params.id, mensaje: true, texto: req.body?.texto }, async () => ({
-      status: 200, body: await mensaje(req.usuario!, req.params.id, req.body?.texto),
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), { id: req.params.id, mensaje: true, texto: req.body?.texto, foto: req.body?.foto ?? null }, async () => ({
+      status: 200, body: await mensaje(req.usuario!, req.params.id, req.body?.texto, req.body?.foto),
     }));
     res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }
