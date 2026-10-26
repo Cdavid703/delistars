@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { updateProfile } from 'firebase/auth'
-import { X, Mail, Trash2, Check, ShieldCheck, LogOut } from 'lucide-react'
+import { X, Mail, Trash2, Check, ShieldCheck, LogOut, UserRound, KeyRound, ShoppingBag, HelpCircle, ChevronDown, Gift, Wallet } from 'lucide-react'
 import {
   db, auth, PROVEEDORES, metodosDe, vincularMetodo, agregarContrasena, quitarMetodo, confirmarIdentidad,
 } from '../../services/firebase'
@@ -21,7 +21,9 @@ const fecha = (ms) => (ms ? new Date(ms).toLocaleDateString('es-CO', { day: 'num
 const pesos = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 const NOMBRE_SEDE = { santa_lucia: 'Santa Lucía', santa_teresita: 'Santa Teresita' }
 
-function Seccion({ titulo, children }) {
+// `plano`: dentro de una fila que se abre (rediseño): sin tarjeta ni título propio.
+function Seccion({ titulo, children, plano = false }) {
+  if (plano) return <div className="flex flex-col gap-3 px-4 pb-4">{children}</div>
   return (
     <section className="bg-white rounded-2xl border border-coal/10 p-4 flex flex-col gap-3">
       <p className="font-display text-lg tracking-wide text-coal">{titulo}</p>
@@ -30,21 +32,89 @@ function Seccion({ titulo, children }) {
   )
 }
 
-export default function MiCuenta({ user, perfil, onCerrar }) {
+// Una fila de Mi cuenta que se abre y muestra la sección debajo.
+function Fila({ icono: Icono, titulo, detalle, abierta, onClick, children }) {
+  return (
+    <div className="border-b border-coal/10 last:border-b-0">
+      <button onClick={onClick} aria-expanded={children ? abierta : undefined}
+        className="w-full min-h-[64px] flex items-center gap-3.5 px-4 py-3 text-left text-coal">
+        <span className="w-10 h-10 rounded-xl bg-cream text-cherry flex items-center justify-center flex-shrink-0"><Icono size={20} aria-hidden="true" /></span>
+        <span className="flex-1 min-w-0">
+          <span className="block font-body text-[15px] font-semibold">{titulo}</span>
+          {detalle && <span className="block font-body text-xs text-coal/65 truncate">{detalle}</span>}
+        </span>
+        <ChevronDown size={18} aria-hidden="true" className={`text-coal/50 flex-shrink-0 transition-transform ${children ? (abierta ? 'rotate-180' : '') : '-rotate-90'}`} />
+      </button>
+      {children && abierta && children}
+    </div>
+  )
+}
+
+/**
+ * Mi cuenta (rediseño del 25 oct 2026): encabezado con la persona, premios y
+ * saldo arriba, y las secciones como filas que se abren. `premios` = { count,
+ * sede }, `saldo` = { monto, sede }; `onPedidos` y `onAyuda` vuelven al panel.
+ */
+export default function MiCuenta({ user, perfil, onCerrar, premios, saldo, onPedidos, onAyuda }) {
   // Cerrar sesión vive aquí, y no entre los iconos del encabezado: en un
   // celular no caben todos, y este es el sitio donde uno lo busca.
   const { logout } = useAuth()
+  const [abierta, setAbierta] = useState(null)
+  const alternar = (k) => setAbierta((a) => (a === k ? null : k))
+  const nombre = perfil?.name || user?.displayName || 'Tu cuenta'
+  const iniciales = nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || 'DS'
+  const telefono = String(perfil?.phone || '').replace(/(\d{3})(\d{3})(\d{4})$/, '$1 $2 $3')
+  const proveedor = PROVEEDORES[metodosDe(user)[0]]?.nombre
+  const n = Number(premios?.count) || 0
+  const enCiclo = n > 0 && n % 10 === 0 ? 10 : n % 10
   return createPortal(
-    <div className="fixed inset-0 z-[140] bg-gradient-soft overflow-y-auto animate-sheet-up">
-      <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
-        <p className="font-display text-xl text-coal tracking-wide">Mi cuenta</p>
-        <button onClick={onCerrar} className="btn-icon" aria-label="Cerrar"><X size={20} /></button>
-      </div>
-      <div className="p-4 max-w-lg mx-auto flex flex-col gap-4 pb-16">
-        <Datos user={user} perfil={perfil} />
-        <FormasDeEntrar user={user} />
+    <div className="fixed inset-0 z-[140] bg-cream overflow-y-auto animate-sheet-up">
+      <header className="bg-gradient-to-br from-cherry to-tangelo text-white px-5 pt-5 pb-10">
+        <div className="max-w-lg mx-auto flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <button onClick={onCerrar} className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center" aria-label="Cerrar"><X size={20} aria-hidden="true" /></button>
+            <p className="font-display text-3xl tracking-wide normal-case">Mi cuenta</p>
+            <span className="w-11" />
+          </div>
+          <div className="flex items-center gap-3.5">
+            <span className="w-16 h-16 rounded-full bg-white text-cherry font-display text-3xl flex items-center justify-center flex-shrink-0">{iniciales}</span>
+            <div className="min-w-0 flex flex-col gap-1">
+              <p className="font-body text-lg font-bold truncate">{nombre}</p>
+              <p className="font-body text-[13px] text-white/90 truncate">{[user?.email, telefono].filter(Boolean).join(' · ')}</p>
+              {proveedor && <span className="self-start font-body text-[11px] font-semibold bg-white/20 rounded-full px-2.5 py-0.5">Entraste con {proveedor}</span>}
+            </div>
+          </div>
+        </div>
+      </header>
+      <div className="px-4 -mt-5 max-w-lg mx-auto flex flex-col gap-3.5 pb-16">
+        <section className="grid grid-cols-2 gap-2.5">
+          <div className="bg-white rounded-2xl border border-coal/10 p-4 flex flex-col gap-2">
+            <p className="font-body text-xs font-semibold text-coal/65 flex items-center gap-1.5"><Gift size={14} aria-hidden="true" /> Premios{premios?.sede ? ` · ${premios.sede}` : ''}</p>
+            <p className="font-display text-4xl leading-none text-cherry tabular">{enCiclo}/10</p>
+            <div className="h-2 rounded-full bg-cream overflow-hidden"><div className="h-2 rounded-full bg-cherry" style={{ width: `${enCiclo * 10}%` }} /></div>
+            <p className="font-body text-[11px] text-coal/65 leading-snug">{enCiclo >= 10 ? '¡Ganaste un premio!' : `Te faltan ${10 - enCiclo} domicilios para el premio`}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-coal/10 p-4 flex flex-col gap-2">
+            <p className="font-body text-xs font-semibold text-coal/65 flex items-center gap-1.5"><Wallet size={14} aria-hidden="true" /> Saldo a favor</p>
+            <p className="font-display text-4xl leading-none text-mint tabular">{pesos(saldo?.monto)}</p>
+            <p className="font-body text-[11px] text-coal/65 leading-snug">{saldo?.monto > 0 ? `En ${saldo.sede || 'tu sede'} · no vence. Se usa al pagar.` : 'Aquí aparece la plata que te devolvamos.'}</p>
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-coal/10 overflow-hidden">
+          <Fila icono={UserRound} titulo="Mis datos" detalle="Nombre y teléfono" abierta={abierta === 'datos'} onClick={() => alternar('datos')}>
+            <Datos user={user} perfil={perfil} plano />
+          </Fila>
+          <Fila icono={KeyRound} titulo="Formas de entrar" detalle={proveedor ? `${proveedor} · agrega otra` : 'Google, Apple, Microsoft o correo'} abierta={abierta === 'entrar'} onClick={() => alternar('entrar')}>
+            <FormasDeEntrar user={user} plano />
+          </Fila>
+          {onPedidos && <Fila icono={ShoppingBag} titulo="Mis pedidos" detalle="Los que tienes en curso y los de antes" onClick={onPedidos} />}
+          {onAyuda && <Fila icono={HelpCircle} titulo="Ayuda" detalle="Preguntas frecuentes y soporte" onClick={onAyuda} />}
+        </section>
+
         {user?.email && <Promociones user={user} perfil={perfil} />}
-        <button onClick={logout} className="btn-secondary w-full">
+
+        <button onClick={logout} className="btn-secondary w-full rounded-2xl">
           <LogOut size={18} aria-hidden="true" /> Cerrar sesión
         </button>
         <EliminarCuenta user={user} />
@@ -54,7 +124,7 @@ export default function MiCuenta({ user, perfil, onCerrar }) {
   )
 }
 
-function Datos({ user, perfil }) {
+function Datos({ user, perfil, plano = false }) {
   const [nombre, setNombre] = useState(perfil?.name || user?.displayName || '')
   const [telefono, setTelefono] = useState(perfil?.phone || '')
   const [msg, setMsg] = useState('')
@@ -72,7 +142,7 @@ function Datos({ user, perfil }) {
     } catch { setMsg('No se pudo guardar. Revisa tu conexión.') } finally { setBusy(false) }
   }
   return (
-    <Seccion titulo="Mis datos">
+    <Seccion titulo="Mis datos" plano={plano}>
       <form onSubmit={guardar} className="flex flex-col gap-2">
         <label className="label-field">Nombre completo</label>
         <input className={campo} value={nombre} onChange={(e) => setNombre(e.target.value)} autoComplete="name" />
@@ -93,7 +163,7 @@ const ICONOS = {
   password: <Mail size={18} className="text-cherry" />,
 }
 
-function FormasDeEntrar({ user }) {
+function FormasDeEntrar({ user, plano = false }) {
   const [metodos, setMetodos] = useState(() => metodosDe(user))
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
@@ -115,7 +185,7 @@ function FormasDeEntrar({ user }) {
   }
 
   return (
-    <Seccion titulo="Formas de entrar">
+    <Seccion titulo="Formas de entrar" plano={plano}>
       <p className="font-body text-xs text-coal/60 -mt-1">
         Entra con cualquiera de estas. Siempre debe quedar al menos una.
       </p>
@@ -176,15 +246,18 @@ function Promociones({ user, perfil }) {
     } catch { /* se queda como estaba */ } finally { setBusy(false) }
   }
   return (
-    <Seccion titulo="Promociones por correo">
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input type="checkbox" checked={acepta} onChange={cambiar} disabled={busy} className="mt-1 w-5 h-5 accent-cherry" />
-        <span className="font-body text-sm text-coal/80 leading-relaxed">
-          Quiero recibir descuentos y novedades de DeliStars en <strong>{user.email}</strong>.
-          Los avisos de tus pedidos te siguen llegando igual.
+    <section className="bg-white rounded-2xl border border-coal/10 px-4 py-3.5 flex items-center justify-between gap-3.5">
+      <span className="min-w-0">
+        <span className="block font-body text-[15px] font-semibold text-coal">Promociones por correo</span>
+        <span className="block font-body text-xs text-coal/65 leading-snug mt-0.5">
+          Descuentos y novedades en {user.email}. Los avisos de tus pedidos te siguen llegando igual.
         </span>
-      </label>
-    </Seccion>
+      </span>
+      <button role="switch" aria-checked={acepta} aria-label="Promociones por correo" onClick={cambiar} disabled={busy}
+        className={`relative w-[52px] h-8 rounded-full flex-shrink-0 transition-colors ${acepta ? 'bg-mint' : 'bg-coal/25'}`}>
+        <span className={`absolute top-1 w-6 h-6 rounded-full shadow transition-[left] ${acepta ? 'left-6' : 'left-1'}`} style={{ backgroundColor: '#FFFFFF' }} />
+      </button>
+    </section>
   )
 }
 
