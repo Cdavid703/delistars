@@ -84,6 +84,9 @@ export async function sesionRelojActiva(id: string, uid: string): Promise<boolea
   return vigente;
 }
 
+/** Olvidar lo guardado de una cuenta (al revocarla, para que valga de inmediato). */
+export const olvidarCuenta = (uid: string) => { cacheCuenta.delete(uid); };
+
 /**
  * ¿El token de esta cuenta fue revocado o la cuenta está deshabilitada o borrada?
  * Equivale a verifyIdToken(token, true) pero consulta la cuenta una vez por minuto.
