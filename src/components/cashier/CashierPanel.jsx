@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import { textoDeMensaje } from '../../utils/fotos'
+import { BotonCambiarEmpleado } from '../common/CambiarEmpleado'
 import {
   collection, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, updateDoc, getDocs
@@ -490,6 +491,8 @@ export default function CashierPanel() {
             <MapPin size={20} />
             <span className="font-body text-xs font-semibold hidden xl:inline">Sede</span>
           </button>
+          {/* Otra persona toma la caja (§6.3): antes se cierra el pedido abierto para soltarlo */}
+          <BotonCambiarEmpleado antes={() => setSelectedId(null)} />
           <button onClick={logout} className="btn-icon flex items-center gap-1 px-2 w-auto min-w-11" title="Cerrar sesión">
             <LogOut size={20} />
             <span className="font-body text-xs font-semibold hidden xl:inline">Salir</span>

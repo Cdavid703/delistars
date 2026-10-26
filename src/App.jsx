@@ -5,6 +5,7 @@ import SedeSelectionPage    from './pages/SedeSelectionPage'
 import RoleChoicePage       from './pages/RoleChoicePage'
 import InstallPromptBanner  from './components/common/InstallPromptBanner'
 import AvisoVersion         from './components/common/AvisoVersion'
+import { AvisoCambioEmpleado } from './components/common/CambiarEmpleado'
 import { ROLES, SEDES } from './services/roles'
 import { recordarCampanaDeUrl } from './utils/campana'
 
@@ -108,6 +109,7 @@ export default function App() {
   return (
     <>
       <OfflineBanner />
+      <AvisoCambioEmpleado />
       <AvisoVersion />
       <InstallPromptBanner />
       <Suspense fallback={<LoadingScreen />}>
