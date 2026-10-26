@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planTransicion, yaEsta, motivoNoEntrega } from './transiciones';
-import { planInstruccion, planEntendido, planIndicaciones } from './incidencias';
+import { planInstruccion, planEntendido, planIndicaciones, planDevolverPlata } from './incidencias';
 import { revisarOrdenRuta } from './domiciliarios';
 import { conSedeYTelefono } from '../../modulo_sedes/controllers/sede.controller';
 import type { Usuario } from '../../../middlewares/require-user';
@@ -109,5 +109,22 @@ describe('CP-6 y CP-7', () => {
     expect(revisarOrdenRuta([])).toEqual([]);
     expect(() => revisarOrdenRuta(['../x'])).toThrow();
     expect(() => revisarOrdenRuta(new Array(11).fill('Y20OTc5DSSz10ut7g4cE'))).toThrow();
+  });
+});
+
+describe('Devolverle la plata a un pedido devuelto (decisión del 25 oct 2026)', () => {
+  const devuelto = { ...llego, excepcion: 'devuelto', status: 'cancelled', clientUid: 'cli', clientEmail: 'c@x.com' };
+  it('lo pagado por transferencia queda por elegir y el saldo vuelve', () => {
+    const r = planDevolverPlata({ ...devuelto, payment: 'Nequi', totalPrice: 30000, transferReceiptUrl: 'x', saldoAplicado: { ids: ['s1'], monto: 5000, usado: 5000 } }, caja);
+    expect(r.devolucion).toMatchObject({ estado: 'por_elegir', monto: 30000 });
+    expect(r.creditos).toEqual(['s1']);
+    expect(r.saldo).toBe(5000);
+  });
+  it('solo devuelto, una vez, solo la caja, y si hay algo que devolver', () => {
+    const pago = { payment: 'Nequi', totalPrice: 30000, transferReceiptUrl: 'x' };
+    expect(() => planDevolverPlata({ ...llego, ...pago }, caja)).toThrow(/volvieron a la sede/);
+    expect(() => planDevolverPlata({ ...devuelto, ...pago, devolucion: { estado: 'por_elegir' } }, caja)).toThrow(/ya se le devolvió/);
+    expect(() => planDevolverPlata({ ...devuelto, ...pago }, dom)).toThrow(/Solo la caja/);
+    expect(() => planDevolverPlata({ ...devuelto, payment: 'Efectivo', totalPrice: 30000 }, caja)).toThrow(/no tiene plata/);
   });
 });

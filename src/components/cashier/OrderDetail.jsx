@@ -29,7 +29,7 @@ import {
 import ComandaPedido from './ComandaPedido'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
-import { IncidenciaCaja, EditorIndicaciones } from '../common/IncidenciaReparto'
+import { IncidenciaCaja, EditorIndicaciones, DevolverPlataCaja } from '../common/IncidenciaReparto'
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -746,6 +746,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
             <p className="font-body text-xs text-coal/40">{time}</p>
             {/* No se pudo entregar / regresa con el pedido (CP-8) */}
             <IncidenciaCaja order={order} />
+            {/* Devuelto a la sede: la caja decide si le devuelve la plata */}
+            <DevolverPlataCaja order={order} />
             {/* Client info */}
             <Section title={order.destinatario?.nombre ? 'Lo pidió' : 'Cliente'}>
               <Row icon={User}  label="Nombre"   value={order.name || order.clientName} />

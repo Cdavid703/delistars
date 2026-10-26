@@ -169,7 +169,8 @@ export async function crearPedido(u: Usuario, b: any, ip: string) {
     excepcionMotivo: null,
     // De dónde llegó: la web de domicilios manda 'web'; la app móvil, 'app' (o nada).
     origen: b?.origen === 'web' ? 'web' : 'app',
-    ...(campana ? { campana } : {}),
+    // `ventas`: lo que sumó a la campaña, para restarlo si no se vende (cancelado, rechazado, devuelto).
+    ...(campana ? { campana: { ...campana, ventas: subtotal } } : {}),
     ...(destinatario ? { destinatario } : {}),
     version: 1,
     createdAt: ahora,
@@ -283,7 +284,7 @@ export async function transicionar(u: Usuario, id: string, b: any) {
     // Ya está así (un reintento tras un corte, CP-5): se responde lo que hay, sin repetir nada.
     if (rolesDe(u, p).length && yaEsta(p, String(b?.a || ''), b?.motivo)) {
       const e = etapaDe(p);
-      return { id, etapa: e.etapa, excepcion: e.excepcion, version: versionActual, sinCambios: true, entregaDomicilio: null };
+      return { id, etapa: e.etapa, excepcion: e.excepcion, version: versionActual, sinCambios: true, entregaDomicilio: null, campanaARestar: null };
     }
     if (b?.version != null && Number(b.version) !== versionActual) {
       throw new ErrorPedido('version', `El pedido cambió mientras tanto (versión ${versionActual}). Recárgalo e intenta de nuevo`, 409);
@@ -318,6 +319,10 @@ export async function transicionar(u: Usuario, id: string, b: any) {
         extras['saldoAplicado.devuelto'] = true;
       }
     }
+    // Pedido de campaña que no se vendió (decisión del 25 oct 2026): sale de sus métricas, una sola vez.
+    const restarCampana = !!p.campana?.id && !p.campana.descontada && e.excepcion !== plan.excepcion &&
+      ['cancelado', 'rechazado', 'devuelto'].includes(plan.excepcion ?? '');
+    if (restarCampana) extras['campana.descontada'] = true;
     tx.update(ref, {
       ...extras,
       etapa: plan.etapa, excepcion: plan.excepcion, excepcionMotivo: plan.motivo,
@@ -328,11 +333,20 @@ export async function transicionar(u: Usuario, id: string, b: any) {
       de: antes, a: { etapa: plan.etapa, excepcion: plan.excepcion },
       motivo: plan.motivo, status: (plan.extras.status as string) ?? null, version,
     });
-    return { id, etapa: plan.etapa, excepcion: plan.excepcion, version, entregaDomicilio: plan.etapa === 'entregado' && e.tipo === 'domicilio' ? p : null };
+    return {
+      id, etapa: plan.etapa, excepcion: plan.excepcion, version,
+      entregaDomicilio: plan.etapa === 'entregado' && e.tipo === 'domicilio' ? p : null,
+      campanaARestar: restarCampana ? { id: p.campana.id as string, ventas: Number(p.campana.ventas ?? p.quotedPrice) || 0 } : null,
+    };
   }).then(async (r) => {
+    if (r.campanaARestar) {
+      firestore().doc(`campanas/${r.campanaARestar.id}`).update({
+        'metricas.pedidos': FieldValue.increment(-1), 'metricas.ventas': FieldValue.increment(-r.campanaARestar.ventas),
+      }).catch(() => undefined);
+    }
     // Fidelización: cuenta la entrega (best-effort, nunca rompe la entrega).
     if (r.entregaDomicilio) await registrarFidelizacion(r.entregaDomicilio).catch((err) => console.error('[pedidos] fidelización:', err?.message || err));
-    const { entregaDomicilio: _e, ...resto } = r;
+    const { entregaDomicilio: _e, campanaARestar: _c, ...resto } = r;
     return resto;
   });
 }

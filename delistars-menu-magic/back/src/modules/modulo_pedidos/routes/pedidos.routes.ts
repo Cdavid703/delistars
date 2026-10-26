@@ -7,7 +7,7 @@ import { crearPedidoCaja } from '../services/pedidoCaja.service';
 import { crearPedido, transicionar, registrarPago, accionCaja, proponerCambio, responderCambio, agregarProducto, enviarMensaje, editorPedido } from '../services/pedidos.service';
 import { generarCodigoPedido, verConCodigo, vincularConCodigo } from '../services/codigo.service';
 import { verComoDestinatario } from '../services/destinatario.service';
-import { darInstruccion, entenderInstruccion, fijarIndicaciones } from '../services/incidencias.service';
+import { darInstruccion, entenderInstruccion, fijarIndicaciones, devolverPlata } from '../services/incidencias.service';
 import { datosTransferencia, INSTRUCCION_TRANSFERENCIA } from '../../../shared/datosTransferencia';
 import { SEDES } from '../reglas/sedes';
 
@@ -410,6 +410,28 @@ router.post('/:id/instruccion/entendido', activa, requireUser, async (req: Reque
 router.post('/:id/indicaciones', activa, requireUser, async (req: Request, res: Response) => {
   try {
     res.json(await fijarIndicaciones(req.usuario!, req.params.id, req.body?.texto));
+  } catch (err) { responderError(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/pedidos/{id}/devolver-plata:
+ *   post:
+ *     tags: [Pedidos]
+ *     summary: La caja le devuelve la plata a un pedido que volvió a la sede
+ *     description: >
+ *       Caja de la sede o admin, solo con la excepción `devuelto` y una vez. Lo pagado por transferencia
+ *       queda en `devolucion` (por_elegir, como al cancelar) y el saldo a favor usado vuelve a la cuenta.
+ *       Se le escribe al cliente en el chat. 409 `nada` si no pagó nada por adelantado.
+ *     responses:
+ *       200: { description: "{ id, devolucion, saldoDevuelto }" }
+ */
+router.post('/:id/devolver-plata', activa, requireUser, async (req: Request, res: Response) => {
+  try {
+    const r = await conIdempotenciaOpcional(req.usuario!.uid, req.get('Idempotency-Key'), { id: req.params.id, devolverPlata: true }, async () => ({
+      status: 200, body: await devolverPlata(req.usuario!, req.params.id),
+    }));
+    res.status(r.status).json(r.body);
   } catch (err) { responderError(res, err); }
 });
 

@@ -13,6 +13,7 @@ import { etapaDe, terminado, INSTRUCCIONES_CAJA as IC } from '../../../shared/et
 import { ErrorPedido } from './armado';
 import { rolesDe, PedidoDoc } from './transiciones';
 import { revisarEditor } from './editor';
+import { devolucionInicial } from '../../../shared/devolucion';
 import type { Usuario } from '../../../middlewares/require-user';
 
 export const INSTRUCCIONES_CAJA = IC as Record<string, string>;
@@ -56,4 +57,21 @@ export function planIndicaciones(p: PedidoDoc, u: Usuario, texto: unknown) {
   if (limpio.length > MAX_INDICACIONES) throw new ErrorPedido('largo', `Máximo ${MAX_INDICACIONES} caracteres: se leen manejando`);
   revisarEditor(p, u);
   return { indicacionesBreves: limpio || null };
+}
+
+/**
+ * «Devolverle la plata» de un pedido devuelto a la sede (decisión del 25 oct
+ * 2026: lo decide la caja en cada caso). Lo pagado por transferencia queda
+ * para que el cliente elija transferencia o saldo (como al cancelar) y el saldo
+ * a favor que usó vuelve a su cuenta. Los premios no se devuelven.
+ */
+export function planDevolverPlata(p: PedidoDoc, u: Usuario) {
+  if (!esEquipoDeCaja(u, p)) throw new ErrorPedido('sin_permiso', 'Solo la caja de la sede', 403);
+  if (etapaDe(p).excepcion !== 'devuelto') throw new ErrorPedido('no_devuelto', 'Solo para pedidos que volvieron a la sede', 409);
+  if (p.devolucion || p.saldoAplicado?.devuelto) throw new ErrorPedido('ya_devuelto', 'A este pedido ya se le devolvió la plata', 409);
+  revisarEditor(p, u);
+  const devolucion = devolucionInicial(p);
+  const creditos: string[] = Array.isArray(p.saldoAplicado?.ids) ? p.saldoAplicado.ids : [];
+  if (!devolucion && !creditos.length) throw new ErrorPedido('nada', 'Este pedido no tiene plata pagada por adelantado que devolver', 409);
+  return { devolucion, creditos, monto: devolucion?.monto ?? 0, saldo: creditos.length ? Number(p.saldoAplicado?.usado ?? p.saldoAplicado?.monto) || 0 : 0 };
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Check, Clock, MessageSquare, Undo2, PackageCheck } from 'lucide-react'
 import { llamarPedidos, ErrorApi } from '../../services/pedidosApi'
 import { etapaDe, MOTIVOS_NO_ENTREGA, INSTRUCCIONES_CAJA } from '../../utils/etapas'
+import { montoDevolucion } from '../../utils/devolucion'
 
 // Incidencias de reparto (lo mismo que hace CarPlay, CP-1 a CP-4 y CP-8):
 //   · el domiciliario: «No puedo entregar» con un motivo, «Entendido» a la
@@ -164,6 +165,40 @@ export function IncidenciaCaja({ order }) {
       <button onClick={recibido} disabled={ocupado} className={excepcion === 'regreso_declarado' ? 'btn-primary w-full' : 'btn-secondary w-full'}>
         <PackageCheck size={18} aria-hidden="true" /> Recibí el pedido en la sede
       </button>
+      {error && <p className="font-body text-sm text-pepper">{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * Pedido devuelto a la sede: la caja decide si le devuelve la plata (decisión
+ * del 25 oct 2026). Lo pagado por transferencia queda para que el cliente
+ * elija transferencia o saldo; el saldo a favor que usó vuelve a su cuenta.
+ */
+export function DevolverPlataCaja({ order }) {
+  const { excepcion } = etapaDe(order)
+  const { ocupado, error, correr } = useAccion()
+  if (excepcion !== 'devuelto') return null
+  const transferido = montoDevolucion(order)
+  const saldo = order.saldoAplicado?.ids?.length && !order.saldoAplicado?.devuelto
+    ? Number(order.saldoAplicado.usado ?? order.saldoAplicado.monto) || 0 : 0
+  const fmt = (n) => `$${n.toLocaleString('es-CO')}`
+  if (order.devolucion || order.saldoAplicado?.devuelto) {
+    return <p className="font-body text-xs text-mint font-semibold flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Ya se le devolvió la plata al cliente.</p>
+  }
+  if (!transferido && !saldo) return null
+  const devolver = () => {
+    const partes = [transferido ? `${fmt(transferido)} pagados por transferencia (el cliente elige transferencia o saldo)` : '', saldo ? `${fmt(saldo)} de saldo a favor que vuelven a su cuenta` : ''].filter(Boolean)
+    if (!window.confirm(`¿Devolverle la plata al cliente?\n\n${partes.join('\n')}\n\nSe le avisa por el chat del pedido.`)) return
+    correr(`${order.id}/devolver-plata`, {})
+  }
+  return (
+    <div className="bg-cream border-2 border-coal/15 rounded-2xl p-4 flex flex-col gap-2">
+      <p className="font-body text-sm text-coal">
+        El pedido volvió a la sede. El cliente pagó {[transferido ? `${fmt(transferido)} por transferencia` : '', saldo ? `${fmt(saldo)} con saldo a favor` : ''].filter(Boolean).join(' y ')}.
+        Si corresponde, devuélvele la plata.
+      </p>
+      <button onClick={devolver} disabled={ocupado} className="btn-secondary w-full">Devolverle la plata</button>
       {error && <p className="font-body text-sm text-pepper">{error}</p>}
     </div>
   )
