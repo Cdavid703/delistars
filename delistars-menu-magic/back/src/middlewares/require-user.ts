@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getAuth } from 'firebase-admin/auth';
 import { firebaseApp, firestore } from '../config/firestore';
 import { cuentaRevocada, sesionRelojActiva } from '../modules/modulo_auth/reloj.service';
+import { sesionEquipoActiva } from '../modules/modulo_equipo/sesiones.service';
 
 /**
  * Quién llama (token de Firebase en `Authorization: Bearer <idToken>`).
@@ -74,6 +75,11 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
     const reloj = typeof d.reloj === 'string' ? d.reloj : null;
     if (revocada || (reloj && !(await sesionRelojActiva(reloj, d.uid)))) {
       return res.status(401).json({ error: 'La sesión se cerró. Vuelve a entrar', codigo: 'sesion_cerrada' });
+    }
+    // «Mis sesiones» (§6.3): el aparato del equipo manda su id; si la cerraron, no sigue.
+    const sesionEquipo = req.get('X-Sesion-Equipo');
+    if (!reloj && sesionEquipo && !(await sesionEquipoActiva(sesionEquipo, d.uid).catch(() => true))) {
+      return res.status(401).json({ error: 'Esta sesión se cerró desde otro aparato. Vuelve a entrar', codigo: 'sesion_cerrada' });
     }
     const email = (d.email || '').toLowerCase();
     const db = firestore();

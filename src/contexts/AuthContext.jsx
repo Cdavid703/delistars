@@ -3,6 +3,8 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { collection, getDocs } from 'firebase/firestore'
 import { auth, db, loginAnon, loginGoogle, elegirOtraCuentaGoogle } from '../services/firebase'
 import { resolveRole, getAllRoles, ROLES } from '../services/roles'
+import { salirDeSesion } from '../services/sesionEquipo'
+import useSesionEquipo from '../hooks/useSesionEquipo'
 
 const AuthContext = createContext(null)
 
@@ -107,6 +109,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     const uid = user?.uid
+    salirDeSesion(uid) // «Mis sesiones»: esta sesión queda cerrada
     await signOut(auth)
     setSede(null)
     setViewingAs(null)
@@ -128,6 +131,7 @@ export function AuthProvider({ children }) {
     try {
       const cred = await elegirOtraCuentaGoogle()
       if (cred.user.uid === anterior) { sessionStorage.removeItem('ds_sede_puesto'); return { cambio: false, mismo: true } }
+      salirDeSesion(anterior) // la sesión de quien se va queda cerrada en «Mis sesiones»
       const nombre = cred.user.displayName || cred.user.email || 'otra persona'
       setAvisoCambio(nombre)
       setTimeout(() => setAvisoCambio(null), 6000)
@@ -146,6 +150,9 @@ export function AuthProvider({ children }) {
 
   // Role the user is currently viewing
   const effectiveRole = viewingAs || role
+
+  // «Mis sesiones» (§6.3): este aparato del equipo registra su sesión y sale si la cierran.
+  useSesionEquipo({ user, role, sede, rolVisto: effectiveRole })
 
   return (
     <AuthContext.Provider value={{

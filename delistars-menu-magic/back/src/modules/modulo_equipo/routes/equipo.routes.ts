@@ -5,6 +5,7 @@ import { firestore } from '../../../config/firestore';
 import { ErrorPedido } from '../../modulo_pedidos/reglas/armado';
 import { rolesDeUsuario, validarSolicitud, sedesAlAprobar, ROLES_SOLICITABLES, RolSolicitable } from '../reglas';
 import { cambiarTurno, guardarOrdenRuta } from '../../modulo_pedidos/services/domiciliarios.service';
+import { registrarSesion, listarSesiones, cerrarSesion, salirConClave, cerrarTodas } from '../sesiones.service';
 
 /**
  * Equipo: quién soy, solicitudes de acceso y su aprobación.
@@ -210,6 +211,76 @@ router.post('/turno', requireUser, async (req: Request, res: Response) => {
  */
 router.post('/turno/orden', requireUser, async (req: Request, res: Response) => {
   try { res.json(await guardarOrdenRuta(req.usuario!, req.body?.ordenRuta)); } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/sesiones:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: El aparato del equipo registra su sesión o reporta que sigue en uso («Mis sesiones», §6.3)
+ *     description: >
+ *       { sesionId (16-40 letras/números, lo crea el aparato), aparato, navegador, sedeId?, rol? }.
+ *       La primera vez devuelve `clave` (guárdala en el aparato: sirve para salir sin token).
+ *       409 `sesion_cerrada` si la cerraron desde otro aparato: el aparato debe salir.
+ *       Después, el aparato manda `X-Sesion-Equipo: <sesionId>` en cada llamada: cerrada → 401 sesion_cerrada.
+ *     responses:
+ *       200: { description: "{ id, nueva, clave? }" }
+ *   get:
+ *     tags: [Equipo]
+ *     summary: Mis sesiones abiertas (`?todos=1` para administración: todo el equipo)
+ *     responses:
+ *       200: { description: "[{ id, email, nombre, aparato, navegador, sedeId, rol, activa, creadaAt, vistaAt, sinUso }]" }
+ */
+router.post('/sesiones', requireUser, async (req: Request, res: Response) => {
+  try { res.json(await registrarSesion(req.usuario!, req.body)); } catch (err) { responder(res, err); }
+});
+router.get('/sesiones', requireUser, async (req: Request, res: Response) => {
+  try { res.set('Cache-Control', 'no-store').json(await listarSesiones(req.usuario!, req.query.todos === '1')); } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/sesiones/cerrar-todas:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: Cerrar en todos los aparatos (también invalida la cuenta en Firebase)
+ *     description: Sin cuerpo, las propias (este aparato también sale). Administración con { email } cierra las de esa persona.
+ *     responses:
+ *       200: { description: "{ cerradas }" }
+ */
+router.post('/sesiones/cerrar-todas', requireUser, async (req: Request, res: Response) => {
+  try { res.json(await cerrarTodas(req.usuario!, req.body?.email)); } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/sesiones/{id}/cerrar:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: Cerrar una sesión (la propia en otro aparato, o cualquiera si es admin)
+ *     responses:
+ *       200: { description: "{ id, cerrada: true, sinCambios }" }
+ */
+router.post('/sesiones/:id/cerrar', requireUser, async (req: Request, res: Response) => {
+  try { res.json(await cerrarSesion(req.usuario!, req.params.id)); } catch (err) { responder(res, err); }
+});
+
+/**
+ * @swagger
+ * /api/v1/equipo/sesiones/{id}/salir:
+ *   post:
+ *     tags: [Equipo]
+ *     summary: El aparato cierra su propia sesión con su clave (sin token; al salir o al cambiar de empleado)
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           example: { "clave": "la que devolvió el registro" }
+ *     responses:
+ *       200: { description: "{ id, cerrada: true }" }
+ */
+router.post('/sesiones/:id/salir', async (req: Request, res: Response) => {
+  try { res.json(await salirConClave(req.params.id, req.body?.clave)); } catch (err) { responder(res, err); }
 });
 
 export default router;
