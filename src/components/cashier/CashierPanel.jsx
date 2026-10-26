@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
+import { textoDeMensaje } from '../../utils/fotos'
 import {
   collection, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, updateDoc, getDocs
@@ -727,7 +728,7 @@ export default function CashierPanel() {
                   {o.orderNumber ? ` · Pedido #${o.orderNumber}` : ''} · {o.name || o.clientName || 'Cliente'}
                 </p>
                 <p className="font-body text-xs text-coal/60 truncate">
-                  “{[...(o.clientMessages || [])].filter(m => m.role === 'client').slice(-1)[0]?.text || ''}”
+                  “{textoDeMensaje([...(o.clientMessages || [])].filter(m => m.role === 'client').slice(-1)[0])}”
                 </p>
               </div>
               <span className="font-body text-xs font-bold text-cherry flex-shrink-0">Responder →</span>

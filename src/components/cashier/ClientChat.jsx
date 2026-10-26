@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import { conApi, ErrorApi } from '../../services/pedidosApi'
+import { conApi, ErrorApi, llamarPedidos } from '../../services/pedidosApi'
+import { BotonFoto, FotosMensaje } from '../common/FotosChat'
 import { motivoCerrado, textoCerrado } from '../../utils/chat'
 import { MessageSquare, Send } from 'lucide-react'
 
@@ -43,6 +44,12 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
       setError(err instanceof ErrorApi ? err.message : 'No se pudo enviar el mensaje. Revisa tu conexión e intenta de nuevo.')
     } finally { setSending(false) }
   }
+  // Foto (§8.3): va con lo que esté escrito; sin servidor no se puede (no hay camino directo).
+  const enviarFoto = async (foto) => {
+    setError('')
+    await llamarPedidos(`${order.id}/mensajes`, { canal: 'caja', texto: text.trim(), foto })
+    setText('')
+  }
 
   return (
     <div className={`card flex flex-col gap-3 ${unreadCount > 0 ? 'border-2 border-cherry bg-cherry/5' : 'border border-cherry/15'}`}>
@@ -63,7 +70,8 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
               <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${m.role === 'cashier' ? 'text-tangelo' : 'text-cherry'}`}>
                 {m.role === 'cashier' ? 'Cajero' : 'Cliente'} · {m.name}
               </p>
-              <p className="font-body text-sm text-coal">{m.text}</p>
+              {m.text && <p className="font-body text-sm text-coal">{m.text}</p>}
+              <FotosMensaje foto={m.foto} />
             </div>
           ))}
         </div>
@@ -84,6 +92,7 @@ export default function ClientChat({ order, unreadCount = 0, compact = false }) 
               value={text}
               onChange={e => setText(e.target.value)}
             />
+            <BotonFoto orderId={order.id} onSubida={enviarFoto} disabled={sending} />
             <button onClick={send} disabled={sending || !text.trim()} className="btn-primary px-3 self-end">
               <Send size={16} />
             </button>

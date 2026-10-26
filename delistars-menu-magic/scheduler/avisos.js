@@ -29,7 +29,9 @@ function mensajeNuevo(antes, o) {
   const ultimo = msgs[msgs.length - 1] || {}
   const de = ultimo.role === 'client' ? 'cliente' : ultimo.role === 'cashier' ? 'caja' : null
   if (!de) return null
-  const texto = String(ultimo.text || '').trim()
+  // Un mensaje puede ser solo una foto (§8.3).
+  const base = String(ultimo.text || '').trim()
+  const texto = ultimo.foto ? (base ? `📷 ${base}` : '📷 Foto') : base
   return { de, n: msgs.length, texto: texto.length > 120 ? `${texto.slice(0, 117)}…` : texto }
 }
 

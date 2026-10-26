@@ -7,6 +7,7 @@ rules_version = '2';
 //   • cvs/…      → hojas de vida de postulantes a vacantes (sesión anónima).
 //   • receipts/… → comprobantes de transferencia subidos por el cliente.
 //   • mercadeo/… → imágenes de campañas y del calendario (Mercadeo y admin).
+//   • fotos/…    → fotos de los chats y reclamos de cada pedido.
 //
 // ⚠️ Se publican en Firebase Console → Storage → Reglas (NO se despliegan con
 //    git/docker). Rollback = restaurar las reglas anteriores en la consola.
@@ -51,6 +52,38 @@ service firebase.storage {
                       ]
                       || firestore.exists(/databases/(default)/documents/roles_marketing/$(request.auth.token.email))
                     );
+      allow update, delete: if false;
+    }
+
+    // Fotos de los chats y reclamos de un pedido (§8.3, §14). Las suben y las
+    // ven solo quienes participan del pedido: su cliente, su domiciliario y el
+    // equipo (admin y caja; listas espejo de firestore.rules). Solo imágenes
+    // ya reducidas en el navegador, hasta 8 MB. No se cambian ni se borran.
+    match /fotos/{orderId}/{fileName} {
+      function pedido() {
+        return firestore.get(/databases/(default)/documents/orders/$(orderId)).data;
+      }
+      function correo() { return request.auth.token.email; }
+      function esEquipo() {
+        return correo() in [
+            'thebesta4321@gmail.com',
+            'cdavid.jaramillo@gmail.com',
+            'lluis02martinez@gmail.com',
+            'vvillegasmazo@gmail.com'
+          ]
+          || firestore.exists(/databases/(default)/documents/roles_cashiers/$(correo()));
+      }
+      function participa() {
+        return request.auth != null && (
+          pedido().clientUid == request.auth.uid
+          || (correo() != null && pedido().get('driverEmail', '') == correo().lower())
+          || (correo() != null && esEquipo())
+        );
+      }
+      allow read:   if participa();
+      allow create: if participa()
+                    && request.resource.size < 8 * 1024 * 1024
+                    && request.resource.contentType.matches('image/(jpeg|png|webp)');
       allow update, delete: if false;
     }
 
