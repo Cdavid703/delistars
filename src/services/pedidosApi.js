@@ -21,14 +21,29 @@ export class ErrorApi extends Error {
   constructor(mensaje, codigo, status) { super(mensaje); this.codigo = codigo; this.status = status }
 }
 
+// Sin conexión (especificación §21.1): nada se confirma ni se deja en cola
+// para hacerlo solo después. Sin internet → «no se hizo nada». Si se corta en
+// plena llamada → «no sabemos si se hizo»: se revisa el pedido antes de repetir
+// (repetir con la misma Idempotency-Key no lo hace dos veces).
+const sinConexion = () => new ErrorApi('Sin conexión: no se hizo nada. Cuando vuelva la conexión, inténtalo otra vez.', 'sin_conexion', 0)
+const incierto = () => new ErrorApi('Se cortó la conexión y no sabemos si alcanzó a hacerse. Cuando vuelva, revisa el pedido antes de repetirlo.', 'resultado_incierto', 0)
+const hayConexion = () => typeof navigator === 'undefined' || navigator.onLine !== false
+
+async function enviar(url, opciones) {
+  if (!hayConexion()) throw sinConexion()
+  try { return await fetch(url, opciones) }
+  catch { throw hayConexion() ? incierto() : sinConexion() }
+}
+
 export const nuevaClave = () =>
   (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '')
 
 /** POST a /api/v1/pedidos/<ruta>. Lanza ErrorApi con el texto para mostrar. */
 export async function llamarPedidos(ruta, cuerpo = {}, clave = nuevaClave()) {
+  if (!hayConexion()) throw sinConexion()
   const token = await auth.currentUser?.getIdToken()
   if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
-  const res = await fetch(`/api/v1/pedidos/${ruta}`, {
+  const res = await enviar(`/api/v1/pedidos/${ruta}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'Idempotency-Key': clave, ...cabeceraSesion() },
     body: JSON.stringify(cuerpo),
@@ -41,9 +56,10 @@ export async function llamarPedidos(ruta, cuerpo = {}, clave = nuevaClave()) {
 
 /** Cualquier ruta de /api/v1 con el token de la cuenta (GET, POST, DELETE). */
 export async function llamarApi(metodo, ruta, cuerpo, clave) {
+  if (!hayConexion()) throw sinConexion()
   const token = await auth.currentUser?.getIdToken()
   if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
-  const res = await fetch(`/api/v1/${ruta}`, {
+  const res = await enviar(`/api/v1/${ruta}`, {
     method: metodo,
     headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}), ...(clave ? { 'Idempotency-Key': clave } : {}), ...cabeceraSesion() },
     ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
@@ -56,8 +72,9 @@ export async function llamarApi(metodo, ruta, cuerpo, clave) {
 
 /** ¿Este error justifica usar el camino viejo? (servidor caído, no "regla de negocio"). */
 export const usarRespaldo = (err) =>
-  // Una sesión cerrada desde otro aparato (§6.3) no puede seguir por el camino directo.
-  !(err instanceof ErrorApi) || err.status >= 500 || err.codigo === 'inactiva' || (err.status === 401 && err.codigo !== 'sesion_cerrada')
+  // Una sesión cerrada desde otro aparato (§6.3) no puede seguir por el camino directo,
+  // y sin conexión tampoco: Firebase lo guardaría y lo haría solo al volver (§21.1).
+  err instanceof ErrorApi && (err.status >= 500 || err.codigo === 'inactiva' || (err.status === 401 && err.codigo !== 'sesion_cerrada'))
 
 /**
  * Intenta por la API y, si el servidor no está, por el camino viejo.
@@ -67,7 +84,7 @@ export async function conApi(ruta, cuerpo, directo) {
   try {
     return await llamarPedidos(ruta, cuerpo)
   } catch (err) {
-    if (!usarRespaldo(err)) throw err
+    if (!usarRespaldo(err) || !hayConexion()) throw err
     console.warn(`[pedidosApi] ${ruta} sin servidor, uso el camino directo:`, err?.message || err)
     return directo()
   }

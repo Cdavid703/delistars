@@ -50,21 +50,38 @@ function AdminRedirect() {
   return <LoadingScreen />
 }
 
+// Estado de la conexión (especificación §21.1). Sin internet: lo que se ve
+// puede estar desactualizado y nada se confirma (ni queda en cola para después);
+// lo que estaba escribiendo se conserva. Al volver: revisar antes de seguir.
 function OfflineBanner() {
   const [offline, setOffline] = useState(!navigator.onLine)
+  const [desde, setDesde] = useState(navigator.onLine ? null : Date.now())
+  const [volvio, setVolvio] = useState(false)
   useEffect(() => {
-    const on  = () => setOffline(false)
-    const off = () => setOffline(true)
+    let t = null
+    const on  = () => { setOffline(false); setVolvio(true); clearTimeout(t); t = setTimeout(() => setVolvio(false), 9000) }
+    const off = () => { setOffline(true); setVolvio(false); setDesde(Date.now()) }
     window.addEventListener('online',  on)
     window.addEventListener('offline', off)
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); clearTimeout(t) }
   }, [])
-  if (!offline) return null
-  return (
-    <div className="fixed top-0 left-0 right-0 z-[200] bg-coal text-cream flex items-center justify-center gap-2 py-2 px-4 text-sm font-body font-semibold">
-      <span>📡</span> Sin conexión — los datos pueden no estar actualizados
-    </div>
-  )
+  if (offline) {
+    const hora = desde ? new Date(desde).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : ''
+    return (
+      <div role="status" className="fixed top-0 left-0 right-0 z-[200] bg-coal text-cream px-4 py-2 text-center font-body text-sm">
+        <p className="font-semibold">📡 Sin conexión{hora ? ` desde las ${hora}` : ''}: lo que ves puede estar desactualizado.</p>
+        <p className="text-xs text-cream/80">No se puede enviar, confirmar, pagar, entregar ni cuadrar hasta que vuelva. Lo que estabas escribiendo se conserva.</p>
+      </div>
+    )
+  }
+  if (volvio) {
+    return (
+      <div role="status" className="fixed top-0 left-0 right-0 z-[200] bg-mint text-cream px-4 py-2 text-center font-body text-sm font-semibold">
+        ✅ Volvió la conexión. Revisa los datos antes de seguir: pueden haber cambiado precios, disponibilidad o estados.
+      </div>
+    )
+  }
+  return null
 }
 
 export default function App() {
