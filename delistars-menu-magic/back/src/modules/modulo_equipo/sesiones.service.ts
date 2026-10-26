@@ -4,6 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { firebaseApp, firestore } from '../../config/firestore';
 import { ErrorPedido } from '../modulo_pedidos/reglas/armado';
 import type { Usuario } from '../../middlewares/require-user';
+import { olvidarCuenta } from '../modulo_auth/reloj.service';
 import { validarRegistro, puedeManejar, vistaSesion, sesionVigente, idSesionValido, esEquipo, Sesion } from './sesiones.reglas';
 
 /** «Mis sesiones» del equipo (§6.3). Ver sesiones.reglas.ts. */
@@ -91,6 +92,7 @@ export async function cerrarTodas(u: Usuario, emailCrudo: unknown) {
   const quien = uid === u.uid ? 'cerró todas sus sesiones' : 'administración cerró todas sus sesiones';
   await Promise.all(abiertas.docs.map((d) => marcarCerrada(d.ref, u.email || u.uid, quien)));
   await getAuth(firebaseApp()).revokeRefreshTokens(uid);
+  olvidarCuenta(uid); // que el servidor lo note ya, no al minuto
   return { cerradas: abiertas.size };
 }
 
