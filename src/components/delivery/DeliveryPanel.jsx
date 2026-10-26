@@ -3,31 +3,24 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, setDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore'
-import { db, registerLoyaltyDelivery, actualizarPedido } from '../../services/firebase'
-import { conApi, ErrorApi } from '../../services/pedidosApi'
+import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
-import Logo from '../common/Logo'
-import RoleSwitcher from '../common/RoleSwitcher'
-import StatusBadge from '../common/StatusBadge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
-  MapPin, Phone, User, ShoppingBag, Navigation,
-  CheckCircle, LogOut, Bell,
-  DollarSign, Calculator, X, MessageSquare, BookOpen, MoreVertical,
-  Search, ChevronDown, ChevronUp, HelpCircle,
-  Send, Radio, Route, Target, Gift, Check, Pencil, AlertTriangle, 
+  MapPin, Phone, ShoppingBag,
+  CheckCircle, Bell,
+  Calculator, X, MessageSquare, BookOpen,
+  Search, ChevronDown, HelpCircle,
+  Send, Radio, Route, Target, Gift, Check, Pencil, AlertTriangle, ChevronLeft,
   ClipboardList, Tag, Banknote, Calendar, Lightbulb, Bike, ChevronRight
 } from 'lucide-react'
 import { SEDES } from '../../services/roles'
-import CashChangeNotice from '../common/CashChangeNotice'
 import { cashAmount } from '../../utils/payments'
 import { revisarUbicacion, linkPedirUbicacion } from '../../utils/geoLink'
 import { sonar, sonidoDeEstado } from '../../utils/sonidos'
 import { pedidosCerca, geoDelPedido } from '../../utils/cercania'
-import { optimizarRuta, ubicarDireccion, medirRuta } from '../../services/recorrido'
-import BotonSilencio from '../common/BotonSilencio'
-import BotonPushEquipo from '../common/BotonPushEquipo'
+import { optimizarRuta, ubicarDireccion } from '../../services/recorrido'
 import TurnoDomiciliario from './TurnoDomiciliario'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
@@ -35,21 +28,13 @@ import CuadresEfectivo from '../common/CuadresEfectivo'
 import { transferenciaPendiente } from '../../utils/cuadres'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
-import { BotonCambiarEmpleado } from '../common/CambiarEmpleado'
-import { BotonMisSesiones } from '../common/MisSesiones'
-import { IncidenciaDomiciliario, IndicacionesBreves } from '../common/IncidenciaReparto'
-
-// "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
-// el pedido llega ya asignado y aparece directo en "En curso".
-const ITEM_MENU = 'flex items-center gap-2.5 w-full text-left rounded-xl px-3 py-2.5 ' +
-  'font-body text-sm font-semibold text-coal/80 transition-colors duration-150 ' +
-  '[@media(hover:hover)]:hover:bg-smoked active:bg-smoked'
-
-const TABS = [
-  { id: 'pending',   label: 'Por aceptar' },
-  { id: 'active',    label: 'En curso' },
-  { id: 'completed', label: 'Entregados' },
-]
+import { IndicacionesBreves } from '../common/IncidenciaReparto'
+import { EN_RUTA, ENTREGADOS, esEfectivo, ordenarRuta, pasoReparto, etiquetaReparto, fmt, nombreDe, ultimoDeCaja, puedeReportar } from '../../utils/reparto'
+import useAccionesReparto from './useAccionesReparto'
+import { HojaNoEntrega, EstadoNoEntrega } from './NoEntrega'
+import {
+  SiguienteParada, ParadaFila, NavDomiciliario, HojaMas, VistaCaja, TarjetaCobro, BotonesNavegar,
+} from './RutaDomiciliario'
 
 // El sonido vive en utils/sonidos.js: un solo contexto de audio, que se
 // despierta solo, y una melodía distinta por evento.
@@ -93,25 +78,28 @@ async function geocodeAddress(fullAddress) {
   return null
 }
 
-/** Hora (ms) de llegada si se sale ya y el recorrido toma `min` minutos. */
-const llegadaEn = min => Date.now() + min * 60000
-
 const isToday = ts => {
   if (!ts?.toDate) return false
   return ts.toDate().toDateString() === new Date().toDateString()
 }
 
-const fmt = v => (v !== undefined && v !== null && v !== '') ? `$${Number(v).toLocaleString('es-CO')}` : '—'
 
 export default function DeliveryPanel() {
-  const { user, sede, logout, selectSede } = useAuth()
+  const { user, sede, logout, selectSede, allRoles } = useAuth()
   const [orders,          setOrders]         = useState([])
-  const [tab,             setTab]            = useState('active')
+  const [vista,           setVista]          = useState('ruta')
+  // { id, notas }: el detalle lee el pedido vivo de `orders` (se recarga cada 5 s).
   const [selected,        setSelected]       = useState(null)
   const [notifCount,      setNotifCount]     = useState(0)
   const [showCuadre,      setShowCuadre]     = useState(false)
   const [showManual,      setShowManual]     = useState(false)
-  const [menu,            setMenu]           = useState(false)
+  const [mas,             setMas]            = useState(false)
+  const [ordenRuta,       setOrdenRuta]      = useState([])
+  // Hasta qué hora vio las notas de la caja de cada pedido { id: ms }.
+  const [vistos,          setVistos]         = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ds_vistos_caja') || '{}') } catch { return {} }
+  })
+  const recargarRef      = useRef(null)
   const [historyDate,     setHistoryDate]    = useState('')
   const [locationSharing, setLocationSharing] = useState(false)
   const [showRoute,       setShowRoute]      = useState(false)
@@ -156,7 +144,7 @@ export default function DeliveryPanel() {
             ['accepted', 'preparing'].includes(o.status))
           if (nuevos.length) {
             sonar('asignado'); sonó = true
-            setTab('active')
+            setVista('ruta')
             try {
               if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 new Notification('DeliStars — Nuevo domicilio', {
@@ -198,6 +186,7 @@ export default function DeliveryPanel() {
       }
     }
 
+    recargarRef.current = fetchOrders
     fetchOrders()
     const interval = setInterval(fetchOrders, 5000)
     return () => clearInterval(interval)
@@ -305,10 +294,23 @@ export default function DeliveryPanel() {
     }
   }
 
+  const recargar = () => recargarRef.current?.()
+  const marcarVisto = (o) => setVistos(prev => {
+    const ultimo = ultimoDeCaja(o)
+    if (!ultimo || (prev[o.id] || 0) >= ultimo) return prev
+    // Solo los de los últimos 3 días, para que no crezca sin fin.
+    const limite = Date.now() - 3 * 864e5
+    const next = Object.fromEntries(Object.entries({ ...prev, [o.id]: ultimo }).filter(([, ts]) => ts > limite))
+    try { localStorage.setItem('ds_vistos_caja', JSON.stringify(next)) } catch { /* sin almacenamiento */ }
+    return next
+  })
+  const abrir = (o, { notas = false } = {}) => { setSelected({ id: o.id, notas, foto: o }); if (notas) marcarVisto(o) }
+  const selectedOrder = selected ? (orders.find(o => o.id === selected.id) || selected.foto) : null
+
   const pendingOrders   = orders.filter(o => o.status === 'assigned' && isToday(o.createdAt))
-  const activeOrders    = orders.filter(o => ['accepted','preparing','in_transit','arrived'].includes(o.status))
+  const activeOrders    = orders.filter(o => EN_RUTA.includes(o.status))
   const completedOrders = orders.filter(o => {
-    if (!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(o.status)) return false
+    if (!ENTREGADOS.includes(o.status)) return false
     const target = historyDate ? new Date(historyDate + 'T00:00:00') : new Date()
     if (!o.createdAt?.toDate) return false
     return o.createdAt.toDate().toDateString() === target.toDateString()
@@ -377,10 +379,18 @@ export default function DeliveryPanel() {
 
   const totalNearby = nearbyClusters.reduce((s, c) => s + c.length, 0)
 
-  const tabOrders = tab === 'pending' ? pendingOrders : tab === 'active' ? activeOrders : completedOrders
+  const ruta = ordenarRuta([...pendingOrders, ...activeOrders], ordenRuta)
+  const [primera, ...despues] = ruta
+  const efectivoEnRuta = activeOrders.filter(esEfectivo).reduce((s, o) => s + cashAmount(o), 0)
+  // Pedidos del día con notas (los activos y los entregados de hoy).
+  const pedidosConCaja = orders.filter(o => EN_RUTA.includes(o.status) || o.status === 'assigned' ||
+    (ENTREGADOS.includes(o.status) && isToday(o.createdAt)))
+  const sinLeerCaja = pedidosConCaja.filter(o => ultimoDeCaja(o) > (vistos[o.id] || 0)).length
+  const nombre = user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Domiciliario'
+  const titulo = vista === 'entregados' ? 'Entregados' : vista === 'caja' ? 'Caja' : 'Mi ruta'
 
   return (
-    <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
+    <div className="min-h-screen-safe flex flex-col bg-cream" style={{ paddingBottom: 'calc(84px + env(safe-area-inset-bottom))' }}>
       {avisoCerca && (
         <div className="fixed top-3 inset-x-3 z-[120] mx-auto max-w-lg rounded-2xl border-2 border-mint bg-cream shadow-xl p-4 animate-fade-in">
           <div className="flex items-start gap-3">
@@ -400,7 +410,7 @@ export default function DeliveryPanel() {
                 </p>
               )}
               <div className="flex gap-2 mt-3">
-                <button onClick={() => { setSelected(avisoCerca.order); setAvisoCerca(null) }}
+                <button onClick={() => { abrir(avisoCerca.order); setAvisoCerca(null) }}
                   className="btn-primary btn-sm flex-1">Ver pedido</button>
                 <button onClick={() => setAvisoCerca(null)} className="btn-secondary btn-sm">Cerrar</button>
               </div>
@@ -408,213 +418,144 @@ export default function DeliveryPanel() {
           </div>
         </div>
       )}
-      <header className="page-header gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Logo variant="light" size="sm" />
-          <div className="min-w-0">
-            <p className="font-display text-base text-coal tracking-wide leading-tight">
-              {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Domiciliario'}
-            </p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="font-body text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-mint/15 text-mint">Domiciliario</span>
-              <p className="font-body text-xs text-coal/50 truncate">{sede?.id === 'all' ? 'Ambas sedes' : sede?.name}</p>
-            </div>
-          </div>
+
+      {/* En la mano, en la calle: arriba solo el GPS y los avisos. Lo demás
+          vive en «Más», en la barra de abajo. */}
+      <header className="px-4 pt-4 pb-3 flex items-center gap-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
+        <div className="flex-1 min-w-0">
+          <p className="font-body text-xs font-semibold text-coal/60 truncate">
+            Hola, {nombre}{sede ? ` · ${sede.id === 'all' ? 'Ambas sedes' : sede.name}` : ''}
+          </p>
+          <h1 className="font-display text-[32px] tracking-wide leading-none text-coal normal-case mt-0.5">{titulo}</h1>
         </div>
-        {/* En la mano, en la calle: en el encabezado solo lo que se usa en cada
-            entrega. Lo demás vive en el menú, que antes era una tercera fila
-            de iconos sueltos. */}
-        <div className="flex items-center gap-1.5 justify-end">
-          <BotonPushEquipo email={user?.email} rol="driver" sedeId={sede?.id} />
-          <BotonSilencio />
-          <button onClick={toggleLocationSharing} title={locationSharing ? 'Desactivar GPS compartido' : 'Compartir mi ubicación con cajero'}
-            className={`btn-icon relative ${locationSharing ? 'text-mint' : 'text-coal/60 hover:text-mint'}`}>
-            <Radio size={18} aria-hidden="true" />
-            {locationSharing && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-mint" />}
-          </button>
-          <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
-            onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) setSelected(o) }} />
-          <div className="relative">
-            <button onClick={() => setMenu(v => !v)} className="btn-icon" title="Más opciones"
-              aria-label="Más opciones" aria-expanded={menu}>
-              <MoreVertical size={20} aria-hidden="true" />
-            </button>
-            {menu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
-                <div className="absolute right-0 top-12 z-50 w-60 card p-2 flex flex-col gap-0.5">
-                  <button onClick={() => { setMenu(false); setShowManual(true) }} className={ITEM_MENU}>
-                    <BookOpen size={16} aria-hidden="true" /> Manual del domiciliario
-                  </button>
-                  <button onClick={() => { setMenu(false); setShowCuadre(true) }} className={ITEM_MENU}>
-                    <Calculator size={16} aria-hidden="true" /> Cuadre de turno
-                  </button>
-                  <button onClick={() => { setMenu(false); selectSede(null) }} className={ITEM_MENU}>
-                    <MapPin size={16} aria-hidden="true" /> Cambiar de sede
-                  </button>
-                  <div className="flex items-center justify-between gap-2 px-3 py-1">
-                    <span className="font-body text-sm text-coal/60">Ver como</span>
-                    <RoleSwitcher />
-                  </div>
-                  <BotonMisSesiones variante="menu" className={ITEM_MENU} />
-                  <BotonCambiarEmpleado variante="menu" className={ITEM_MENU} antes={() => setMenu(false)} />
-                  <button onClick={logout} className={`${ITEM_MENU} text-pepper`}>
-                    <LogOut size={16} aria-hidden="true" /> Cerrar sesión
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <button onClick={toggleLocationSharing} aria-pressed={locationSharing}
+          title={locationSharing ? 'La caja ve dónde estás. Toca para dejar de compartir' : 'Compartir mi ubicación con la caja'}
+          className={`min-h-[40px] rounded-full px-3 flex items-center gap-1.5 font-body text-xs font-bold ${
+            locationSharing ? 'bg-mint/[0.12] text-[#12766B]' : 'bg-cherry/[0.12] text-[#B3261E]'}`}>
+          <span className={`w-2 h-2 rounded-full ${locationSharing ? 'bg-mint' : 'bg-cherry'}`} aria-hidden="true" />
+          {locationSharing ? 'GPS activo' : 'GPS apagado'}
+        </button>
+        <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
+          onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) abrir(o) }} />
       </header>
 
-      <TurnoDomiciliario email={user?.email} pendientes={activeOrders.length + pendingOrders.length}
-        onEstado={(estado) => {
-          // En turno se comparte la ubicación con la caja; al terminar sin pedidos, se apaga.
-          if (estado === 'activo' && !locationSharing) toggleLocationSharing()
-          if (estado === 'fuera' && locationSharing && activeOrders.length === 0) toggleLocationSharing()
-        }} />
+      {vista === 'ruta' && (
+        <>
+          <TurnoDomiciliario email={user?.email} pendientes={activeOrders.length + pendingOrders.length}
+            onDatos={(d) => setOrdenRuta(Array.isArray(d.ordenRuta) ? d.ordenRuta : [])}
+            onEstado={(estado) => {
+              // En turno se comparte la ubicación con la caja; al terminar sin pedidos, se apaga.
+              if (estado === 'activo' && !locationSharing) toggleLocationSharing()
+              if (estado === 'fuera' && locationSharing && activeOrders.length === 0) toggleLocationSharing()
+            }} />
 
-      {/* Antes rebotaba sin parar y no se podía tocar: el rojo ya llama la
-          atención, y ahora lleva derecho a los pedidos por aceptar. */}
-      {notifCount > 0 && (
-        <button onClick={() => setTab('pending')}
-          className="mx-4 mt-3 bg-cherry text-cream rounded-2xl px-4 py-3 flex items-center gap-3 text-left
-                     transition-transform duration-150 active:scale-[0.99]">
-          <Bell size={18} className="flex-shrink-0" aria-hidden="true" />
-          <p className="font-body font-semibold text-sm">
-            {notifCount === 1 ? '¡Tienes 1 pedido nuevo!' : `¡Tienes ${notifCount} pedidos nuevos!`}
-          </p>
-          <ChevronRight size={18} className="ml-auto flex-shrink-0" aria-hidden="true" />
-        </button>
-      )}
-
-      <div className="flex border-b border-coal/10 bg-cream/80 px-4 mt-2">
-        {TABS.filter(t => t.id !== 'pending' || pendingOrders.length > 0).map(t => {
-          const count = t.id === 'pending' ? pendingOrders.length : t.id === 'active' ? activeOrders.length : completedOrders.length
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'}>
-              {t.label}
-              {count > 0 && (
-                <span key={count} className={`ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block animate-pop ${
-                  t.id === 'pending' ? 'bg-cherry text-cream' : 'bg-coal/10 text-coal'
-                }`}>{count}</span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Botones volver a sede */}
-      <div className="mx-4 mt-2 flex gap-2">
-        {Object.values(SEDES).map(s => (
-          <button key={s.id} onClick={() => { setShowReturnNav(s.id) }}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-cherry/10 border border-cherry/20 text-cherry hover:bg-cherry/20 transition-colors">
-            <MapPin size={13} className="flex-shrink-0" />
-            <span className="font-body text-xs font-semibold truncate">Volver a {s.name}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Date picker for completed tab */}
-      {tab === 'completed' && (
-        <div className="mx-4 mt-3 flex items-center gap-3">
-          <div className="flex items-center gap-2 flex-1">
-            <Search size={16} className="text-coal/40 flex-shrink-0" />
-            <input
-              type="date"
-              className="input-field py-2 text-sm"
-              value={historyDate}
-              onChange={e => setHistoryDate(e.target.value)}
-              max={format(new Date(), 'yyyy-MM-dd')}
-            />
-          </div>
-          {historyDate && (
-            <button onClick={() => setHistoryDate('')}
-              className="text-xs font-body text-cherry underline whitespace-nowrap">
-              Ver hoy
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Cash to collect banner in active tab */}
-      {tab === 'active' && activeOrders.some(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto') && (() => {
-        const total = activeOrders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto').reduce((s, o) => s + cashAmount(o), 0)
-        return (
-          <div className="mx-4 mt-2 bg-mustard/15 border border-mustard/30 rounded-xl px-4 py-2.5 flex items-center justify-between">
-            <span className="font-body text-xs font-semibold text-coal/70">Efectivo a cobrar en ruta:</span>
-            <span className="font-display text-lg text-mustard">{fmt(total)}</span>
-          </div>
-        )
-      })()}
-
-      {/* Nearby orders alert + route suggestion (sólo en Pedidos / En curso, con ≥2 pedidos) */}
-      {tab !== 'completed' && routableOrders.length >= 2 && (
-        <div className="mx-4 mt-2 flex flex-col gap-2">
-          {nearbyClusters.length > 0 && (
-            <button
-              onClick={() => setShowRoute(true)}
-              className="w-full bg-mint/15 border border-mint/40 rounded-xl px-4 py-2.5 flex items-center gap-3 hover:bg-mint/25 transition-colors text-left"
-            >
-              <Target size={18} className="text-mint flex-shrink-0 animate-pulse" />
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-sm font-bold text-coal leading-tight">
-                  {totalNearby === 2
-                    ? '¡2 pedidos a menos de 400 m!'
-                    : `¡${totalNearby} pedidos en ${nearbyClusters.length === 1 ? 'la misma zona' : `${nearbyClusters.length} zonas`} (≤ 400 m)!`}
-                </p>
-                <p className="font-body text-xs text-coal/60">Toca para ver ruta sugerida</p>
-              </div>
-              <Route size={18} className="text-mint flex-shrink-0" />
-            </button>
-          )}
-          {nearbyClusters.length === 0 && (
-            <button
-              onClick={() => setShowRoute(true)}
-              className="w-full bg-cherry/10 border border-cherry/30 rounded-xl px-4 py-2.5 flex items-center gap-3 hover:bg-cherry/20 transition-colors text-left"
-            >
-              <Route size={18} className="text-cherry flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-sm font-bold text-coal leading-tight">
-                  Sugerir orden de entrega ({routableOrders.length} pedidos)
-                </p>
-                <p className="font-body text-xs text-coal/60">
-                  {Object.keys(geoCache).length < routableOrders.length
-                    ? 'Calculando ubicaciones…'
-                    : 'Ruta optimizada desde la sede'}
-                </p>
-              </div>
-              <Navigation size={16} className="text-cherry flex-shrink-0" />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Summary for completed tab */}
-      {tab === 'completed' && tabOrders.length > 0 && (
-        <DriverEntregadosSummary orders={tabOrders} />
-      )}
-
-      <main className="flex-1 overflow-y-auto scroll-custom p-4 flex flex-col gap-3 stagger">
-        {tabOrders.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 py-16">
-            {tab === 'pending' ? <Bike size={32} className="text-coal/25" aria-hidden="true" />
-              : tab === 'active' ? <Route size={32} className="text-coal/25" aria-hidden="true" />
-              : <CheckCircle size={32} className="text-coal/25" aria-hidden="true" />}
-            <p className="font-body text-coal/40 text-center">
-              {tab === 'pending' ? 'Sin pedidos nuevos' : tab === 'active' ? 'No tienes pedidos en curso' :
-               historyDate ? `No hay entregados para esa fecha` : 'No hay entregados hoy'}
+          {notifCount > 0 && (
+            <p className="mx-4 mt-3 bg-[#C8261D] text-white rounded-2xl px-4 py-3 flex items-center gap-3 font-body font-semibold text-sm">
+              <Bell size={18} className="flex-shrink-0" aria-hidden="true" />
+              {notifCount === 1 ? '¡Tienes 1 pedido por aceptar!' : `¡Tienes ${notifCount} pedidos por aceptar!`}
             </p>
-          </div>
-        )}
-        {tabOrders.map(order => (
-          <DriverOrderCard key={order.id} order={order} onClick={() => setSelected(order)} />
-        ))}
-      </main>
+          )}
 
-      {selected && <DriverOrderDetail key={selected.id} order={selected} onClose={() => setSelected(null)} />}
+          {primera ? (
+            <SiguienteParada key={primera.id} order={primera} geoCache={geoCache}
+              onAbrir={() => abrir(primera)} alListo={recargar} />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 py-14">
+              <Route size={32} className="text-coal/25" aria-hidden="true" />
+              <p className="font-body text-coal/50 text-center">No tienes pedidos en curso</p>
+            </div>
+          )}
+
+          {despues.length > 0 && (
+            <>
+              <div className="mx-4 mt-5 mb-2 flex items-baseline justify-between gap-2">
+                <p className="font-display text-[22px] tracking-wide text-coal normal-case">Después</p>
+                <p className="font-body text-xs text-coal/60">
+                  {efectivoEnRuta > 0 ? `Cobrar en ruta: ${fmt(efectivoEnRuta)}` : 'En el orden de la ruta'}
+                </p>
+              </div>
+              <div className="mx-4 flex flex-col gap-2">
+                {despues.map((o, i) => <ParadaFila key={o.id} order={o} orden={i + 2} onClick={() => abrir(o)} />)}
+              </div>
+            </>
+          )}
+
+          {/* Pedidos cercanos y orden sugerido (con 2 o más pedidos) */}
+          {routableOrders.length >= 2 && (
+            <button onClick={() => setShowRoute(true)}
+              className={`mx-4 mt-3 rounded-2xl px-4 py-3 flex items-center gap-3 text-left border ${
+                nearbyClusters.length > 0 ? 'bg-mint/15 border-mint/40' : 'bg-white border-coal/10'}`}>
+              {nearbyClusters.length > 0
+                ? <Target size={20} className="text-mint flex-shrink-0" aria-hidden="true" />
+                : <Route size={20} className="text-[#C8261D] flex-shrink-0" aria-hidden="true" />}
+              <span className="flex-1 min-w-0">
+                <span className="block font-body text-sm font-bold text-coal leading-tight">
+                  {nearbyClusters.length === 0 ? `Sugerir orden de entrega (${routableOrders.length} pedidos)`
+                    : totalNearby === 2 ? '¡2 pedidos a menos de 400 m!'
+                    : `¡${totalNearby} pedidos en ${nearbyClusters.length === 1 ? 'la misma zona' : `${nearbyClusters.length} zonas`} (≤ 400 m)!`}
+                </span>
+                <span className="block font-body text-xs text-coal/60">
+                  {Object.keys(geoCache).length < routableOrders.length ? 'Calculando ubicaciones…' : 'Toca para ver la ruta sugerida'}
+                </span>
+              </span>
+              <ChevronRight size={18} className="text-coal/40 flex-shrink-0" aria-hidden="true" />
+            </button>
+          )}
+        </>
+      )}
+
+      {vista === 'entregados' && (
+        <>
+          <DriverEntregadosSummary orders={completedOrders} onCuadre={() => setShowCuadre(true)} />
+          <div className="mx-4 mt-4 flex items-center gap-2">
+            <Calendar size={16} className="text-coal/50 flex-shrink-0" aria-hidden="true" />
+            <input type="date" aria-label="Ver otro día" className="input-field py-2 text-sm flex-1"
+              value={historyDate} onChange={e => setHistoryDate(e.target.value)} max={format(new Date(), 'yyyy-MM-dd')} />
+            {historyDate && (
+              <button onClick={() => setHistoryDate('')} className="font-body text-sm font-semibold text-[#C8261D] whitespace-nowrap px-2 min-h-[44px]">Ver hoy</button>
+            )}
+          </div>
+          {completedOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-14">
+              <CheckCircle size={32} className="text-coal/25" aria-hidden="true" />
+              <p className="font-body text-coal/50 text-center">{historyDate ? 'No hay entregados para esa fecha' : 'No hay entregados hoy'}</p>
+            </div>
+          ) : (
+            <div className="mx-4 mt-3 bg-white rounded-[18px] border border-coal/10 overflow-hidden divide-y divide-coal/[0.08]">
+              {completedOrders.map(o => (
+                <button key={o.id} onClick={() => abrir(o)} className="w-full text-left flex items-center gap-2.5 px-4 py-3 min-h-[52px]">
+                  <Check size={18} className="text-[#12766B] flex-shrink-0" aria-hidden="true" />
+                  {o.orderNumber && <span className="font-display text-lg leading-none text-[#C8261D]">#{o.orderNumber}</span>}
+                  <span className="flex-1 min-w-0 font-body text-sm font-semibold truncate">{nombreDe(o)}</span>
+                  <span className="font-body text-xs text-coal/55">{o.deliveredAt?.toDate ? format(o.deliveredAt.toDate(), 'h:mm a', { locale: es }) : ''}</span>
+                  <span className="font-body text-sm font-bold min-w-[72px] text-right">{fmt(o.totalPrice)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {vista === 'caja' && <VistaCaja pedidos={pedidosConCaja} vistos={vistos} onAbrir={(o) => abrir(o, { notas: true })} />}
+
+      <NavDomiciliario vista={vista} cuentas={{ ruta: ruta.length, caja: sinLeerCaja }}
+        setVista={(v) => (v === 'mas' ? setMas(true) : setVista(v))} />
+
+      {mas && (
+        <HojaMas user={user} sede={sede} allRoles={allRoles} logout={logout} onCerrar={() => setMas(false)}
+          onManual={() => setShowManual(true)} onCuadre={() => setShowCuadre(true)}
+          onCambiarSede={() => selectSede(null)} onVolverSede={(id) => setShowReturnNav(id)} />
+      )}
+
+      {selectedOrder && (
+        <DriverOrderDetail key={selectedOrder.id} order={selectedOrder} abrirNotas={selected?.notas}
+          parada={ruta.findIndex(o => o.id === selectedOrder.id) + 1} totalParadas={ruta.length}
+          siguienteParada={ruta.find(o => o.id !== selectedOrder.id)}
+          onSiguiente={(o) => abrir(o)} alListo={recargar}
+          onVerNotas={() => marcarVisto(selectedOrder)}
+          notasSinLeer={(selectedOrder.comments || []).filter(c => c.role === 'cashier' && (c.ts || 0) > (vistos[selectedOrder.id] || 0)).length}
+          onClose={() => setSelected(null)} />
+      )}
 
       {showCuadre && (
         <DriverCuadreTurnoModal orders={orders} sede={sede} user={user} onClose={() => setShowCuadre(false)} />
@@ -701,55 +642,20 @@ function SedeBadge({ order, size = 'sm' }) {
   )
 }
 
-// ─── Mini card ────────────────────────────────────────────────────────────────
-function DriverOrderCard({ order, onClick }) {
-  return (
-    <button onClick={onClick}
-      className={`order-card w-full text-left ${order.status === 'assigned' ? 'border-cherry bg-cherry/5' : 'border-smoked'}`}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          {order.orderNumber && <span className="font-display text-lg text-cherry">#{order.orderNumber}</span>}
-          <StatusBadge status={order.status} />
-          <SedeBadge order={order} />
-        </div>
-        {order.status === 'assigned' && (
-          <span className="text-xs font-semibold text-cherry animate-pulse font-body">¡Aceptar!</span>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <User size={13} className="text-coal/40" />
-        <span className="font-body font-semibold text-sm">
-          {order.destinatario?.nombre ? `${order.destinatario.nombre} (lo pidió ${order.name?.split(' ')[0] || 'otra persona'})` : order.name}
-        </span>
-      </div>
-      <div className="flex items-start gap-1.5 mb-1">
-        <MapPin size={13} className="text-coal/40 mt-0.5 flex-shrink-0" />
-        <span className="font-body text-xs text-coal/60 line-clamp-2">{order.fullAddress}</span>
-      </div>
-      {order.totalPrice > 0 && (
-        <div className="flex items-center gap-2 mt-1">
-          <DollarSign size={12} className="text-mint" />
-          <span className="font-body text-xs font-semibold text-mint">Total: {fmt(order.totalPrice)}</span>
-          {order.deliveryPrice > 0 && (
-            <span className="font-body text-xs text-coal/40">· Domicilio: {fmt(order.deliveryPrice)}</span>
-          )}
-        </div>
-      )}
-      {order.loyaltyRedemption?.count > 0 && (
-        <p className="mt-1.5 font-body text-xs font-bold text-mint flex items-center gap-1.5">
-          <Gift size={13} aria-hidden="true" /> Incluye premio gratis
-        </p>
-      )}
-    </button>
-  )
-}
+// ─── Detalle del pedido (rediseño del 25 oct 2026) ────────────────────────────
+// Pantalla completa: barra de pasos, cliente, dirección con Maps/Waze, cobro en
+// grande, lo que lleva, chats y abajo un solo botón fijo para avanzar.
+const PASOS_REPARTO = ['Recogido', 'En camino', 'Llegué', 'Entregado']
+const horaCorta = t => (t?.toDate ? format(t.toDate(), 'h:mm a', { locale: es }) : '')
 
-// ─── Full detail + actions ────────────────────────────────────────────────────
-function DriverOrderDetail({ order, onClose }) {
+export function DriverOrderDetail({ order, onClose, abrirNotas = false, parada = 0, totalParadas = 0, siguienteParada, onSiguiente, alListo, onVerNotas, notasSinLeer = 0 }) {
   const { user } = useAuth()
-  const [loading,        setLoading]       = useState(false)
   const [commentText,    setCommentText]   = useState('')
   const [sendingComment, setSendingComment] = useState(false)
+  const [verPedido,      setVerPedido]     = useState(false)
+  const [verNotas,       setVerNotas]      = useState(abrirNotas)
+  const [noEntrega,      setNoEntrega]     = useState(false)
+  const notasRef = useRef(null)
 
   // Address editing
   const [localAddr,      setLocalAddr]      = useState(order.fullAddress || '')
@@ -768,24 +674,6 @@ function DriverOrderDetail({ order, onClose }) {
   // Se guarda junto a la dirección que las produjo: así, si la dirección
   // cambia, el resultado viejo deja de valer sin tener que limpiarlo a mano.
   const [autoGeo, setAutoGeo] = useState({ addr: null, coords: null })
-
-  // Cambios del domiciliario por la API (el servidor valida y cuenta la
-  // fidelización al entregar). Si el servidor no responde, el camino directo.
-  // Devuelve false si hubo un error que se le mostró al domiciliario.
-  const update = async (ruta, cuerpo, data, despuesDirecto) => {
-    setLoading(true)
-    try {
-      await conApi(`${order.id}/${ruta}`, { ...cuerpo, version: order.version ?? 0 }, async () => {
-        await actualizarPedido(order, data, { rol: 'domiciliario' })
-        despuesDirecto?.()
-      })
-      onClose()
-      return true
-    } catch (err) {
-      if (err instanceof ErrorApi) { alert(err.message); return false }
-      throw err
-    } finally { setLoading(false) }
-  }
 
   const sendComment = async () => {
     if (!commentText.trim()) return
@@ -855,46 +743,6 @@ function DriverOrderDetail({ order, onClose }) {
     } finally { setSavingAddr(false) }
   }
 
-  const accept    = () => update('aceptar', {}, { status: 'accepted', acceptedAt: serverTimestamp() })
-  const prepare   = () => update('transiciones', { a: 'en_preparacion' }, { status: 'preparing', preparingAt: serverTimestamp() })
-  // Al salir se calcula a qué hora llega: es el único momento seguro con la
-  // página abierta (después el domiciliario navega con Google Maps o Waze y
-  // el celular pausa la página y su GPS). Se guarda en el pedido para que el
-  // cliente vea una hora real aunque no lleguen más ubicaciones.
-  const transit = async () => {
-    const salio = await update('transiciones', { a: 'en_camino' }, { status: 'in_transit', inTransitAt: serverTimestamp() })
-    if (!salio || !navCoords) return
-    const gps = await new Promise(res => {
-      if (!navigator.geolocation) { res(null); return }
-      navigator.geolocation.getCurrentPosition(
-        p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
-        () => res(null),
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 },
-      )
-    })
-    const desde = gps || SEDES[order.sedeId]?.coords
-    if (!desde) return
-    const ruta = await medirRuta(desde, navCoords)
-    if (!ruta?.min) return
-    await updateDoc(doc(db, 'orders', order.id), {
-      etaMin:       ruta.min,
-      etaLlegadaAt: llegadaEn(ruta.min),
-      etaDesde:     gps ? 'gps' : 'sede',
-      ...(gps ? { driverLat: gps.lat, driverLng: gps.lng, driverUpdatedAt: serverTimestamp() } : {}),
-    }).catch(err => console.error('[DeliveryPanel] eta update failed:', err))
-  }
-  const arrived   = () => update('transiciones', { a: 'llego' }, { status: 'arrived', arrivedAt: serverTimestamp() })
-
-  const markDelivered = () => {
-    // §13.1: pagada en digital, no se entrega hasta que la caja confirme la plata.
-    if (transferenciaPendiente(order)) { alert('La caja aún no confirma la transferencia. Pídele que la verifique antes de entregar.'); return }
-    const isCash = order.cashOnDelivery || order.payment === 'Efectivo' || order.payment === 'Mixto'
-    const newStatus = isCash ? 'pending_cuadre' : 'completed'
-    // Por la API el servidor cuenta la fidelización; en el respaldo, como siempre.
-    update('transiciones', { a: 'entregado' }, { status: newStatus, deliveredAt: serverTimestamp() },
-      () => registerLoyaltyDelivery(order)) // best-effort, no bloquea la entrega
-  }
-
   // ── A dónde navegamos ──────────────────────────────────────────────────────
   // Por orden de confianza:
   //   1. Pin exacto del pedido (lo puso el cliente al pedir, o lo pegó el
@@ -916,18 +764,7 @@ function DriverOrderDetail({ order, onClose }) {
   const autoCoords = (!hasCoords && autoGeo.addr === localAddr) ? autoGeo.coords : null
   const navCoords  = hasCoords ? { lat: order.addrLat, lng: order.addrLng } : autoCoords
   const precision  = hasCoords ? 'pin' : (autoCoords ? 'aprox' : 'texto')
-  const navAddress = encodeURIComponent(localAddr + ', Medellín, Colombia')
 
-  const openMaps = () => window.open(
-    navCoords
-      ? `https://www.google.com/maps/dir/?api=1&destination=${navCoords.lat},${navCoords.lng}`
-      : `https://www.google.com/maps/dir/?api=1&destination=${navAddress}`,
-    '_blank')
-  const openWaze = () => window.open(
-    navCoords
-      ? `https://waze.com/ul?ll=${navCoords.lat},${navCoords.lng}&navigate=yes`
-      : `https://waze.com/ul?q=${encodeURIComponent(localAddr)}&navigate=yes`,
-    '_blank')
 
   // ── Pedir la ubicación por WhatsApp ────────────────────────────────────────
   // Si lo recibe otra persona, la ubicación se le pide a ella (§7.3).
@@ -956,103 +793,166 @@ function DriverOrderDetail({ order, onClose }) {
     } finally { setPinSaving(false) }
   }
 
+  const { loading, siguiente, markDelivered } = useAccionesReparto(order, { navCoords, alListo })
+  const paso = pasoReparto(order)
+  const entregado = paso === 3
+  const etiqueta = etiquetaReparto(order)
+  const detalleEtapa = order.status === 'in_transit' && order.inTransitAt ? `${etiqueta.texto} · salió ${horaCorta(order.inTransitAt)}`
+    : entregado && order.deliveredAt ? `Entregado ${horaCorta(order.deliveredAt)}` : etiqueta.texto
+  const notasDeCaja = (order.comments || []).filter(c => c.role === 'cashier')
+  const ultimaCaja = [...notasDeCaja].sort((a, b) => (b.ts || 0) - (a.ts || 0))[0]
+  const abrirLasNotas = () => {
+    setVerNotas(true); onVerNotas?.()
+    setTimeout(() => notasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+  useEffect(() => {
+    if (abrirNotas) setTimeout(() => notasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Mientras tiene las notas abiertas, lo que llegue ya lo vio.
+  useEffect(() => { if (verNotas) onVerNotas?.() }, [verNotas, order.comments?.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const waPhone = (() => {
+    const digits = (order.phone || '').replace(/\D/g, '')
+    return digits.length >= 10 ? `57${digits.slice(-10)}` : digits
+  })()
+  const tarjeta = 'mx-4 bg-white border border-coal/10 rounded-[20px] p-3.5'
+  const botonGrande = 'w-full min-h-[58px] rounded-[18px] font-body text-[17px] font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50 shadow-[0_14px_24px_-16px_rgba(38,38,38,0.7)]'
+  const enExcepcion = ['no_entregado', 'regreso_declarado'].includes(order.excepcion) || (order.status === 'arrived' && etiqueta.tono === 'alerta')
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
-        <div className="sticky top-0 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
-          <div className="flex items-center gap-2 flex-wrap">
-            {order.orderNumber && <span className="font-display text-2xl text-cherry">#{order.orderNumber}</span>}
-            <StatusBadge status={order.status} />
-            <SedeBadge order={order} size="lg" />
+    // Por encima de la barra de abajo (z-60). El botón fijo va fuera de la parte
+    // que se desplaza: la animación de entrada vuelve `fixed` relativo a ella.
+    <div className="fixed inset-0 z-[70] bg-cream animate-fade-in">
+      <div className="absolute inset-0 overflow-y-auto scroll-custom">
+      <div className="max-w-lg mx-auto flex flex-col gap-2.5" style={{ paddingBottom: 'calc(170px + env(safe-area-inset-bottom))' }}>
+        <header className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm px-4 pb-2.5 flex items-center gap-2.5"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 14px)' }}>
+          <button onClick={onClose} aria-label="Volver a mi ruta"
+            className="w-11 h-11 rounded-2xl border border-coal/10 bg-white flex items-center justify-center text-coal flex-shrink-0">
+            <ChevronLeft size={21} aria-hidden="true" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="flex items-baseline gap-2 flex-wrap">
+              {order.orderNumber && <span className="font-display text-[32px] leading-none text-[#C8261D]">#{order.orderNumber}</span>}
+              {parada > 0 && !entregado && <span className="font-body text-xs font-semibold text-coal/60">Parada {parada} de {totalParadas}</span>}
+            </p>
+            <p className={`font-body text-xs font-bold mt-0.5 ${etiqueta.tono === 'ok' ? 'text-[#12766B]' : etiqueta.tono === 'espera' ? 'text-[#8A5300]' : 'text-[#B3261E]'}`}>{detalleEtapa}</p>
           </div>
-          <button onClick={onClose} className="btn-icon text-coal/50" aria-label="Cerrar"><X size={20} aria-hidden="true" /></button>
+          <SedeBadge order={order} />
+        </header>
+
+        <div className="mx-4 grid grid-cols-4 gap-1" aria-label={`Paso ${paso + 1} de 4`}>
+          {PASOS_REPARTO.map((t, i) => (
+            <div key={t} className="flex flex-col gap-1.5">
+              <span className={`h-1.5 rounded-full ${i < paso || entregado ? 'bg-mint' : i === paso ? 'bg-[#C8261D]' : 'bg-coal/[0.12]'}`} />
+              <span className={`font-body text-[10px] font-bold ${i <= paso ? 'text-coal' : 'text-coal/45'}`}>{t}</span>
+            </div>
+          ))}
         </div>
 
-        <div className="p-5 flex flex-col gap-4">
-          {/* Premio de fidelización canjeado */}
-          {order.loyaltyRedemption?.count > 0 && (
-            <div className="bg-mint/15 border-2 border-mint rounded-2xl p-4">
-              <p className="font-display text-base tracking-wide text-mint flex items-center gap-2">
-                <Gift size={17} aria-hidden="true" /> Incluye premio de fidelización
+        {entregado && (
+          <>
+            <section className="mx-4 mt-3 rounded-3xl bg-mint text-white px-5 py-7 flex flex-col items-center gap-2 text-center">
+              <span className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center"><Check size={34} strokeWidth={2.6} aria-hidden="true" /></span>
+              <p className="font-display text-[30px] tracking-wide normal-case">¡Pedido entregado!</p>
+              <p className="font-body text-sm opacity-90">
+                {esEfectivo(order) ? `${fmt(cashAmount(order))} en efectivo quedan en tu cuadre` : 'Ya estaba pagado: no hay nada que entregar en la caja'}
               </p>
-              <p className="font-body text-sm text-coal/80 mt-1">
-                Este pedido lleva {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta) — ya está cubierto, no es parte del cobro.
-              </p>
-            </div>
-          )}
+            </section>
+            {siguienteParada && (
+              <button onClick={() => onSiguiente?.(siguienteParada)} className={`${tarjeta} flex items-center gap-3 text-left`}>
+                <span className="w-8 h-8 rounded-full bg-coal text-cream font-display text-lg flex items-center justify-center flex-shrink-0">→</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-body text-[11px] font-bold text-coal/55 uppercase tracking-wide">Siguiente parada</span>
+                  <span className="block font-body text-sm font-bold truncate">
+                    {siguienteParada.orderNumber ? `#${siguienteParada.orderNumber} ` : ''}{nombreDe(siguienteParada)}{siguienteParada.barrio ? ` · ${siguienteParada.barrio}` : ''}
+                  </span>
+                </span>
+              </button>
+            )}
+          </>
+        )}
 
-          {/* Indicaciones breves de la caja (CP-4) */}
-          <IndicacionesBreves order={order} />
+        {/* No pudo entregar: la instrucción de la caja va primero (CP-1 a CP-3) */}
+        {enExcepcion && (
+          <section className={`${tarjeta} mt-1.5`}>
+            <EstadoNoEntrega order={order} onHablarCaja={abrirLasNotas}
+              entregar={(
+                <button onClick={markDelivered} disabled={loading || transferenciaPendiente(order)}
+                  className="w-full min-h-[56px] rounded-2xl bg-mint text-white font-body text-base font-bold disabled:opacity-50">
+                  {esEfectivo(order) ? 'Sí lo entregué: cobré' : 'Sí lo entregué'}
+                </button>
+              )} />
+          </section>
+        )}
 
-          {/* Para otra persona: los dos contactos, identificados (§7.3) */}
-          {order.destinatario?.nombre ? <ContactosParaOtro order={order} rol="domiciliario" /> : (
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <User size={16} className="text-cherry" />
-              <p className="font-display text-base tracking-wide">{order.name}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <a href={`tel:${order.phone}`} className="flex items-center gap-2 text-cherry font-body text-sm font-semibold">
-                <Phone size={14} /> {order.phone}
-              </a>
-              {order.phone && (() => {
-                const digits  = order.phone.replace(/\D/g, '')
-                const waPhone = digits.length >= 10 ? `57${digits.slice(-10)}` : digits
-                return (
-                  <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-body text-xs font-semibold hover:bg-[#25D366]/20 transition-colors">
-                    <LogoWhatsApp size={16} /> WhatsApp
-                  </a>
-                )
-              })()}
-            </div>
+        {!entregado && order.loyaltyRedemption?.count > 0 && (
+          <div className="mx-4 bg-mint/15 border-2 border-mint rounded-2xl p-3.5">
+            <p className="font-body text-sm font-bold text-[#12766B] flex items-center gap-2"><Gift size={17} aria-hidden="true" /> Incluye premio de fidelización</p>
+            <p className="font-body text-xs text-coal/80 mt-1">
+              Lleva {order.loyaltyRedemption.count}x premio GRATIS (Hamburguesa Especial + Perro Grande con tocineta): ya está cubierto, no es parte del cobro.
+            </p>
           </div>
-          )}
+        )}
 
-          {/* Address + navigation */}
-          <div className="card">
+        {!entregado && <div className="mx-4"><IndicacionesBreves order={order} /></div>}
+
+        {/* Cliente. Para otra persona: los dos contactos, identificados (§7.3) */}
+        {!entregado && (order.destinatario?.nombre ? <div className="mx-4"><ContactosParaOtro order={order} rol="domiciliario" /></div> : (
+          <section className={`${tarjeta} flex flex-col gap-2.5`}>
+            <div className="flex items-center gap-2.5">
+              <span className="w-10 h-10 rounded-full bg-smoked font-display text-lg flex items-center justify-center flex-shrink-0">
+                {(order.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="font-body text-[15px] font-bold truncate">{order.name}</p>
+                {order.phone && <p className="font-body text-xs text-coal/60">{order.phone}</p>}
+              </div>
+            </div>
+            {order.phone && (
+              <div className="grid grid-cols-2 gap-2">
+                <a href={`tel:${order.phone}`} className="min-h-[48px] rounded-2xl border-2 border-coal font-body text-sm font-bold text-coal flex items-center justify-center gap-1.5">
+                  <Phone size={17} aria-hidden="true" /> Llamar
+                </a>
+                <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noreferrer"
+                  className="min-h-[48px] rounded-2xl bg-white border-2 border-[#25D366] font-body text-sm font-bold text-coal flex items-center justify-center gap-1.5">
+                  <LogoWhatsApp size={20} /> WhatsApp
+                </a>
+              </div>
+            )}
+          </section>
+        ))}
+
+        {/* Dirección y navegación */}
+        {!entregado && (
+          <section className={tarjeta}>
             {!editingAddr ? (
-              <>
-                <div className="flex items-start gap-2 mb-3">
-                  <MapPin size={16} className="text-cherry flex-shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-start gap-2.5">
+                  <MapPin size={20} className="text-[#C8261D] flex-shrink-0 mt-0.5" aria-hidden="true" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-body font-semibold text-sm">{localAddr}</p>
-                    {order.barrio    && <p className="font-body text-xs text-coal/50">Barrio: {order.barrio}</p>}
-                    {order.reference && <p className="font-body text-xs text-coal/50">Ref: {order.reference}</p>}
+                    <p className="font-body text-[15px] font-bold">{localAddr}</p>
+                    {(order.barrio || order.reference) && (
+                      <p className="font-body text-xs text-coal/60 mt-0.5">{[order.barrio, order.reference && `«${order.reference}»`].filter(Boolean).join(' · ')}</p>
+                    )}
+                    <p className={`font-body text-[11px] font-bold mt-1.5 ${precision === 'pin' ? 'text-[#12766B]' : precision === 'aprox' ? 'text-[#8a5a00]' : 'text-[#B3261E]'}`}>
+                      {precision === 'pin' && '✓ Ubicación exacta: Maps y Waze te llevan al punto'}
+                      {precision === 'aprox' && 'Ubicación aproximada: te deja cerca. Si no das con la casa, pídele la ubicación'}
+                      {precision === 'texto' && 'Sin ubicación en el mapa: Waze casi siempre falla. Pídele la ubicación al cliente'}
+                    </p>
                   </div>
                 </div>
-                {/* Qué tan confiable es a dónde va a navegar */}
-                <div className={`mb-2 rounded-xl border px-3 py-2 flex items-start gap-2 ${
-                  precision === 'pin'   ? 'bg-mint/10 border-mint/30'
-                  : precision === 'aprox' ? 'bg-mustard/10 border-mustard/30'
-                  : 'bg-cherry/10 border-cherry/30'}`}>
-                  <Target size={14} className={`flex-shrink-0 mt-0.5 ${
-                    precision === 'pin' ? 'text-mint' : precision === 'aprox' ? 'text-mustard' : 'text-cherry'}`} />
-                  <p className="font-body text-[11px] leading-relaxed text-coal/70">
-                    {precision === 'pin'   && <><b className="text-mint">Ubicación exacta.</b> Maps y Waze te llevan al punto exacto.</>}
-                    {precision === 'aprox' && <><b className="text-[#8a5a00]">Ubicación aproximada.</b> Te deja cerca, sobre la vía. Si no das con la casa, pídele la ubicación al cliente.</>}
-                    {precision === 'texto' && <><b className="text-cherry">Sin ubicación en el mapa.</b> Waze va a buscar por el texto y casi siempre falla. Pídele la ubicación al cliente.</>}
-                  </p>
-                </div>
-
-                <div className="flex gap-2 mb-2">
-                  <button onClick={openMaps} className="btn-secondary btn-sm flex-1"><LogoGoogleMaps size={15} />Maps</button>
-                  <button onClick={openWaze} className="btn-secondary btn-sm flex-1"><LogoWaze size={15} />Waze</button>
-                </div>
-
-                {/* Pedir la ubicación por WhatsApp + pegarla */}
-                {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
-                  <div className="flex flex-col gap-2 mb-2">
-                    {order.phone && (
-                      <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
-                        className="btn w-full justify-center bg-[#25D366] text-white [@media(hover:hover)]:hover:brightness-95">
-                        <LogoWhatsApp size={16} blanco /> Pedirle la ubicación por WhatsApp
-                      </a>
-                    )}
+                <BotonesNavegar coords={navCoords} texto={localAddr} />
+                {order.phone && precision !== 'pin' && (
+                  <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
+                    className="min-h-[48px] rounded-2xl bg-white border-2 border-[#25D366] font-body text-sm font-bold text-coal flex items-center justify-center gap-2">
+                    <LogoWhatsApp size={20} /> Pedirle la ubicación por WhatsApp
+                  </a>
+                )}
+                <div className="flex flex-col gap-1">
                     {!pinOpen ? (
                       <button onClick={() => setPinOpen(true)}
-                        className="btn-link text-xs self-start text-mint decoration-mint/40">
+                        className="btn-link text-xs self-start text-[#12766B] decoration-mint/40 min-h-[40px]">
                         <Target size={14} aria-hidden="true" /> Ya me mandó la ubicación — pegarla aquí
                       </button>
                     ) : (
@@ -1086,17 +986,13 @@ function DriverOrderDetail({ order, onClose }) {
                         </div>
                       </div>
                     )}
-                  </div>
-                )}
-                {!['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
                   <button
                     onClick={() => { setAddrDraft(localAddr); setEditingAddr(true); setAddrSuggestions([]); setAddrSearched(false) }}
-                    className="btn-link text-xs"
-                  >
+                    className="btn-link text-xs self-start min-h-[40px]">
                     <Pencil size={13} aria-hidden="true" /> Corregir dirección
                   </button>
-                )}
-              </>
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
@@ -1146,191 +1042,144 @@ function DriverOrderDetail({ order, onClose }) {
                 </div>
               </div>
             )}
-          </div>
+          </section>
+        )}
 
-          {/* Order items */}
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <ShoppingBag size={16} className="text-cherry" />
-              <p className="font-display text-base tracking-wide">Pedido</p>
-            </div>
-            <p className="font-body text-sm text-coal whitespace-pre-wrap">{order.items}</p>
-            {order.notes && (
-              <div className="mt-2 bg-mustard/10 rounded-lg p-2">
-                <p className="font-body text-xs text-coal/70">{order.notes}</p>
-              </div>
-            )}
-          </div>
+        {!entregado && <div className="mx-4"><TarjetaCobro order={order} grande /></div>}
 
-          {/* Driver notes from cashier */}
-          {order.driverNotes && (
-            <div className="card bg-tangelo/5 border border-tangelo/20">
-              <div className="flex items-center gap-2 mb-1">
-                <MessageSquare size={14} className="text-tangelo" />
-                <p className="font-display text-sm tracking-wide text-tangelo">Nota del cajero</p>
-              </div>
-              <p className="font-body text-sm text-coal">{order.driverNotes}</p>
+        {/* Lo que lleva */}
+        <section className="mx-4 bg-white border border-coal/10 rounded-[20px] overflow-hidden">
+          <button onClick={() => setVerPedido(v => !v)} aria-expanded={verPedido}
+            className="w-full min-h-[52px] px-3.5 flex items-center gap-2 text-left">
+            <ShoppingBag size={18} className="text-[#C8261D]" aria-hidden="true" />
+            <span className="font-body text-sm font-bold">Lo que llevas</span>
+            {order.driverNotes && <span className="font-body text-[11px] font-bold rounded-full bg-tangelo/15 text-[#9A3F12] px-2 py-0.5">Nota de la caja</span>}
+            <span className="ml-auto font-body text-sm font-bold text-[#C8261D]">{verPedido ? 'Ocultar' : 'Ver'}</span>
+          </button>
+          {verPedido && (
+            <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+              <p className="font-body text-sm text-coal whitespace-pre-wrap">{order.items}</p>
+              {order.notes && <p className="font-body text-xs text-coal/70 bg-mustard/10 rounded-lg p-2">{order.notes}</p>}
+              {order.driverNotes && (
+                <p className="font-body text-xs text-[#6B4100] bg-mustard/[0.14] rounded-xl px-3 py-2"><b>Nota de la caja:</b> {order.driverNotes}</p>
+              )}
+              {order.totalPrice > 0 && (
+                <div className="border-t border-coal/10 pt-2 flex flex-col gap-1 font-body text-sm">
+                  <div className="flex justify-between"><span className="text-coal/60">Pedido</span><span>{fmt(order.quotedPrice)}</span></div>
+                  <div className="flex justify-between"><span className="text-coal/60">Domicilio</span><span>{fmt(order.deliveryPrice)}</span></div>
+                  <div className="flex justify-between font-bold"><span>Total · {order.payment}</span><span className="text-[#C8261D]">{fmt(order.totalPrice)}</span></div>
+                </div>
+              )}
             </div>
           )}
+        </section>
 
-          {/* Payment & prices */}
-          <div className="card bg-cherry/5 border border-cherry/20">
-            <p className="font-display text-base tracking-wide mb-2">Pago</p>
-            <p className="font-body text-sm font-semibold text-coal mb-2">{order.payment}</p>
-            {order.totalPrice > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex justify-between font-body text-sm">
-                  <span className="text-coal/60">Valor pedido:</span>
-                  <span className="font-semibold">{fmt(order.quotedPrice)}</span>
+        {/* Chat con el cliente (§8.3): solo ustedes dos lo ven */}
+        {!entregado && <div className="mx-4"><ChatDomiciliario order={order} rol="driver" /></div>}
+
+        {/* Notas internas con la caja (no las ve el cliente) */}
+        <section ref={notasRef} className="mx-4 bg-white border border-coal/10 rounded-[20px] overflow-hidden scroll-mt-20">
+          <button onClick={() => (verNotas ? setVerNotas(false) : abrirLasNotas())} aria-expanded={verNotas}
+            className="w-full min-h-[56px] px-3.5 flex items-center gap-2.5 text-left">
+            <MessageSquare size={20} className="text-coal flex-shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0">
+              <span className="block font-body text-sm font-bold">Hablar con la caja</span>
+              <span className="block font-body text-xs text-coal/60 truncate">
+                {ultimaCaja ? `Caja: «${ultimaCaja.text}»` : 'Solo la ven la caja y tú; el cliente no'}
+              </span>
+            </span>
+            {!verNotas && notasSinLeer > 0 && <span className="min-w-[20px] h-5 px-1 rounded-full bg-[#C8261D] text-white font-body text-[11px] font-bold flex items-center justify-center" aria-label={`${notasSinLeer} sin leer`}>{notasSinLeer}</span>}
+          </button>
+          {verNotas && (
+            <div className="px-3.5 pb-3.5 flex flex-col gap-2.5">
+              {order.comments?.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {[...order.comments].sort((a, b) => a.ts - b.ts).map((c, i) => (
+                    <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20 mr-6' : 'bg-mint/10 border border-mint/20 ml-6'}`}>
+                      <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-[#9A3F12]' : 'text-[#12766B]'}`}>
+                        {c.role === 'cashier' ? 'Caja' : 'Tú'} · {c.name}
+                      </p>
+                      <p className="font-body text-sm text-coal">{c.text}</p>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between font-body text-sm">
-                  <span className="text-coal/60">Domicilio:</span>
-                  <span className="font-semibold">{fmt(order.deliveryPrice)}</span>
-                </div>
-                <div className="border-t border-cherry/20 pt-1.5 flex justify-between font-body text-sm">
-                  <span className="font-bold">TOTAL:</span>
-                  <span className="font-bold text-cherry">{fmt(order.totalPrice)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Billete y cambio — bloque propio y destacado para que el
-              domiciliario salga sabiendo cuánto cambio llevar. */}
-          <CashChangeNotice order={order} />
-
-          {/* Chat con el cliente (§8.3): solo ustedes dos lo ven */}
-          <ChatDomiciliario order={order} rol="driver" />
-
-          {/* Notas internas con la caja (no las ve el cliente) */}
-          <div className="card border border-coal/10 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <MessageSquare size={15} className="text-tangelo" aria-hidden="true" />
-              <p className="font-display text-sm tracking-wide text-coal">Notas con la caja</p>
-            </div>
-            <p className="font-body text-xs text-coal/50 -mt-1">Solo las ven la caja y tú; el cliente no.</p>
-
-            {/* Existing comments */}
-            {(order.comments?.length > 0) ? (
-              <div className="flex flex-col gap-2">
-                {[...order.comments].sort((a,b) => a.ts - b.ts).map((c, i) => (
-                  <div key={i} className={`rounded-xl px-3 py-2 ${c.role === 'cashier' ? 'bg-tangelo/10 border border-tangelo/20' : 'bg-mint/10 border border-mint/20'}`}>
-                    <p className={`font-body text-[10px] font-bold uppercase tracking-wider mb-0.5 ${c.role === 'cashier' ? 'text-tangelo' : 'text-mint'}`}>
-                      {c.role === 'cashier' ? 'Cajero' : 'Tú'} · {c.name}
-                    </p>
-                    <p className="font-body text-sm text-coal">{c.text}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="font-body text-xs text-coal/40">Sin comentarios aún</p>
-            )}
-
-            {/* Add comment */}
-            <div className="flex gap-2">
-              <textarea
-                className="textarea-field flex-1 h-14 scroll-custom text-sm"
-                placeholder="Dejar comentario (ej: cliente no estaba, timbre roto…)"
-                value={commentText}
-                onChange={e => setCommentText(e.target.value)}
-              />
-              <button onClick={sendComment} disabled={sendingComment || !commentText.trim()}
-                className="btn-mint px-3 self-end">
-                <Send size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Actions by status */}
-          <div className="flex flex-col gap-3 pb-4">
-            {order.status === 'assigned' && (
-              <button onClick={accept} disabled={loading} className="btn-mint w-full btn-lg">
-                <CheckCircle size={20} /> Aceptar pedido
-              </button>
-            )}
-            {order.status === 'accepted' && (
-              <>
-                <button onClick={prepare} disabled={loading} className="btn-mustard w-full btn-lg">
-                  En preparación
+              ) : (
+                <p className="font-body text-xs text-coal/50">Sin mensajes aún</p>
+              )}
+              <div className="flex gap-2">
+                <textarea
+                  className="textarea-field flex-1 h-14 scroll-custom text-sm"
+                  placeholder="Escríbele a la caja (ej: no abren, timbre roto…)"
+                  aria-label="Mensaje para la caja"
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                />
+                <button onClick={sendComment} disabled={sendingComment || !commentText.trim()}
+                  className="btn-mint px-3 self-end min-h-[48px]" aria-label="Enviar a la caja">
+                  <Send size={18} aria-hidden="true" />
                 </button>
-                <button onClick={transit} disabled={loading} className="btn-primary w-full btn-lg">
-                  <Navigation size={20} /> Iniciar entrega
-                </button>
-              </>
-            )}
-            {order.status === 'preparing' && (
-              <button onClick={transit} disabled={loading} className="btn-primary w-full btn-lg">
-                <Navigation size={20} /> Iniciar entrega
-              </button>
-            )}
-            {order.status === 'in_transit' && (
-              <button onClick={arrived} disabled={loading} className="btn-mustard w-full btn-lg">
-                <MapPin size={20} /> Llegué al destino
-              </button>
-            )}
-            {order.status === 'arrived' && transferenciaPendiente(order) && (
-              <p className="font-body text-sm text-coal bg-mustard/15 border border-mustard/50 rounded-xl px-3 py-2 flex items-start gap-2">
-                <AlertTriangle size={16} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <span><strong>Transferencia pendiente de verificar.</strong> No entregues hasta que la caja confirme que la plata llegó.</span>
-              </p>
-            )}
-            {order.status === 'arrived' && order.excepcion !== 'regreso_declarado' && (
-              <button onClick={markDelivered} disabled={loading || transferenciaPendiente(order)} className="btn-mint w-full btn-lg">
-                <CheckCircle size={20} /> Marcar como entregado
-              </button>
-            )}
-            {/* No puedo entregar, instrucción de la caja y regreso (CP-1 a CP-3) */}
-            {order.status === 'arrived' && <IncidenciaDomiciliario order={order} />}
-            {['delivered_paid','delivered_cash','pending_cuadre','completed'].includes(order.status) && (
-              <div className="bg-mint/10 border border-mint/30 rounded-2xl p-4 text-center">
-                <CheckCircle size={28} className="text-mint mx-auto mb-2" />
-                <p className="font-display text-lg tracking-wide text-mint">¡Pedido entregado!</p>
-                {order.status === 'pending_cuadre' && (
-                  <p className="font-body text-xs text-coal/60 mt-1">Pendiente cuadre de caja con cajero</p>
-                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </section>
+      </div>
+      </div>
+
+      {/* Un solo botón fijo para avanzar */}
+      <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-b from-cream/0 via-cream to-cream"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+        <div className="max-w-lg mx-auto px-4 pt-6 flex flex-col gap-1.5">
+          {siguiente?.bloqueado && (
+            <p className="font-body text-sm text-coal bg-mustard/20 border border-mustard/50 rounded-xl px-3 py-2 flex items-start gap-2">
+              <AlertTriangle size={16} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <span><strong>Transferencia pendiente de verificar.</strong> No entregues hasta que la caja confirme que la plata llegó.</span>
+            </p>
+          )}
+          {entregado ? (
+            <button onClick={() => (siguienteParada ? onSiguiente?.(siguienteParada) : onClose())} className={`${botonGrande} bg-coal`}>
+              {siguienteParada ? 'Ir a la siguiente parada' : 'Volver a mi ruta'}
+            </button>
+          ) : siguiente && (
+            <button onClick={siguiente.accion} disabled={loading || siguiente.bloqueado}
+              className={`${botonGrande} ${siguiente.tono === 'mint' ? 'bg-mint' : 'bg-[#C8261D]'}`}>
+              {loading ? 'Guardando…' : siguiente.texto}
+            </button>
+          )}
+          {puedeReportar(order) && (
+            <button onClick={() => setNoEntrega(true)} className="min-h-[44px] font-body text-sm font-bold text-[#B3261E]">No puedo entregar</button>
+          )}
         </div>
       </div>
+
+      {noEntrega && <HojaNoEntrega order={order} onCerrar={() => setNoEntrega(false)} alAvisar={alListo} />}
     </div>
   )
 }
 
-// ─── Driver entregados summary ────────────────────────────────────────────────
-function DriverEntregadosSummary({ orders }) {
-  const cashOrders   = orders.filter(o => o.cashOnDelivery || o.payment === 'Efectivo' || o.payment === 'Mixto')
-  const totalFees    = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
-  const totalCash    = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
-
+// ─── Resumen de entregados ────────────────────────────────────────────────────
+function DriverEntregadosSummary({ orders, onCuadre }) {
+  const cashOrders = orders.filter(esEfectivo)
+  const totalFees  = orders.reduce((s, o) => s + (o.deliveryPrice || 0), 0)
+  const totalCash  = cashOrders.reduce((s, o) => s + cashAmount(o), 0)
+  const tarjeta = 'bg-white rounded-[18px] border border-coal/10 p-3.5'
   return (
-    <div className="mx-4 mt-3 bg-gradient-to-r from-mint/10 to-mustard/10 border border-mint/20 rounded-2xl p-4 flex flex-col gap-3">
-      <p className="font-display text-base tracking-wide text-coal">Resumen del día</p>
-      <div className="grid grid-cols-2 gap-2 text-center">
-        <div className="bg-cream/80 rounded-xl p-2">
-          <p className="font-display text-2xl text-cherry">{orders.length}</p>
-          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Domicilios</p>
+    <>
+      <section className="mx-4 mt-1 grid grid-cols-2 gap-2">
+        <div className={tarjeta}>
+          <p className="font-body text-[11px] font-bold text-coal/60 uppercase">Efectivo en mano</p>
+          <p className="font-display text-[30px] leading-none text-[#B86F00] mt-1">{fmt(totalCash)}</p>
+          <p className="font-body text-[11px] text-coal/60 mt-0.5">{cashOrders.length ? 'Entrégalo en la caja' : 'Sin pedidos en efectivo'}</p>
         </div>
-        <div className="bg-cream/80 rounded-xl p-2">
-          <p className="font-display text-2xl text-mustard">{cashOrders.length}</p>
-          <p className="font-body text-[10px] text-coal/50 uppercase tracking-wider">Efectivo</p>
+        <div className={tarjeta}>
+          <p className="font-body text-[11px] font-bold text-coal/60 uppercase">Tus domicilios</p>
+          <p className="font-display text-[30px] leading-none text-[#12766B] mt-1">{fmt(totalFees)}</p>
+          <p className="font-body text-[11px] text-coal/60 mt-0.5">{orders.length} entrega{orders.length === 1 ? '' : 's'}</p>
         </div>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {totalFees > 0 && (
-          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
-            <span className="font-body text-xs text-coal/60">Domicilios ganados:</span>
-            <span className="font-display text-base text-mint">{`$${Number(totalFees).toLocaleString('es-CO')}`}</span>
-          </div>
-        )}
-        {totalCash > 0 && (
-          <div className="flex justify-between items-center bg-cream/60 rounded-lg px-3 py-2">
-            <span className="font-body text-xs text-coal/60">Efectivo a entregar:</span>
-            <span className="font-display text-base text-mustard">{`$${Number(totalCash).toLocaleString('es-CO')}`}</span>
-          </div>
-        )}
-      </div>
-    </div>
+      </section>
+      <button onClick={onCuadre} className="mx-4 mt-2.5 min-h-[52px] rounded-2xl border-2 border-coal font-body text-sm font-bold text-coal">
+        Ver mi cuadre de turno
+      </button>
+    </>
   )
 }
 
@@ -1426,11 +1275,12 @@ const DRIVER_MANUAL_SECTIONS = [
     content: [
       { type: 'steps', items: [
         'Abre la app y selecciona tu sede (o "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita al mismo tiempo).',
-        'Cuando el cajero te asigne un pedido, aparecerá en "Pedidos" con la campana en rojo. Ábrelo y toca "Aceptar pedido".',
-        'Toca "Iniciar entrega" cuando salgas con el pedido hacia el cliente.',
+        'Inicia el turno: mientras estés en turno te llegan los pedidos ya asignados, sin tener que aceptarlos.',
+        'En "Mi ruta" la tarjeta oscura es tu siguiente parada; debajo van las demás, en el orden de la ruta.',
+        'Toca "Salir con el pedido" cuando salgas hacia el cliente.',
         'Toca "Llegué al destino" cuando estés frente al cliente.',
-        'Toca "Marcar como entregado" al entregar. Si fue en efectivo, el pedido queda en "Cuadre".',
-        'Al terminar el turno, usa el botón "Cuadre" y muéstrale el resumen al cajero para entregar el efectivo.',
+        'Toca "Cobré y entregué" (o "Entregué el pedido" si ya pagó). Si fue en efectivo, queda en tu cuadre.',
+        'Al terminar el turno, en "Entregados" toca "Ver mi cuadre de turno" y entrégale el efectivo a la caja.',
       ]},
     ],
   },
@@ -1443,28 +1293,28 @@ const DRIVER_MANUAL_SECTIONS = [
         ['Santa Lucía',    'Solo ves pedidos de la sede de Santa Lucía'],
         ['Santa Teresita', 'Solo ves pedidos de la sede de Santa Teresita'],
       ]},
-      { type: 'tip', text: 'Para cambiar de sede sin cerrar sesión, toca el ícono de ubicación en la esquina superior derecha.' },
+      { type: 'tip', text: 'Para cambiar de sede sin cerrar sesión, toca "Más" en la barra de abajo y luego "Cambiar de sede".' },
     ],
   },
   {
     id: 'estados', icon: Tag, title: 'Estados del pedido',
     content: [
       { type: 'table', rows: [
-        ['ASIGNADO',   'El cajero te asignó el pedido — acéptalo pronto'],
-        ['ACEPTADO',   'Confirmaste que vas a recoger y entregar'],
-        ['EN CAMINO',  'Iniciaste la entrega — el cliente puede ver tu ruta'],
-        ['LLEGÓ',      'Llegaste donde el cliente'],
-        ['CUADRE',     'Entregado en efectivo — pendiente cuadre con cajero'],
-        ['COMPLETADO', 'Pedido cerrado y cuadrado'],
+        ['EN COCINA',          'Lo están preparando: espera en la sede'],
+        ['LISTO PARA RECOGER', 'Ya puedes salir con el pedido'],
+        ['EN CAMINO',          'Saliste: el cliente ve tu ubicación'],
+        ['EN EL DESTINO',      'Llegaste donde el cliente'],
+        ['NO SE PUDO ENTREGAR','Le avisaste a la caja: espera su instrucción'],
+        ['ENTREGADO',          'Si fue en efectivo, queda en tu cuadre con la caja'],
       ]},
     ],
   },
   {
     id: 'roles', icon: Bike, title: 'Cambiar de rol',
     content: [
-      { type: 'p', text: 'Si tienes más de un rol (por ejemplo, domiciliario y cajero), puedes cambiar entre ellos sin cerrar sesión usando el selector de rol en la barra superior.' },
+      { type: 'p', text: 'Si tienes más de un rol (por ejemplo, domiciliario y cajero), puedes cambiar entre ellos sin cerrar sesión con "Ver como", en "Más".' },
       { type: 'steps', items: [
-        'Toca el ícono con la flecha en la esquina superior derecha.',
+        'Toca "Más" en la barra de abajo y busca "Ver como".',
         'Selecciona el rol al que quieres cambiar: Cajero, Cliente, etc.',
         'La app cambia de vista inmediatamente sin necesidad de cerrar sesión.',
       ]},
@@ -1474,29 +1324,29 @@ const DRIVER_MANUAL_SECTIONS = [
   {
     id: 'navegacion', icon: Route, title: 'Navegación al cliente',
     content: [
-      { type: 'p', text: 'Dentro del detalle de cada pedido encontrarás dos botones de navegación:' },
+      { type: 'p', text: 'En tu siguiente parada y en el detalle de cada pedido encontrarás dos botones de navegación:' },
       { type: 'table', rows: [
         ['Google Maps', 'Abre Google Maps con la dirección del cliente lista para navegar'],
         ['Waze',        'Abre Waze con la dirección del cliente lista para navegar'],
       ]},
-      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Activa el GPS compartido en la barra superior para que el cajero también te ubique aunque no tengas pedido activo.' },
+      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Con "GPS activo" arriba, la caja también te ubica aunque no tengas pedido.' },
     ],
   },
   {
     id: 'efectivo', icon: Banknote, title: 'Pedidos en efectivo',
     content: [
-      { type: 'p', text: 'Antes de llegar donde el cliente, abre el detalle del pedido y revisa la sección "Pago":' },
+      { type: 'p', text: 'La tarjeta naranja "Cobrar en efectivo" te dice cuánto cobrar, con qué billete paga y cuánto cambio llevar:' },
       { type: 'table', rows: [
         ['Paga exacto',    'El cliente tiene el dinero exacto — no necesitas traer cambio'],
         ['Necesita cambio','El cajero indica cuánto paga el cliente y cuánto debes devolver'],
       ]},
-      { type: 'tip', text: 'Al marcar como entregado un pedido en efectivo, queda en estado "Cuadre" hasta que lo cuadres con el cajero.' },
+      { type: 'tip', text: 'Al tocar "Cobré y entregué" en un pedido en efectivo, queda en tu cuadre hasta que le entregues la plata a la caja.' },
     ],
   },
   {
     id: 'cuadre', icon: Calculator, title: 'Cuadre de turno',
     content: [
-      { type: 'p', text: 'Al terminar el turno, toca el botón "Cuadre" en la barra superior para ver el resumen del día:' },
+      { type: 'p', text: 'Al terminar el turno, ve a "Entregados" y toca "Ver mi cuadre de turno" (también está en "Más"):' },
       { type: 'table', rows: [
         ['Efectivo a entregar', 'Total en efectivo que recibiste de los clientes y debes entregar al cajero'],
         ['Lo que te deben',     'Total de domicilios ganados que el cajero te debe pagar a ti'],
@@ -1510,22 +1360,22 @@ const DRIVER_MANUAL_SECTIONS = [
       { type: 'p', text: 'La app tiene dos modos de compartir tu ubicación:' },
       { type: 'table', rows: [
         ['Automático',    'Cuando tienes un pedido "En camino", tu GPS se comparte automáticamente con el cliente'],
-        ['GPS manual ', 'Activa el botón GPS en la barra superior para que el cajero te ubique en todo momento, aunque no tengas pedido activo'],
+        ['GPS activo',    'Toca el botón "GPS" arriba para que la caja te ubique en todo momento, aunque no tengas pedido. Se prende solo al iniciar el turno'],
       ]},
-      { type: 'tip', text: 'Desactiva el GPS manual cuando termines el turno para ahorrar batería.' },
+      { type: 'tip', text: 'Apaga el GPS (botón de arriba) cuando termines el turno para ahorrar batería.' },
     ],
   },
   {
     id: 'comentarios', icon: MessageSquare, title: 'Comentarios en pedidos',
     content: [
-      { type: 'p', text: 'Dentro del detalle de cada pedido puedes dejar comentarios visibles para el cajero: timbre roto, cliente no estaba, dirección incorrecta, etc.' },
-      { type: 'tip', text: 'El cajero también puede dejarte notas en el pedido. Revisa la sección "Nota del cajero" antes de salir a entregar.' },
+      { type: 'p', text: 'En el detalle de cada pedido, "Hablar con la caja" te deja escribirle: timbre roto, no abren, dirección incorrecta, etc. En "Caja", en la barra de abajo, ves las notas de todos tus pedidos.' },
+      { type: 'tip', text: 'La caja también puede dejarte notas en el pedido: aparecen en "Lo que llevas". Revísalas antes de salir.' },
     ],
   },
   {
     id: 'historial', icon: Calendar, title: 'Historial de entregas',
     content: [
-      { type: 'p', text: 'En la pestaña "Entregados" puedes ver todos tus pedidos del día. Usa el selector de fecha para consultar días anteriores.' },
+      { type: 'p', text: 'En "Entregados", en la barra de abajo, ves tus pedidos del día. Usa el selector de fecha para consultar días anteriores.' },
       { type: 'tip', text: 'El historial muestra solo tus pedidos entregados, no los de otros domiciliarios.' },
     ],
   },
@@ -1591,7 +1441,7 @@ function DriverManualSection({ section }) {
 
 function DriverManualModal({ onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-cream w-full max-w-2xl rounded-3xl max-h-[90dvh] flex flex-col shadow-2xl animate-scale-in mx-4">
         <div className="sticky top-0 bg-gradient-to-r from-mint to-mustard px-6 py-5 rounded-t-3xl flex items-center justify-between flex-shrink-0">
