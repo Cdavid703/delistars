@@ -249,6 +249,14 @@ service cloud.firestore {
     // Lo escribe el servidor (/api/v1/equipo/turno y la asignación automática).
     // La caja y el admin lo leen para saber quién está disponible; el
     // domiciliario lee el suyo.
+    // Recorridos de las entregas (§12.1): los graba el scheduler (solo en camino
+    // y llegó) y se borran 7 días después de la entrega, salvo reclamo abierto.
+    // Acceso histórico exclusivo de administración.
+    match /recorridos/{orderId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // «Mis sesiones» del equipo (§6.3): cada aparato registra su sesión por la
     // API (/equipo/sesiones). Cada quien lee las suyas (el aparato escucha la
     // propia para salir si la cierran desde otro); administración, todas.
