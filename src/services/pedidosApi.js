@@ -9,6 +9,13 @@
 // frene. Los errores de negocio (4xx: "ya no se puede", "otro lo cambió") sí se
 // muestran: ahí el respaldo haría justamente lo que el servidor rechazó.
 import { auth } from './firebase'
+import { sesionGuardada } from './sesionEquipo'
+
+/** Id de la sesión del equipo de este aparato («Mis sesiones», §6.3), si hay. */
+const cabeceraSesion = () => {
+  const id = sesionGuardada(auth.currentUser?.uid)?.id
+  return id ? { 'X-Sesion-Equipo': id } : {}
+}
 
 export class ErrorApi extends Error {
   constructor(mensaje, codigo, status) { super(mensaje); this.codigo = codigo; this.status = status }
@@ -23,7 +30,7 @@ export async function llamarPedidos(ruta, cuerpo = {}, clave = nuevaClave()) {
   if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
   const res = await fetch(`/api/v1/pedidos/${ruta}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'Idempotency-Key': clave },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'Idempotency-Key': clave, ...cabeceraSesion() },
     body: JSON.stringify(cuerpo),
   })
   let datos = {}
@@ -38,7 +45,7 @@ export async function llamarApi(metodo, ruta, cuerpo, clave) {
   if (!token) throw new ErrorApi('Tu sesión venció. Vuelve a entrar.', 'sin_sesion', 401)
   const res = await fetch(`/api/v1/${ruta}`, {
     method: metodo,
-    headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}), ...(clave ? { 'Idempotency-Key': clave } : {}) },
+    headers: { authorization: `Bearer ${token}`, ...(cuerpo ? { 'content-type': 'application/json' } : {}), ...(clave ? { 'Idempotency-Key': clave } : {}), ...cabeceraSesion() },
     ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
   })
   let datos = {}
@@ -49,7 +56,8 @@ export async function llamarApi(metodo, ruta, cuerpo, clave) {
 
 /** ¿Este error justifica usar el camino viejo? (servidor caído, no "regla de negocio"). */
 export const usarRespaldo = (err) =>
-  !(err instanceof ErrorApi) || err.status >= 500 || err.codigo === 'inactiva' || err.status === 401
+  // Una sesión cerrada desde otro aparato (§6.3) no puede seguir por el camino directo.
+  !(err instanceof ErrorApi) || err.status >= 500 || err.codigo === 'inactiva' || (err.status === 401 && err.codigo !== 'sesion_cerrada')
 
 /**
  * Intenta por la API y, si el servidor no está, por el camino viejo.

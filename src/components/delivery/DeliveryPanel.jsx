@@ -36,6 +36,7 @@ import { transferenciaPendiente } from '../../utils/cuadres'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
 import { BotonCambiarEmpleado } from '../common/CambiarEmpleado'
+import { BotonMisSesiones } from '../common/MisSesiones'
 import { IncidenciaDomiciliario, IndicacionesBreves } from '../common/IncidenciaReparto'
 
 // "Por aceptar" solo queda para pedidos asignados a la antigua: desde la Fase 5
@@ -455,6 +456,7 @@ export default function DeliveryPanel() {
                     <span className="font-body text-sm text-coal/60">Ver como</span>
                     <RoleSwitcher />
                   </div>
+                  <BotonMisSesiones variante="menu" className={ITEM_MENU} />
                   <BotonCambiarEmpleado variante="menu" className={ITEM_MENU} antes={() => setMenu(false)} />
                   <button onClick={logout} className={`${ITEM_MENU} text-pepper`}>
                     <LogOut size={16} aria-hidden="true" /> Cerrar sesión

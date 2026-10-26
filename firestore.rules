@@ -249,6 +249,14 @@ service cloud.firestore {
     // Lo escribe el servidor (/api/v1/equipo/turno y la asignación automática).
     // La caja y el admin lo leen para saber quién está disponible; el
     // domiciliario lee el suyo.
+    // «Mis sesiones» del equipo (§6.3): cada aparato registra su sesión por la
+    // API (/equipo/sesiones). Cada quien lee las suyas (el aparato escucha la
+    // propia para salir si la cierran desde otro); administración, todas.
+    match /sesiones_equipo/{id} {
+      allow read: if isAdmin() || (isTeamSession() && resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+
     match /turnos_domiciliario/{email} {
       allow read: if isAdmin() || isCashier() || (isSignedIn() && email == userEmail().lower());
       allow write: if false;
