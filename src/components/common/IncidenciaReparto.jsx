@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, Clock, MessageSquare, Undo2, PackageCheck } from 'lucide-react'
+import { AlertTriangle, Check, MessageSquare, PackageCheck } from 'lucide-react'
 import { llamarPedidos, ErrorApi } from '../../services/pedidosApi'
-import { etapaDe, MOTIVOS_NO_ENTREGA, INSTRUCCIONES_CAJA } from '../../utils/etapas'
+import { etapaDe, INSTRUCCIONES_CAJA } from '../../utils/etapas'
 import { montoDevolucion } from '../../utils/devolucion'
 
-// Incidencias de reparto (lo mismo que hace CarPlay, CP-1 a CP-4 y CP-8):
-//   · el domiciliario: «No puedo entregar» con un motivo, «Entendido» a la
-//     instrucción de la caja y «Regresé con el pedido»;
+// Incidencias de reparto (lo mismo que hace CarPlay, CP-1 a CP-4 y CP-8).
+// Lo del domiciliario vive en delivery/NoEntrega.jsx (rediseño del 25 oct 2026).
 //   · la caja: Esperar / Reintentar / Regresar, indicaciones breves y
 //     «Recibí el pedido» cuando vuelve.
 // Todo va por la API (sin camino directo): el servidor valida quién puede.
@@ -40,80 +39,6 @@ export function IndicacionesBreves({ order }) {
         <p className="font-body text-[11px] font-bold uppercase tracking-wider text-tangelo">Indicaciones de la caja</p>
         <p className="font-body text-sm font-semibold text-coal">{order.indicacionesBreves}</p>
       </div>
-    </div>
-  )
-}
-
-/** Panel del domiciliario: «No puedo entregar», instrucción de la caja y regreso. */
-export function IncidenciaDomiciliario({ order }) {
-  const { etapa, excepcion } = etapaDe(order)
-  const [eligiendo, setEligiendo] = useState(false)
-  const { ocupado, error, correr } = useAccion()
-  if (order.deliveryMode === 'pickup' || etapa !== 'llego') return null
-  if (excepcion && !['no_entregado', 'regreso_declarado'].includes(excepcion)) return null
-  const instr = order.instruccionCaja
-
-  const noPuedo = (motivo) => correr(`${order.id}/transiciones`, { a: 'excepcion:no_entregado', motivo, version: order.version ?? 0 })
-    .then((ok) => ok && setEligiendo(false))
-  const regrese = () => {
-    if (!window.confirm('¿Ya estás en la sede con el pedido? La caja va a confirmar que lo recibió.')) return
-    correr(`${order.id}/transiciones`, { a: 'excepcion:regreso_declarado', version: order.version ?? 0 })
-  }
-
-  if (excepcion === 'regreso_declarado') {
-    return (
-      <div className="bg-mustard/10 border-2 border-mustard/40 rounded-2xl p-4 flex items-start gap-2">
-        <Clock size={18} className="text-mustard flex-shrink-0 mt-0.5" aria-hidden="true" />
-        <p className="font-body text-sm text-coal">
-          <strong>Esperando que la caja reciba el pedido.</strong> Entrégalo en la caja; ella confirma que lo recibió.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {excepcion === 'no_entregado' && (
-        <div className="bg-pepper/10 border-2 border-pepper/30 rounded-2xl p-4 flex flex-col gap-3">
-          <p className="font-display text-base tracking-wide text-pepper flex items-center gap-2">
-            <AlertTriangle size={17} aria-hidden="true" /> No pudiste entregar
-          </p>
-          <p className="font-body text-sm text-coal/80">{order.excepcionMotivo}</p>
-          {instr?.tipo ? (
-            <div className="bg-cream rounded-xl p-3 flex flex-col gap-2">
-              <p className="font-body text-[11px] font-bold uppercase tracking-wider text-coal/45">La caja dice {instr.at ? `· ${hora(instr.at)}` : ''}</p>
-              <p className="font-display text-lg tracking-wide text-coal">{instr.texto || INSTRUCCIONES_CAJA[instr.tipo]}</p>
-              {instr.entendidoAt ? (
-                <p className="font-body text-xs text-mint font-semibold flex items-center gap-1"><Check size={14} aria-hidden="true" /> Entendido</p>
-              ) : (
-                <button onClick={() => correr(`${order.id}/instruccion/entendido`, {})} disabled={ocupado} className="btn-mint w-full">
-                  <Check size={18} aria-hidden="true" /> Entendido
-                </button>
-              )}
-            </div>
-          ) : (
-            <p className="font-body text-xs text-coal/60 flex items-center gap-1.5"><Clock size={14} aria-hidden="true" /> Esperando la instrucción de la caja…</p>
-          )}
-          <button onClick={regrese} disabled={ocupado} className="btn-secondary w-full">
-            <Undo2 size={17} aria-hidden="true" /> Regresé con el pedido
-          </button>
-        </div>
-      )}
-
-      {!excepcion && (eligiendo ? (
-        <div className="border-2 border-pepper/30 rounded-2xl p-4 flex flex-col gap-2">
-          <p className="font-display text-base tracking-wide text-coal">¿Por qué no puedes entregar?</p>
-          {Object.entries(MOTIVOS_NO_ENTREGA).map(([codigo, texto]) => (
-            <button key={codigo} onClick={() => noPuedo(codigo)} disabled={ocupado} className="btn-secondary w-full justify-start">{texto}</button>
-          ))}
-          <button onClick={() => setEligiendo(false)} className="btn-ghost w-full">Volver</button>
-        </div>
-      ) : (
-        <button onClick={() => setEligiendo(true)} className="btn-secondary w-full text-pepper border-pepper/30">
-          <AlertTriangle size={18} aria-hidden="true" /> No puedo entregar
-        </button>
-      ))}
-      {error && <p className="font-body text-sm text-pepper">{error}</p>}
     </div>
   )
 }
