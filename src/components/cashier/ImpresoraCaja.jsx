@@ -23,11 +23,11 @@ function htmlComanda(lineas) {
   const cuerpo = (lineas || []).map((l) => l.e === 'linea' ? '<hr/>' : `<div class="${l.e || ''}">${esc(l.t) || '&nbsp;'}</div>`).join('')
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comanda</title><style>
     @page{margin:0}
-    /* La Digital POS no imprime pegado al borde izquierdo (se comía las primeras
-       letras): margen izquierdo amplio y ancho que cabe en los 72 mm imprimibles. */
+    /* La Digital POS solo imprime entre ~5 mm y ~72 mm del papel (se comía la
+       primera letra y el final de los renglones): el texto va de 8 mm a 71 mm. */
     html,body{margin:0;padding:0}
     body{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.35;color:#000;
-      box-sizing:border-box;width:100%;max-width:80mm;padding:3mm 5mm 4mm 8mm}
+      box-sizing:border-box;width:100%;max-width:76mm;padding:3mm 5mm 4mm 8mm}
     .titulo{font-size:30px;font-weight:700;text-align:center;margin:2px 0}
     .grande{font-size:17px;font-weight:700}
     .negrita{font-weight:700}
