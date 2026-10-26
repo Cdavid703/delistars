@@ -290,11 +290,12 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
     )
   }
 
+  // Computador (rediseño del 25 oct 2026): catálogo a la izquierda, ticket a la derecha.
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] xl:gap-x-8 xl:gap-y-5 xl:items-start">
       {/* Borrador recuperado: revisar antes de crear (§21.1) */}
       {recuperado && (
-        <div className="rounded-2xl border-2 border-tangelo/50 bg-tangelo/10 p-3 flex flex-col gap-1.5">
+        <div className="xl:col-start-2 rounded-2xl border-2 border-tangelo/50 bg-tangelo/10 p-3 flex flex-col gap-1.5">
           <p className="font-body text-sm font-semibold text-coal">
             Recuperamos el pedido que estabas armando ({new Date(recuperado.at).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}). Revísalo antes de crearlo.
           </p>
@@ -310,7 +311,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
         </div>
       )}
       {/* 1. Cliente */}
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-2 xl:col-start-2">
         {!sedeFija && (
           <div className="flex flex-wrap gap-1.5">
             {Object.values(SEDES).map((x) => <Chip key={x.id} activo={sedeId === x.id} onClick={() => { setSedeId(x.id); setTarifa(null); setPunto(null) }}>{x.name}</Chip>)}
@@ -325,9 +326,10 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
         </div>
       </section>
 
-      {/* 2. Productos */}
-      <section className="flex flex-col gap-2">
+      {/* 2. Productos: lo elegido (en computador, en el ticket de la derecha) */}
+      <section className="flex flex-col gap-2 xl:col-start-2">
         <p className="label-field mb-0">Productos</p>
+        {lineas.length === 0 && <p className="hidden xl:block font-body text-sm text-coal/55">Toca un producto del menú (a la izquierda) para agregarlo.</p>}
         {lineas.map((l, i) => (
           <div key={l.key} className={`rounded-xl border px-3 py-2 flex items-start gap-2 ${agotados.has(l.p.id_producto) ? 'border-pepper/40 bg-pepper/5' : 'border-coal/10 bg-white'}`}>
             <div className="flex-1 min-w-0">
@@ -340,6 +342,11 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
             <button type="button" className="btn-icon h-8 w-8 min-w-8 hover:text-pepper" onClick={() => setLineas((ls) => ls.filter((_, j) => j !== i))} aria-label="Quitar"><Trash2 size={14} /></button>
           </div>
         ))}
+      </section>
+
+      {/* Menú de la sede (en computador, toda la columna izquierda) */}
+      <section className="flex flex-col gap-2 xl:col-start-1 xl:row-start-1 xl:row-span-6 xl:sticky xl:top-0">
+        <p className="label-field mb-0 hidden xl:block">Menú</p>
         {editando ? (
           <FichaCaja key={`${editando.p.id_producto}-${editando.idx}`} p={editando.p} selInicial={editando.sel} opciones={opciones}
             onListo={guardarLinea} onCancelar={() => setEditando(null)} />
@@ -349,7 +356,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-coal/40" aria-hidden="true" />
               <input className="w-full bg-transparent py-2.5 pl-9 pr-3 font-body text-sm outline-none" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar en el menú" />
             </label>
-            <ul className="max-h-56 overflow-y-auto scroll-custom divide-y divide-coal/5">
+            <ul className="max-h-56 xl:max-h-[62dvh] overflow-y-auto scroll-custom divide-y divide-coal/5">
               {!productos && <li className="px-3 py-4 text-center font-body text-sm text-coal/50">Cargando el menú…</li>}
               {lista.map((p) => {
                 const agotado = agotados.has(p.id_producto)
@@ -372,7 +379,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       </section>
 
       {/* 3. Entrega */}
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-2 xl:col-start-2">
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => setModo('pickup')} className={`rounded-xl px-3 py-2.5 font-body text-sm font-semibold flex items-center justify-center gap-2 ${modo === 'pickup' ? 'bg-coal text-cream' : 'bg-coal/5 text-coal/70'}`}><Store size={16} aria-hidden="true" /> Recoge en la sede</button>
           <button type="button" onClick={() => setModo('delivery')} className={`rounded-xl px-3 py-2.5 font-body text-sm font-semibold flex items-center justify-center gap-2 ${modo === 'delivery' ? 'bg-coal text-cream' : 'bg-coal/5 text-coal/70'}`}><Bike size={16} aria-hidden="true" /> Domicilio</button>
@@ -411,7 +418,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       </section>
 
       {/* 4. Pago */}
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-2 xl:col-start-2">
         <div className="flex flex-wrap gap-1.5">
           {METODOS.map((m) => <Chip key={m} activo={pago.metodo === m} onClick={() => setPago((p) => ({ ...p, metodo: m }))}><span className="inline-flex items-center gap-1.5"><LogoPago medio={m} size={14} />{m}</span></Chip>)}
         </div>
@@ -431,7 +438,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       </section>
 
       {/* 5. Total */}
-      <div className="rounded-2xl bg-cherry/10 border border-cherry/20 px-4 py-3 flex flex-col gap-0.5">
+      <div className="xl:col-start-2 rounded-2xl bg-cherry/10 border border-cherry/20 px-4 py-3 flex flex-col gap-0.5">
         <div className="flex justify-between font-body text-sm text-coal/70"><span>Productos</span><span className="tabular">{pesos(subtotal)}</span></div>
         {modo === 'delivery' && <div className="flex justify-between font-body text-sm text-coal/70"><span>Domicilio</span><span className="tabular">{valorDomicilio == null ? '—' : pesos(valorDomicilio)}</span></div>}
         <div className="flex justify-between font-display text-xl text-coal"><span>Total</span><span className="text-cherry tabular">{total == null ? '—' : pesos(total)}</span></div>
@@ -439,11 +446,11 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       </div>
 
       {errores.length > 0 && (
-        <div className="rounded-xl bg-pepper/10 border border-pepper/30 p-3 flex flex-col gap-1">
+        <div className="xl:col-start-2 rounded-xl bg-pepper/10 border border-pepper/30 p-3 flex flex-col gap-1">
           {errores.map((e) => <p key={e} className="font-body text-xs text-pepper">{e}</p>)}
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="flex gap-2 xl:col-start-2">
         <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
         <button type="button" onClick={crear} disabled={enviando || !!editando} className="btn-primary flex-1">{enviando ? 'Creando…' : 'Crear pedido'}</button>
       </div>

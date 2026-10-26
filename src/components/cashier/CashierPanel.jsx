@@ -3,6 +3,7 @@ import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import { textoDeMensaje } from '../../utils/fotos'
 import { BotonCambiarEmpleado } from '../common/CambiarEmpleado'
 import { BotonMisSesiones } from '../common/MisSesiones'
+import MenuCaja from './MenuCaja'
 import {
   collection, onSnapshot, query, where,
   serverTimestamp, doc, setDoc, updateDoc, getDocs
@@ -444,10 +445,19 @@ export default function CashierPanel() {
     } catch { setDriverMsg('No se pudo actualizar el teléfono') }
   }
 
+  // Computador: menú lateral y el pedido abierto en un panel a la derecha del
+  // tablero (rediseño aprobado el 25 oct 2026). En tablet y celular, como antes.
+  const enPanel = !!selected && tab === 'active' && ancho && !busqueda
   return (
-    <div className="min-h-screen-safe xl:h-dvh xl:min-h-0 flex flex-col bg-gradient-soft">
-      {/* Header */}
-      <header className="page-header gap-2">
+    <div className="xl:flex xl:h-dvh">
+    <MenuCaja className="hidden xl:flex" tab={tab} setTab={setTab}
+      cuentas={{ active: pendingCount, cuadre: cuadreCount, reclamos: reclamosAbiertos }}
+      acciones={{ cuadreTurno: () => setShowCuadreTurno(true), agotados: () => setShowAgotados(true), mapa: () => setShowTracking(true),
+        domiciliarios: () => setAddDriver(v => !v), manual: () => setShowManual(true), sede: () => selectSede(null) }}
+      user={user} sede={sede} logout={logout} antesDeCambiar={() => setSelectedId(null)} />
+    <div className="min-h-screen-safe xl:h-dvh xl:min-h-0 xl:flex-1 xl:min-w-0 flex flex-col bg-gradient-soft">
+      {/* Header (en computador lo reemplaza el menú lateral) */}
+      <header className="page-header gap-2 xl:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <Logo variant="light" size="md" className="flex-shrink-0 xl:h-14" />
           <div className="min-w-0">
@@ -505,8 +515,27 @@ export default function CashierPanel() {
       {/* Estado del sonido — que la caja NUNCA se entere de que el audio está
           bloqueado por haber perdido un pedido. */}
       {/* En computador, sonido/avisos y la apertura de la sede van en una sola fila. */}
-      <div className="xl:flex xl:items-center xl:gap-4 xl:mx-4">
-      <div className="mx-4 xl:mx-0 mt-2 flex items-center gap-2 flex-wrap">
+      <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-3 xl:mx-6 xl:pt-4">
+      {/* Computador: título de la sección, buscador y «Nuevo pedido» arriba */}
+      <div className="hidden xl:flex items-center gap-3 mr-auto min-w-0">
+        <div className="min-w-0">
+          <h1 className="font-display text-[34px] leading-none tracking-wide text-coal normal-case">
+            {{ active: 'Pedidos activos', cuadre: 'Cuadre', completed: 'Entregados', reclamos: 'Reclamos' }[tab]}
+          </h1>
+          <p className="font-body text-xs text-coal/60 mt-0.5 capitalize">{today}</p>
+        </div>
+      </div>
+      <label className="hidden xl:flex relative items-center">
+        <Search size={16} className="absolute left-3.5 text-coal/45" aria-hidden="true" />
+        <input value={buscar} onChange={e => setBuscar(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setBuscar('')
+            if (e.key === 'Enter' && filteredOrders.length === 1) { openOrderDetail(filteredOrders[0].id); setBuscar('') }
+          }}
+          placeholder="Buscar por número, nombre o celular" aria-label="Buscar pedido de hoy"
+          className="w-72 h-11 rounded-2xl border border-coal/15 bg-white pl-10 pr-3 font-body text-sm outline-none focus:border-cherry/50" />
+      </label>
+      <div className="mx-4 xl:mx-0 mt-2 xl:mt-0 flex items-center gap-2 flex-wrap">
         <BotonSilencio />
         <BotonPushEquipo email={user?.email} rol="cashier" sedeId={sede?.id} />
         {/* Avisos de la caja de la sede (compartidos: lo que uno marca, lo ven todos) y los propios */}
@@ -624,8 +653,8 @@ export default function CashierPanel() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto">
+      {/* Tabs (en computador están en el menú lateral) */}
+      <div className="flex items-center border-b border-coal/10 bg-cream/80 px-2 mt-2 overflow-x-auto xl:hidden">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`${tab === t.id ? 'tab-btn-active' : 'tab-btn-inactive'} whitespace-nowrap px-2`}>
@@ -794,10 +823,28 @@ export default function CashierPanel() {
         </p>
       )}
       {tab === 'active' && ancho && !busqueda ? (
-        <main className="flex-1 min-h-0 p-4 pt-3">
-          <TableroCaja orders={filteredOrders} ahora={ahora} unreadChatMap={unreadChatMap}
-            onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} onAsignar={(o) => openAssign(o)} />
-        </main>
+        <div className="flex-1 min-h-0 flex mt-3 border-t border-coal/10">
+          <main className="flex-1 min-w-0 min-h-0 overflow-x-auto scroll-custom p-4 pl-6">
+            <div className={`h-full ${enPanel ? "min-w-[760px]" : "min-w-[900px]"}`}>
+              <TableroCaja orders={filteredOrders} ahora={ahora} unreadChatMap={unreadChatMap} abiertoId={enPanel ? selected.id : null}
+                onAbrir={(o) => openOrderDetail(o.id)} onToggleFacturado={(o) => toggleFacturado(o)} onAsignar={(o) => openAssign(o)} />
+            </div>
+          </main>
+          {/* El pedido abierto, al lado del tablero (no tapa los demás) */}
+          {enPanel && (
+            <OrderDetail
+              key={selected.id}
+              enPanel
+              order={selected}
+              onClose={() => setSelectedId(null)}
+              drivers={drivers}
+              alarmActive={alarmActive}
+              onDismissAlarm={dismissAlert}
+              unreadClientMsgs={unreadChatMap[selected.id] || 0}
+              onReassign={order => { setSelectedId(null); openAssign(order) }}
+            />
+          )}
+        </div>
       ) : (
       <main className="flex-1 min-h-0 overflow-y-auto scroll-custom p-4 pb-24 xl:pb-6 flex flex-col gap-3 stagger md:grid md:grid-cols-2 xl:grid-cols-3 md:items-start md:content-start">
         {tab === 'reclamos' && <div className="md:col-span-2 xl:col-span-3"><Reclamos sedeId={sede?.id} esAdmin={esAdminReclamos} onAbiertos={setReclamosAbiertos} /></div>}
@@ -840,8 +887,8 @@ export default function CashierPanel() {
       {/* Order form modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm">
-          <div className="bg-cream w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
-            <div className="sticky top-0 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
+          <div className="bg-cream w-full max-w-lg xl:max-w-6xl rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
+            <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-sm px-5 py-4 border-b border-coal/10 flex items-center justify-between">
               <p className="font-display text-xl text-coal tracking-wide">Nuevo pedido</p>
               <button onClick={() => setShowForm(false)} className="btn-icon"><Plus size={20} className="rotate-45" /></button>
             </div>
@@ -877,8 +924,8 @@ export default function CashierPanel() {
         </div>
       )}
 
-      {/* Order detail modal */}
-      {selected && (
+      {/* Order detail modal (en el tablero de computador va en el panel de la derecha) */}
+      {selected && !enPanel && (
         <OrderDetail
           // key: sin esto React REUSA el componente al pasar de un pedido a otro
           // sin cerrar el modal (pasa al tocar "Ver pedido" en el aviso de pedido
@@ -984,6 +1031,7 @@ export default function CashierPanel() {
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }

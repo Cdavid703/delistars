@@ -19,7 +19,8 @@ const COLUMNAS = [
 
 const RESORTE = { type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }
 
-export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onToggleFacturado, onAsignar }) {
+// `abiertoId`: el pedido abierto en el panel de la derecha se marca en rojo.
+export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onToggleFacturado, onAsignar, abiertoId = null }) {
   const porColumna = Object.fromEntries(COLUMNAS.map((c) => [c.id, []]))
   for (const o of orders) {
     const { etapa } = etapaDe(o)
@@ -62,7 +63,8 @@ export default function TableroCaja({ orders, ahora, unreadChatMap, onAbrir, onT
                         initial={{ opacity: 0, y: 12, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
-                        transition={RESORTE}>
+                        transition={RESORTE}
+                        className={o.id === abiertoId ? 'rounded-2xl ring-2 ring-cherry ring-offset-2 ring-offset-cream' : ''}>
                         <OrderCard tablero order={o} ahora={ahora} unreadCount={unreadChatMap[o.id] || 0}
                           onClick={() => onAbrir(o)} onToggleFacturado={() => onToggleFacturado(o)} onAsignar={() => onAsignar(o)} />
                       </motion.div>

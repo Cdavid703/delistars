@@ -50,7 +50,9 @@ const fmtTime = (ts) => {
   return format(ts.toDate(), "dd MMM HH:mm", { locale: es })
 }
 
-export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign, unreadClientMsgs = 0 }) {
+// `enPanel`: en el tablero de computador se abre al lado (rediseño del 25 oct
+// 2026), en una columna y sin tapar los demás pedidos; si no, como ventana.
+export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign, unreadClientMsgs = 0, enPanel = false }) {
   const { user, role } = useAuth()
   const esAdmin = role === ROLES.ADMIN
 
@@ -651,9 +653,14 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
   ].filter(t => t.ts)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-cream w-full max-w-lg xl:max-w-6xl rounded-t-3xl sm:rounded-3xl max-h-[90dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in">
+    <div className={enPanel
+      ? 'w-[520px] 2xl:w-[600px] flex-shrink-0 min-h-0 border-l border-coal/10 bg-cream flex flex-col animate-fade-in'
+      : 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-coal/50 backdrop-blur-sm animate-fade-in'}
+      onClick={e => { if (!enPanel && e.target === e.currentTarget) onClose() }}
+      {...(enPanel ? { role: 'region', 'aria-label': `Pedido ${order.orderNumber ? `#${order.orderNumber}` : ''} abierto` } : {})}>
+      <div className={enPanel
+        ? 'flex-1 min-h-0 overflow-y-auto scroll-custom'
+        : 'bg-cream w-full max-w-lg xl:max-w-6xl rounded-t-3xl sm:rounded-3xl max-h-[90dvh] overflow-y-auto scroll-custom animate-sheet-up sm:animate-scale-in'}>
 
         {/* Header */}
         <div className="sticky top-0 bg-cream/95 backdrop-blur-sm flex items-center justify-between px-5 py-4 border-b border-coal/10">
@@ -739,7 +746,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
           </div>
         )}
         <fieldset disabled={soloConsulta} className={`m-0 min-w-0 border-0 p-0 ${soloConsulta ? 'opacity-70' : ''}`}>
-        <div className="p-5 flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] xl:gap-6 xl:items-start">
+        <div className={`p-5 flex flex-col gap-4 ${enPanel ? '' : 'xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] xl:gap-6 xl:items-start'}`}>
           {/* En computador, dos columnas: a la izquierda lo que ES el pedido;
               a la derecha lo que la caja HACE (la acción de la etapa arriba). */}
           <div className="flex flex-col gap-4 min-w-0">
