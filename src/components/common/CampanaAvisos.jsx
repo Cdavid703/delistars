@@ -10,7 +10,8 @@ import { db, auth } from '../../services/firebase'
 // leídos y pendientes y enlace al pedido. Los avisos los escribe el servidor
 // en avisos/{destino}/items; aquí solo se leen y se marcan como leídos.
 // `destinos`: uid del cliente, correo del equipo y/o caja_<sede> (compartido).
-export default function CampanaAvisos({ destinos = [], onAbrirPedido, oscuro = false }) {
+// `boton({ abrir, pendientes })`: otro botón en lugar de la campana (el atajo de «Más»).
+export default function CampanaAvisos({ destinos = [], onAbrirPedido, oscuro = false, boton }) {
   const [porDestino, setPorDestino] = useState({})
   const [abierto, setAbierto] = useState(false)
   const clave = destinos.filter(Boolean).join('|')
@@ -46,11 +47,13 @@ export default function CampanaAvisos({ destinos = [], onAbrirPedido, oscuro = f
 
   return (
     <>
-      <button onClick={() => setAbierto(true)} aria-label={`Avisos${pendientes.length ? `: ${pendientes.length} sin leer` : ''}`}
-        className={`btn-icon relative ${oscuro ? 'text-cream hover:bg-cream/10' : ''}`}>
-        <Bell size={20} />
-        {pendientes.length > 0 && <span className="notif-badge">{pendientes.length > 9 ? '9+' : pendientes.length}</span>}
-      </button>
+      {boton ? boton({ abrir: () => setAbierto(true), pendientes: pendientes.length }) : (
+        <button onClick={() => setAbierto(true)} aria-label={`Avisos${pendientes.length ? `: ${pendientes.length} sin leer` : ''}`}
+          className={`btn-icon relative ${oscuro ? 'text-cream hover:bg-cream/10' : ''}`}>
+          <Bell size={20} />
+          {pendientes.length > 0 && <span className="notif-badge">{pendientes.length > 9 ? '9+' : pendientes.length}</span>}
+        </button>
+      )}
       {abierto && createPortal(
         <div className="fixed inset-0 z-[130] bg-coal/40 backdrop-blur-sm flex justify-end" onClick={(e) => { if (e.target === e.currentTarget) setAbierto(false) }}>
           <div className="bg-cream w-full max-w-sm h-full flex flex-col shadow-2xl animate-slide-in-right">

@@ -54,6 +54,8 @@ import { usePWAInstall } from '../../hooks/usePWAInstall'
 import AccesoCuenta from '../common/AccesoCuenta'
 import { CompletarPerfil } from './CuentaCliente'
 import MiCuenta from './MiCuenta'
+import MenuMas, { NavCliente } from './MenuMas'
+import useTema from '../../hooks/useTema'
 import CampanaAvisos from '../common/CampanaAvisos'
 import ChatDomiciliario from '../common/ChatDomiciliario'
 import ReclamoPedido from './ReclamoPedido'
@@ -233,6 +235,13 @@ function hayPedidoPendiente() {
 export default function ClientPanel() {
   const { user, role, effectiveRole, setViewingAs, sede, selectSede, logout } = useAuth()
   const { canInstall, install } = usePWAInstall()
+  // Rediseño (25 oct 2026): modo oscuro del cliente y el menú «Más».
+  const [tema, setTema] = useTema(true)
+  const [showMas, setShowMas] = useState(false)
+  const irAPremios = () => {
+    setShowMas(false)
+    setTimeout(() => document.getElementById('mis-premios')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
   const [orders,         setOrders]         = useState([])
   const [ordersLoaded,   setOrdersLoaded]   = useState(false)
   const [selectedId,     setSelectedId]     = useState(null)
@@ -638,7 +647,7 @@ export default function ClientPanel() {
   }
 
   return (
-    <div className="min-h-screen-safe flex flex-col bg-gradient-soft">
+    <div className="min-h-screen-safe flex flex-col bg-gradient-soft pb-24">
       {/* Hero header */}
       <div className="bg-gradient-to-br from-cherry to-tangelo px-5 pt-4 pb-14 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
@@ -659,24 +668,7 @@ export default function ClientPanel() {
             {user && !user.isAnonymous && (
               <CampanaAvisos oscuro destinos={[user.uid]} onAbrirPedido={(id) => openOrderDetail(id)} />
             )}
-            <button onClick={() => setShowHelp(true)} className="btn-icon text-cream hover:bg-cream/10" title="Ayuda">
-              <HelpCircle size={20} />
-            </button>
-            {user && !user.isAnonymous && (
-              <button onClick={() => setMiCuenta(true)} className="btn-icon text-cream hover:bg-cream/10" title="Mi cuenta" aria-label="Mi cuenta">
-                <UserRound size={20} />
-              </button>
-            )}
-            <button onClick={() => selectSede(null)} className="btn-icon text-cream hover:bg-cream/10" title="Cambiar de sede" aria-label="Cambiar de sede">
-              <MapPin size={20} />
-            </button>
-            {/* Quien tiene cuenta cierra sesión desde "Mi cuenta": en el
-                encabezado de un celular no caben seis iconos. */}
-            {(!user || user.isAnonymous) && (
-              <button onClick={logout} className="btn-icon text-cream hover:bg-cream/10" title="Salir" aria-label="Salir">
-                <LogOut size={20} />
-              </button>
-            )}
+            {/* Ayuda, Mi cuenta, sede y salir están en «Más» (barra inferior). */}
           </div>
         </div>
         <div className="relative z-10">
@@ -759,7 +751,12 @@ export default function ClientPanel() {
           </button>
         </div>
       )}
-      {miCuenta && <MiCuenta user={user} perfil={perfil} onCerrar={() => setMiCuenta(false)} />}
+      {miCuenta && (
+        <MiCuenta user={user} perfil={perfil} onCerrar={() => setMiCuenta(false)}
+          premios={{ count: sedeLoyalty.count, sede: sede?.name }} saldo={{ monto: saldoSede, sede: sede?.name }}
+          onPedidos={() => { setMiCuenta(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+          onAyuda={() => { setMiCuenta(false); setShowHelp(true) }} />
+      )}
 
       {/* Pidió sin cuenta: es la causa nº1 de "se me perdió el pedido" */}
       {user?.isAnonymous && <AvisoInvitado className="mx-4 mt-3" siguiendo />}
@@ -802,7 +799,7 @@ export default function ClientPanel() {
 
       {/* Fidelización — solo clientes con cuenta de Google (no invitados) */}
       {user?.email && (
-        <div className="mx-4 mt-3">
+        <div className="mx-4 mt-3" id="mis-premios">
           <div className="card-quiet">
             <div className="flex items-center justify-between mb-2">
               <p className="font-display text-base tracking-wide text-coal flex items-center gap-2">
@@ -1015,6 +1012,25 @@ export default function ClientPanel() {
       {/* Help modal */}
       {showHelp && <ClientHelpModal onClose={() => setShowHelp(false)} />}
 
+      {/* Barra inferior y «Más» (rediseño del 25 oct 2026). Se esconde con un pedido abierto. */}
+      {!selected && (
+        <NavCliente actual={showMas ? 'mas' : 'pedidos'}
+          onPedidos={() => { setShowMas(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+          onPremios={irAPremios} onMas={() => setShowMas(true)} />
+      )}
+      {showMas && (
+        <MenuMas user={user} sede={sede} tema={tema} setTema={setTema}
+          onCerrar={() => setShowMas(false)}
+          onCuenta={() => { setShowMas(false); setMiCuenta(true) }}
+          onPremios={irAPremios}
+          onAyuda={() => { setShowMas(false); setShowHelp(true) }}
+          onCambiarSede={() => { setShowMas(false); selectSede(null) }}
+          onSalir={() => { setShowMas(false); logout() }}
+          onAbrirPedido={(id) => openOrderDetail(id)}
+          puedeInstalar={!isStandalone && (canInstall || isIOS)}
+          onInstalar={async () => { if (isIOS) { window.alert('En el iPhone: toca Compartir y luego «Agregar a inicio».'); return } await install() }} />
+      )}
+
       {/* Celebración de premio(s) de fidelización ganado(s) */}
       {celebrateRewards.length > 0 && (
         <LoyaltyCelebrationModal rewards={celebrateRewards} onClose={dismissCelebration} />
@@ -1156,21 +1172,16 @@ function ResumenParaOtro({ form, total }) {
 // Se usa para el total (Efectivo) y para la parte en efectivo del Mixto.
 function SelectorBillete({ monto, billete, onChange, titulo }) {
   return (
-    <div className="bg-mustard/10 border border-mustard/30 rounded-2xl p-4 flex flex-col gap-3">
-      <p className="font-body text-sm font-semibold text-coal">{titulo}</p>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => onChange(monto)}
-          className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
-            billete === monto ? 'bg-mint text-cream border-mint' : 'bg-cream border-mint/40 text-coal'
-          }`}>
-          Exacto
-        </button>
-        {[20000, 50000, 100000, 200000].filter(b => b > monto).map(b => (
-          <button key={b} type="button" onClick={() => onChange(b)}
-            className={`px-3 py-1.5 rounded-xl border font-body text-sm font-semibold transition-colors ${
-              billete === b ? 'bg-mustard text-cream border-mustard' : 'bg-cream border-mustard/40 text-coal'
+    <div className="bg-white border border-coal/10 rounded-2xl p-4 flex flex-col gap-3">
+      <p className="font-body text-[15px] font-bold text-coal">{titulo}</p>
+      {/* Rediseño (25 oct 2026): billetes como botones grandes; el elegido en rojo. */}
+      <div className="grid grid-cols-3 gap-2">
+        {[['exacto', monto], ...[20000, 50000, 100000, 200000].filter(b => b > monto).map(b => [b, b])].map(([k, valor]) => (
+          <button key={k} type="button" onClick={() => onChange(valor)} aria-pressed={billete === valor}
+            className={`min-h-[48px] rounded-2xl border-2 font-body text-sm font-bold transition-colors ${
+              billete === valor ? 'border-cherry bg-cherry/5 text-cherry' : 'border-coal/10 bg-white text-coal'
             }`}>
-            ${b.toLocaleString('es-CO')}
+            {k === 'exacto' ? 'Exacto' : `$${valor.toLocaleString('es-CO')}`}
           </button>
         ))}
       </div>
@@ -1202,7 +1213,7 @@ function SelectorBillete({ monto, billete, onChange, titulo }) {
 
 // Pago dentro del checkout: el cliente ya sabe cuánto es, así que paga aquí y a
 // la caja le llega el pedido completo para aceptarlo.
-function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante, sedeId, metodos = null, pagaOtro = null }) {
+export function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio, pickup, comprobante, setComprobante, sedeId, metodos = null, pagaOtro = null }) {
   const [archivoError, setArchivoError] = useState('')
   const metodo = form.payment
   const billete = form.billete
@@ -1215,31 +1226,33 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
     setComprobante(file)
   }
 
+  // Rediseño (25 oct 2026): resumen con el total grande y los medios de pago
+  // como tarjetas; debajo solo lo que aplica al medio elegido.
   return (
-    <div className="bg-cherry/5 border-2 border-cherry/30 rounded-2xl p-4 flex flex-col gap-3">
-      <p className="font-display text-base tracking-wide text-cherry flex items-center gap-2">
-        <CreditCard size={18} aria-hidden="true" /> {pagaOtro ? `Lo paga ${pagaOtro} al recibir` : 'Paga tu pedido'}
+    <div className="flex flex-col gap-3">
+      <p className="font-display text-2xl tracking-wide text-coal normal-case flex items-center gap-2">
+        <CreditCard size={20} className="text-cherry" aria-hidden="true" /> {pagaOtro ? `Lo paga ${pagaOtro} al recibir` : 'Paga tu pedido'}
       </p>
 
       {/* Resumen del valor */}
-      <div className="bg-cream rounded-xl px-4 py-3 flex flex-col gap-1.5">
+      <div className="bg-white rounded-2xl border border-coal/10 px-4 py-4 flex flex-col gap-2">
         <div className="flex justify-between font-body text-sm">
-          <span className="text-coal/60">Productos:</span>
-          <span className="font-semibold">${productos.toLocaleString('es-CO')}</span>
+          <span className="text-coal/65">Productos</span>
+          <span className="font-semibold tabular">${productos.toLocaleString('es-CO')}</span>
         </div>
         <div className="flex justify-between font-body text-sm">
-          <span className="text-coal/60">Domicilio:</span>
-          <span className="font-semibold">{pickup ? 'Recoges en sede' : `$${domicilio.toLocaleString('es-CO')}`}</span>
+          <span className="text-coal/65">Domicilio</span>
+          <span className="font-semibold tabular">{pickup ? 'Recoges en la sede' : `$${domicilio.toLocaleString('es-CO')}`}</span>
         </div>
         {saldoUsado > 0 && (
           <div className="flex justify-between font-body text-sm text-mint font-semibold">
-            <span>Saldo a favor:</span>
-            <span>−${saldoUsado.toLocaleString('es-CO')}</span>
+            <span>Saldo a favor</span>
+            <span className="tabular">−${saldoUsado.toLocaleString('es-CO')}</span>
           </div>
         )}
-        <div className="border-t border-coal/10 pt-2 flex justify-between items-center">
-          <span className="font-body font-bold text-coal">TOTAL A PAGAR:</span>
-          <span className="font-display text-2xl text-cherry">${total.toLocaleString('es-CO')}</span>
+        <div className="border-t border-coal/10 pt-2.5 mt-1 flex justify-between items-baseline">
+          <span className="font-body text-sm font-bold tracking-wide text-coal">TOTAL A PAGAR</span>
+          <span className="font-display text-4xl leading-none text-cherry tabular">${total.toLocaleString('es-CO')}</span>
         </div>
       </div>
 
@@ -1250,23 +1263,32 @@ function PagoEnCheckout({ form, set, total, saldoUsado = 0, productos, domicilio
       )}
       {total > 0 && (<>
 
-      <div>
-        <label className="label-field">¿Cómo vas a pagar? *</label>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            ['Efectivo',      Banknote],
-            ['Transferencia', Building2],
-            ['Nequi',         LogoNequi],
-            ['Mixto',         Shuffle],
-          ].filter(([valor]) => !metodos || metodos.includes(valor)).map(([valor, IconoPago]) => (
-            <button key={valor} type="button" onClick={() => set('payment', valor)}
-              className={`btn btn-sm w-full justify-center border-2 ${
-                metodo === valor ? 'border-cherry bg-cherry/10 text-cherry' : 'border-coal/15 text-coal/60 bg-cream'
-              }`}>
-              <IconoPago size={16} aria-hidden="true" /> {valor}
+      <div className="flex flex-col gap-2">
+        <p className="font-display text-xl tracking-wide text-coal normal-case px-0.5">¿Cómo vas a pagar?</p>
+        {[
+          ['Efectivo',      Banknote,  pickup ? 'Pagas en la sede al recoger' : 'Le pagas al domiciliario al recibir'],
+          ['Transferencia', Building2, 'Bancolombia · subes el comprobante'],
+          ['Nequi',         LogoNequi, 'Subes el comprobante'],
+          ['Mixto',         Shuffle,   'Parte en efectivo y parte por transferencia'],
+        ].filter(([valor]) => !metodos || metodos.includes(valor)).map(([valor, IconoPago, detalle]) => {
+          const activo = metodo === valor
+          return (
+            <button key={valor} type="button" onClick={() => set('payment', valor)} aria-pressed={activo}
+              className={`w-full min-h-[72px] flex items-center gap-3.5 px-3.5 py-3 rounded-2xl text-left bg-white border-2 transition-colors ${
+                activo ? 'border-cherry' : 'border-coal/10'}`}>
+              <span className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-coal ${valor === 'Nequi' ? '' : 'bg-cream'}`}>
+                <IconoPago size={valor === 'Nequi' ? 30 : 22} aria-hidden="true" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-body text-[15px] font-bold text-coal">{valor}</span>
+                <span className="block font-body text-xs text-coal/65">{detalle}</span>
+              </span>
+              <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${activo ? 'border-cherry' : 'border-coal/25'}`}>
+                {activo && <span className="w-3 h-3 rounded-full bg-cherry" />}
+              </span>
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
       {/* Efectivo: con qué billete, para que el domiciliario lleve el cambio */}
@@ -2120,10 +2142,12 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         <ResumenParaOtro form={form} total={pagoAhora ? total : null} />
       )}
 
-      <div className="flex flex-col gap-2 pt-2">
+      {/* Enviar siempre a la vista, con el total (rediseño del 25 oct 2026) */}
+      <div className="sticky bottom-0 z-20 flex flex-col gap-2 pt-3 pb-4 bg-cream/95 backdrop-blur-md border-t border-coal/10"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
         <button onClick={() => handleSubmit()} disabled={loading} className="btn-primary w-full btn-lg">
           {subiendo !== null ? `Subiendo comprobante ${subiendo}%…`
-            : loading ? 'Enviando…' : 'Enviar pedido'}
+            : loading ? 'Enviando…' : pagoAhora && total > 0 ? `Enviar pedido · $${total.toLocaleString('es-CO')}` : 'Enviar pedido'}
         </button>
         <button onClick={onCancel} className="btn-ghost w-full">Cancelar</button>
       </div>
