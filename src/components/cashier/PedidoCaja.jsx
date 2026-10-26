@@ -7,6 +7,7 @@ import { SEDES } from '../../services/roles'
 import useAgotados from '../../hooks/useAgotados'
 import { opcionesCatalogo, vendibles, seleccionInicial, precioUnidad, faltantes, itemApi, resumenItem } from '../../utils/catalogoCaja'
 import { LogoPago, LogoWhatsApp } from '../common/LogosApps'
+import { lineasParaGuardar, recuperarLineas, borradorConAlgo, borradorVigente } from '../../utils/borradorCaja'
 
 // Pedido de la caja desde el catálogo (especificación §10.1). Presencial, por
 // teléfono o por WhatsApp, sin cuenta del comprador. Los productos se arman con
@@ -17,6 +18,17 @@ const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`
 const soloDigitos = (v) => String(v || '').replace(/[^\d]/g, '')
 const CANALES = [{ id: 'presencial', texto: 'En la sede' }, { id: 'telefono', texto: 'Teléfono' }, { id: 'whatsapp', texto: 'WhatsApp' }]
 const METODOS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
+
+// Borrador en este aparato (§21.1): si se va la conexión o se recarga, el pedido no se pierde.
+const BORRADOR = 'ds_borrador_pedido_caja'
+function leerBorrador(sedeId, sedeFija) {
+  try {
+    const b = JSON.parse(localStorage.getItem(BORRADOR) || 'null')
+    if (!borradorVigente(b) || (sedeFija && b.sedeId !== sedeId)) return null
+    return b
+  } catch { return null }
+}
+const borrarBorrador = () => { try { localStorage.removeItem(BORRADOR) } catch { /* sin almacenamiento */ } }
 
 function Chip({ activo, onClick, children, disabled }) {
   return (
@@ -117,24 +129,29 @@ function FichaCaja({ p, selInicial, opciones, onListo, onCancelar }) {
 export default function PedidoCaja({ sede, onCancel, onCreado }) {
   // Administración con «ambas sedes» elige aquí la sede del pedido.
   const sedeFija = !!SEDES[sede?.id]
-  const [sedeId, setSedeId] = useState(sedeFija ? sede.id : 'santa_lucia')
+  const guardado = useRef(undefined)
+  if (guardado.current === undefined) guardado.current = leerBorrador(sede?.id, sedeFija)
+  const b0 = guardado.current
+  const [sedeId, setSedeId] = useState(sedeFija ? sede.id : (b0?.sedeId || 'santa_lucia'))
   const sedeInfo = SEDES[sedeId] || null
   const { ids: agotados } = useAgotados(sedeId)
   const [productos, setProductos] = useState(null)
   const [busca, setBusca] = useState('')
   const [lineas, setLineas] = useState([])          // [{ key, p, sel }]
   const [editando, setEditando] = useState(null)    // { p, sel, idx }
-  const [cliente, setCliente] = useState({ nombre: '', telefono: '' })
-  const [canal, setCanal] = useState('presencial')
-  const [modo, setModo] = useState('pickup')
-  const [dir, setDir] = useState({ texto: '', barrio: '', referencia: '' })
+  const [cliente, setCliente] = useState(b0?.cliente || { nombre: '', telefono: '' })
+  const [canal, setCanal] = useState(b0?.canal || 'presencial')
+  const [modo, setModo] = useState(b0?.modo || 'pickup')
+  const [dir, setDir] = useState(b0?.dir || { texto: '', barrio: '', referencia: '' })
   const [lugares, setLugares] = useState([])
-  const [punto, setPunto] = useState(null)
-  const [tarifa, setTarifa] = useState(null)        // { estado, precio, km }
-  const [domicilio, setDomicilio] = useState('')    // lo que escribe la caja
+  const [punto, setPunto] = useState(b0?.punto || null)
+  const [tarifa, setTarifa] = useState(b0?.tarifa?.estado === 'ok' ? b0.tarifa : null)        // { estado, precio, km }
+  const [domicilio, setDomicilio] = useState(b0?.domicilio ?? '')    // lo que escribe la caja
   const [buscandoDir, setBuscandoDir] = useState(false)
-  const [notas, setNotas] = useState('')
-  const [pago, setPago] = useState({ metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' })
+  const [notas, setNotas] = useState(b0?.notas || '')
+  const [pago, setPago] = useState(b0?.pago || { metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' })
+  // { at, cambios }: se recuperó un borrador; se muestra qué cambió en el menú.
+  const [recuperado, setRecuperado] = useState(b0 && !b0.lineas?.length ? { at: b0.at, cambios: [] } : null)
   const [errores, setErrores] = useState([])
   const [enviando, setEnviando] = useState(false)
   const [creado, setCreado] = useState(null)
@@ -149,6 +166,34 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
   }, [])
 
   const opciones = useMemo(() => opcionesCatalogo(productos, agotados), [productos, agotados])
+
+  // Con el menú cargado, el borrador se rearma con los precios de AHORA y se señala qué cambió.
+  useEffect(() => {
+    const b = guardado.current
+    if (!productos || !b?.lineas?.length) return
+    const r = recuperarLineas(b.lineas, productos, opcionesCatalogo(productos).adiciones, agotados)
+    guardado.current = { ...b, lineas: null }
+    setLineas(r.lineas)
+    setRecuperado({ at: b.at, cambios: r.cambios })
+  }, [productos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Guardar el borrador mientras se arma (no se guarda el resultado: eso lo hace el servidor).
+  useEffect(() => {
+    if (creado || !productos) return undefined
+    const t = setTimeout(() => {
+      const b = { at: Date.now(), sedeId, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago,
+        lineas: lineasParaGuardar(lineas, opciones.adiciones) }
+      try { if (borradorConAlgo(b)) localStorage.setItem(BORRADOR, JSON.stringify(b)); else borrarBorrador() } catch { /* sin almacenamiento */ }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [lineas, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago, sedeId, creado, productos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const descartarBorrador = () => {
+    borrarBorrador()
+    setLineas([]); setCliente({ nombre: '', telefono: '' }); setCanal('presencial'); setModo('pickup')
+    setDir({ texto: '', barrio: '', referencia: '' }); setPunto(null); setTarifa(null); setDomicilio(''); setNotas('')
+    setPago({ metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' }); setRecuperado(null)
+  }
   const nombres = useMemo(() => Object.fromEntries((productos || []).map((p) => [p.id_producto, p.nombre_producto])), [productos])
   const lista = useMemo(() => {
     const t = busca.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -215,6 +260,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
           ...(pago.metodo === 'Mixto' ? { mixtoEfectivo: Number(pago.mixtoEfectivo), mixtoTransferencia: Number(pago.mixtoTransferencia) } : {}),
         },
       }, clave.current)
+      borrarBorrador()
       setCreado(r)
       onCreado?.(r)
     } catch (err) {
@@ -246,6 +292,23 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Borrador recuperado: revisar antes de crear (§21.1) */}
+      {recuperado && (
+        <div className="rounded-2xl border-2 border-tangelo/50 bg-tangelo/10 p-3 flex flex-col gap-1.5">
+          <p className="font-body text-sm font-semibold text-coal">
+            Recuperamos el pedido que estabas armando ({new Date(recuperado.at).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}). Revísalo antes de crearlo.
+          </p>
+          {recuperado.cambios.length > 0 && (
+            <ul className="font-body text-xs text-pepper list-disc pl-4">
+              {recuperado.cambios.map((c) => <li key={c}>{c}</li>)}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setRecuperado(null)} className="btn-secondary btn-sm">Ya lo revisé</button>
+            <button type="button" onClick={descartarBorrador} className="btn-ghost btn-sm text-pepper">Descartar y empezar de nuevo</button>
+          </div>
+        </div>
+      )}
       {/* 1. Cliente */}
       <section className="flex flex-col gap-2">
         {!sedeFija && (
