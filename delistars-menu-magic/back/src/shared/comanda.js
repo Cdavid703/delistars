@@ -45,12 +45,24 @@ export const TEXTO_ESTADO_COMANDA = {
 export const ambiguo = (j, ahora = Date.now()) =>
   j?.estado === 'enviando' && ahora - Number(j.tomadaAt || 0) > AMBIGUO_MS
 
-/** Productos sin el precio de cada línea (la cocina no lo necesita). */
+/** Productos sin el precio de cada línea. */
 export function lineasProductos(items) {
+  return productosComanda(items).map((l) => l.t)
+}
+
+/**
+ * Productos con el precio de cada línea aparte (`p`, ej. '$20.000'; null si
+ * no tiene): la caja lo pidió para revisar en el papel que cada precio esté
+ * bien (25 oct 2026).
+ */
+export function productosComanda(items) {
   return String(items || '')
     .split('\n')
-    .map((l) => l.replace(/\s*\(= \$[\d.,]+\)\s*$/, '').trimEnd())
-    .filter((l) => l.trim())
+    .map((l) => {
+      const m = l.match(/\s*\(= (\$[\d.,]+)\)\s*$/)
+      return { t: (m ? l.slice(0, m.index) : l).trimEnd(), p: m ? m[1] : null }
+    })
+    .filter((l) => l.t.trim())
 }
 
 const pesos = (n) => `$${(Number(n) || 0).toLocaleString('es-CO')}`
@@ -93,7 +105,8 @@ export function contenidoComanda(o, { tipo = 'original', motivo = null, prueba =
   // Para otra persona (§7.3): a quién se entrega.
   if (o.destinatario?.nombre) add(`Recibe: ${o.destinatario.nombre}`, 'negrita')
   add('', 'linea')
-  for (const l of lineasProductos(o.items)) add(l, l.startsWith(' ') ? undefined : 'negrita')
+  // Cada producto con su precio a la derecha (`p`).
+  for (const l of productosComanda(o.items)) L.push({ t: l.t, ...(l.t.startsWith(' ') ? {} : { e: 'negrita' }), ...(l.p ? { p: l.p } : {}) })
   if (o.notes) { add('', 'linea'); add(`Nota: ${o.notes}`, 'negrita') }
   add('', 'linea')
   const sub = Number(o.quotedPrice) || 0
@@ -108,4 +121,4 @@ export function contenidoComanda(o, { tipo = 'original', motivo = null, prueba =
 
 /** Las mismas líneas como texto plano (para guardar y para pruebas). */
 export const textoComanda = (lineas) =>
-  lineas.map((l) => (l.e === 'linea' ? '-'.repeat(32) : l.t)).join('\n')
+  lineas.map((l) => (l.e === 'linea' ? '-'.repeat(32) : l.p ? `${l.t}  ${l.p}` : l.t)).join('\n')

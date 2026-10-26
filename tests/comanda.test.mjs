@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { contenidoComanda, textoComanda, lineasProductos, estadoComanda, ambiguo, AMBIGUO_MS } from '../src/utils/comanda.js'
+import { contenidoComanda, textoComanda, lineasProductos, productosComanda, estadoComanda, ambiguo, AMBIGUO_MS } from '../src/utils/comanda.js'
 
 const T = Date.UTC(2026, 9, 24, 17, 30) // 12:30 en Colombia
 const pedido = {
@@ -10,7 +10,7 @@ const pedido = {
   createdAt: T - 10 * 60000,
 }
 
-test('los productos van sin el precio de cada línea y conservan opciones, notas y combos', () => {
+test('los productos conservan opciones, notas y combos', () => {
   assert.deepEqual(lineasProductos(pedido.items), [
     '2x Perro Clásico (Queso extra) | Salsas: Rosada — "sin cebolla"',
     '1x Combo Dúo',
@@ -19,12 +19,18 @@ test('los productos van sin el precio de cada línea y conservan opciones, notas
   ])
 })
 
+test('cada producto lleva su precio aparte (la caja lo revisa en el papel)', () => {
+  assert.deepEqual(productosComanda(pedido.items).map((l) => l.p), ['$34.000', '$30.000', null, null])
+  const lineas = contenidoComanda(pedido, { ahora: T })
+  assert.ok(lineas.some((l) => l.t.startsWith('2x Perro Clásico') && l.p === '$34.000' && l.e === 'negrita'))
+})
+
 test('la comanda lleva número, modalidad, horas, productos y totales, sin dirección, teléfono ni pago (§19.1)', () => {
   const txt = textoComanda(contenidoComanda(pedido, { ahora: T }))
-  for (const parte of ['#042', 'DOMICILIO', 'Pedido 12:20 · Impresa 12:30', 'Perro Clásico', '↳ Perro sencillo', 'Nota: Bien tostado', 'Subtotal  $64.000', 'Domicilio  $5.000', 'TOTAL  $69.000']) {
+  for (const parte of ['#042', 'DOMICILIO', 'Pedido 12:20 · Impresa 12:30', 'Perro Clásico', '↳ Perro sencillo', 'Nota: Bien tostado', 'Subtotal  $64.000', 'Domicilio  $5.000', 'TOTAL  $69.000', '$34.000']) {
     assert.ok(txt.includes(parte), `falta ${parte}`)
   }
-  for (const nada of ['Cra 80', '3001234567', 'Efectivo', '$34.000']) assert.ok(!txt.includes(nada), `sobra ${nada}`)
+  for (const nada of ['Cra 80', '3001234567', 'Efectivo']) assert.ok(!txt.includes(nada), `sobra ${nada}`)
   const recoge = textoComanda(contenidoComanda({ ...pedido, deliveryMode: 'pickup', totalPrice: 64000 }, { ahora: T }))
   assert.ok(recoge.includes('RECOGE EN SEDE') && !recoge.includes('Domicilio  '))
 })

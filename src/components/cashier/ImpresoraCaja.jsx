@@ -32,9 +32,11 @@ function renglon(l) {
   const valor = t.match(/^(.+?)\s{2,}(\$[\d.,]+|\d+ gratis.*)$/)
   if (valor) return `<div class="fila${l.e === 'grande' ? ' total' : ''}"><span>${esc(valor[1])}</span><span>${esc(valor[2])}</span></div>`
   // Producto: «1x Hamburguesa | Salsas: … | Cebolla: …» → nombre y sus opciones debajo.
+  // Con su precio a la derecha (`p`): la caja revisa en el papel que cada precio esté bien.
   if (l.e === 'negrita' && /^\d+x /.test(t)) {
     const [nombre, ...opciones] = t.split(/\s*\|\s*/)
-    return `<div class="prod">${esc(nombre)}</div>${opciones.map((o) => `<div class="opc">· ${esc(o)}</div>`).join('')}`
+    const precio = l.p ? `<span class="precio">${esc(l.p)}</span>` : ''
+    return `<div class="prod"><span>${esc(nombre)}</span>${precio}</div>${opciones.map((o) => `<div class="opc">· ${esc(o)}</div>`).join('')}`
   }
   if (/^\s/.test(t)) return `<div class="opc">${esc(t.trim())}</div>`
   const dato = t.match(/^(Cliente|Recibe|Nota): (.*)$/)
@@ -61,7 +63,8 @@ export function htmlComanda(lineas) {
     .modo{background:#000;color:#fff;font-size:16px;font-weight:700;text-align:center;letter-spacing:2px;padding:3px 0;margin:2mm 0;
       -webkit-print-color-adjust:exact;print-color-adjust:exact}
     .hora{font-size:12px;text-align:center;margin-bottom:1mm}
-    .prod{font-size:15px;font-weight:700;margin-top:2mm}
+    .prod{font-size:15px;font-weight:700;margin-top:2mm;display:flex;justify-content:space-between;align-items:baseline;gap:3mm}
+    .precio{white-space:nowrap;flex-shrink:0}
     .opc{font-size:13px;padding-left:3mm}
     .fila{display:flex;justify-content:space-between;gap:3mm}
     .fila.total{font-size:18px;font-weight:900;margin-top:1mm}
