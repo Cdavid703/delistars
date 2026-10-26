@@ -168,6 +168,13 @@ export function OrderDetailModal({ order, onClose }: { order: Order; onClose: ()
                 {order.reference && <Row label="Referencia" value={order.reference} />}
                 <Row label="Sede" value={order.sedeName} />
                 <Row label="Domiciliario" value={order.driverName} />
+                {/* Recorrido de la entrega (§12.1): se guarda 7 días después de entregar */}
+                {order.deliveryMode !== 'pickup' && order.driverEmail && (
+                  <a href={`/domicilios/?recorrido=${order.id}`} target="_blank" rel="noreferrer"
+                    className="text-sm font-semibold text-cherry underline underline-offset-2">
+                    Ver el recorrido de la entrega
+                  </a>
+                )}
                 <Row label="Cajero" value={order.cashierName} />
               </Section>
               <Section title="Pedido">

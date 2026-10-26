@@ -24,7 +24,7 @@ import {
   AlertTriangle, XCircle, CheckCircle2, BellOff,
   Hash, DollarSign, MessageSquare, Clock,
   Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check,
-  CircleCheck, CircleX, Store, Banknote
+  CircleCheck, CircleX, Store, Banknote, Route
 } from 'lucide-react'
 import ComandaPedido from './ComandaPedido'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
@@ -1135,6 +1135,12 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                   <button onClick={openDriverTracking} className="btn-primary btn-sm w-full mt-2">
                     <Navigation size={14} /> Ver ubicación en tiempo real
                   </button>
+                )}
+                {/* Recorrido de la entrega (§12.1): solo administración */}
+                {esAdmin && !pickup && (
+                  <a href={`/domicilios/?recorrido=${order.id}`} target="_blank" rel="noreferrer" className="btn-secondary btn-sm w-full mt-2">
+                    <Route size={14} aria-hidden="true" /> Ver el recorrido de la entrega
+                  </a>
                 )}
               </Section>
             )}

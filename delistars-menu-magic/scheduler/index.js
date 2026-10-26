@@ -17,6 +17,7 @@ const { ImapFlow } = require('imapflow')
 const { ADMIN_EMAILS, hoyColombia, mensajeDelDia } = require('./mercadeoAviso')
 const { mensajeSolicitud, claveSolicitud } = require('./solicitudAviso')
 const { enlacePedido, destinoCaja, idEvento, mensajeNuevo, sinDomiciliarioDemasiado, sinRespuestaDemasiado, mensajesExpo, expoMuertos } = require('./avisos')
+const { puntoNuevo, finDeEntrega, decisionRetencion, MAX_PUNTOS } = require('./recorridos')
 const { calcularDias } = require('./indicadores')
 // Solo para LEER pedidos al calcular tiempos de entrega (SA de solo lectura,
 // la misma del backup). La escritura de estadísticas va por el bot (reglas).
@@ -1010,6 +1011,50 @@ async function avisarAsignacion(id, o, anterior) {
   }
 }
 
+// ─── Recorridos de las entregas (§12.1) ─────────────────────────────────────
+// Ver recorridos.js. Se graba desde el mismo vigía de pedidos: cada ubicación
+// nueva del domiciliario en un pedido en reparto suma un punto a
+// recorridos/{orderId}. Solo lo lee administración.
+const ultimoPunto = new Map() // orderId → { lat, lng, t, n }
+const terminados = new Set()
+async function grabarRecorrido(id, o) {
+  const previo = ultimoPunto.get(id) || null
+  const p = puntoNuevo(o, previo)
+  if (p && (previo?.n || 0) < MAX_PUNTOS) {
+    ultimoPunto.set(id, { ...p, n: (previo?.n || 0) + 1 })
+    await adminDb.doc(`recorridos/${id}`).set({
+      orderId: id, orderNumber: o.orderNumber ?? null, sedeId: o.sedeId ?? null, sedeName: o.sedeName ?? null,
+      driverEmail: o.driverEmail ?? null, driverName: o.driverName ?? null,
+      destino: o.addrLat != null && o.addrLng != null ? { lat: Number(o.addrLat), lng: Number(o.addrLng) } : null,
+      direccion: o.fullAddress ?? '',
+      ...(previo ? {} : { inicioAt: p.t }),
+      actualizadoAt: p.t, puntos: FieldValue.arrayUnion(p), n: FieldValue.increment(1),
+    }, { merge: true })
+    return
+  }
+  // Terminó (entregado, devuelto o cancelado): desde ahí corren los 7 días.
+  const fin = finDeEntrega(o)
+  if (fin && ultimoPunto.has(id) && !terminados.has(id)) {
+    terminados.add(id)
+    ultimoPunto.delete(id)
+    await adminDb.doc(`recorridos/${id}`).set({ terminadoAt: fin }, { merge: true })
+  }
+}
+
+/** Cada hora: borra los recorridos de entregas terminadas hace más de 7 días (salvo reclamo abierto). */
+async function limpiarRecorridos() {
+  const ahora = Date.now()
+  const viejos = await adminDb.collection('recorridos').where('actualizadoAt', '<', ahora - 7 * 24 * 3600 * 1000).limit(300).get()
+  let borrados = 0, retenidos = 0
+  for (const d of viejos.docs) {
+    const pedido = (await adminDb.doc(`orders/${d.id}`).get()).data() || null
+    const decision = decisionRetencion(d.data(), pedido, ahora)
+    if (decision === 'borrar') { await d.ref.delete(); borrados++ }
+    else if (decision === 'retener' && !d.data().retenidoPorReclamo) { await d.ref.update({ retenidoPorReclamo: true }); retenidos++ }
+  }
+  if (borrados || retenidos) console.log(`[scheduler] recorridos: ${borrados} borrados, ${retenidos} retenidos por reclamo abierto`)
+}
+
 // Vigila los pedidos recientes y notifica al cliente cuando su pedido cambia a
 // un estado relevante (cotizado / en camino / llegó / entregado / rechazado).
 function watchOrdersForPush() {
@@ -1027,6 +1072,8 @@ function watchOrdersForPush() {
         if (!baseline && chg.type === 'added') {
           revisarDomicilioNuevo(id, o).catch((e) => console.error('[scheduler] revisión domicilio error:', e?.message || e))
         }
+        // Recorrido de la entrega (§12.1): también en la primera carga, por si el scheduler se reinició en pleno reparto.
+        grabarRecorrido(id, o).catch((e) => console.error('[scheduler] recorrido error:', e?.message || e))
         if (baseline) continue
         // Cambió la excepción (Fase 7): cambio propuesto, respuesta del cliente,
         // cancelación pedida en reparto.
@@ -1342,6 +1389,7 @@ async function main() {
       updateEtaStats() // una vez al arrancar
       console.log('[scheduler] eta_stats activo (cada 30 min en horario de servicio)')
       // Notificaciones push al cliente (usa la misma SA; requiere permiso FCM).
+      cron.schedule('17 * * * *', () => limpiarRecorridos().catch((e) => console.error('[scheduler] limpiar recorridos:', e?.message || e)), { timezone: TIMEZONE })
       try { watchOrdersForPush() }
       catch (err) { console.error('[scheduler] push FCM deshabilitado:', err?.message || err) }
       try { watchChatDomiciliario() }
