@@ -4,7 +4,7 @@
 //
 // Segmentos (mismos ids que admin/src/lib/mercadeo.ts):
 //   todos, santa_lucia, santa_teresita (sede habitual), inactivos30 (último
-//   pedido hace más de 30 días), frecuentes (5+ pedidos), nuevos (1 pedido),
+//   pedido hace más de 90 días; el id conserva el 30), frecuentes (5+ pedidos), nuevos (1 pedido),
 //   cercaPremio (el próximo pedido les da el premio de fidelización).
 
 const ENTREGADOS = ['delivered_paid', 'delivered_cash', 'pending_cuadre', 'completed']
@@ -37,7 +37,9 @@ function segmentosDe(c, r, ahoraMs = Date.now()) {
   if (r) {
     const habitual = Object.entries(r.sedes).sort((a, b) => b[1] - a[1])[0]?.[0]
     if (habitual) s.push(habitual)
-    if (r.ultimo && ahoraMs - r.ultimo > 30 * DIA_MS) s.push('inactivos30')
+    // Inactivo = 90 días sin pedir (decisión del 25 oct 2026; antes 30). El id
+    // sigue siendo 'inactivos30' porque las campañas guardadas lo usan.
+    if (r.ultimo && ahoraMs - r.ultimo > 90 * DIA_MS) s.push('inactivos30')
     if (r.pedidos >= 5) s.push('frecuentes')
     if (r.pedidos === 1) s.push('nuevos')
   }

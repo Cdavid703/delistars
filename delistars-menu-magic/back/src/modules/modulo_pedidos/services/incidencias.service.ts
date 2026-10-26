@@ -2,7 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { firestore } from '../../../config/firestore';
 import { ErrorPedido } from '../reglas/armado';
 import { PedidoDoc } from '../reglas/transiciones';
-import { planInstruccion, planEntendido, planIndicaciones } from '../reglas/incidencias';
+import { planInstruccion, planEntendido, planIndicaciones, planDevolverPlata } from '../reglas/incidencias';
 import type { Usuario } from '../../../middlewares/require-user';
 
 /**
@@ -60,5 +60,38 @@ export function fijarIndicaciones(u: Usuario, id: string, texto: unknown) {
     const ahora = FieldValue.serverTimestamp();
     tx.update(ref, { indicacionesBreves: plan.indicacionesBreves, indicacionesAt: ahora, indicacionesPor: u.email || u.uid, updatedAt: ahora });
     return { id, indicacionesBreves: plan.indicacionesBreves, sinCambios: false };
+  });
+}
+
+/** La caja le devuelve la plata a un pedido que volvió a la sede. */
+export function devolverPlata(u: Usuario, id: string) {
+  const db = firestore();
+  return enTransaccion(id, (p, tx, ref) => {
+    const plan = planDevolverPlata(p, u);
+    const ahora = FieldValue.serverTimestamp();
+    const pesos = (n: number) => `$${n.toLocaleString('es-CO')}`;
+    const partes = [
+      plan.monto ? `te devolvemos ${pesos(plan.monto)}: entra a tu pedido y elige si los quieres por transferencia${p.clientEmail ? ' o como saldo a favor' : ''}` : '',
+      plan.saldo ? `el saldo a favor que usaste (${pesos(plan.saldo)}) ya volvió a tu cuenta` : '',
+    ].filter(Boolean);
+    if (p.clientUid) {
+      for (const cid of plan.creditos) {
+        tx.set(db.doc(`customers/${p.clientUid}/credits/${cid}`), { estado: 'disponible', usadoEnOrderId: null, usadoAt: null }, { merge: true });
+      }
+    }
+    tx.update(ref, {
+      ...(plan.devolucion ? { devolucion: plan.devolucion } : {}),
+      ...(plan.creditos.length ? { 'saldoAplicado.devuelto': true } : {}),
+      clientMessages: FieldValue.arrayUnion({
+        role: 'cashier', name: u.nombre || 'Caja', ts: Date.now(),
+        text: `Tu pedido volvió a la sede y no se pudo entregar. ${partes.join('; y ')}.`,
+      }),
+      updatedAt: ahora,
+    });
+    tx.set(ref.collection('historial').doc(), {
+      at: ahora, por: u.email || u.uid, rol: 'caja', accion: 'devolver_plata',
+      de: null, a: null, motivo: partes.join('; '), status: p.status ?? null, version: Number(p.version) || 0,
+    });
+    return { id, devolucion: plan.devolucion, saldoDevuelto: plan.saldo };
   });
 }

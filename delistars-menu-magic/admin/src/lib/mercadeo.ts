@@ -20,7 +20,7 @@ export const SEGMENTOS: { id: string; nombre: string; detalle: string }[] = [
   { id: 'todos',          nombre: 'Todos los clientes',       detalle: 'Todos los que tienen correo' },
   { id: 'santa_lucia',    nombre: 'Clientes de Santa Lucía',  detalle: 'Su sede habitual es Santa Lucía' },
   { id: 'santa_teresita', nombre: 'Clientes de Santa Teresita', detalle: 'Su sede habitual es Santa Teresita' },
-  { id: 'inactivos30',    nombre: 'No piden hace 30 días',    detalle: 'Su último pedido fue hace más de 30 días' },
+  { id: 'inactivos30',    nombre: 'No piden hace 90 días',    detalle: 'Su último pedido fue hace más de 90 días' },
   { id: 'frecuentes',     nombre: 'Clientes frecuentes',      detalle: '5 pedidos o más' },
   { id: 'nuevos',         nombre: 'Clientes nuevos',          detalle: 'Han hecho un solo pedido' },
   { id: 'cercaPremio',    nombre: 'Les falta 1 sello',        detalle: 'El próximo pedido les da el premio de fidelización' },

@@ -15,7 +15,7 @@ test('cuenta clientes con correo y los que aceptan, por segmento', () => {
   ]
   const pedidos = [
     ...Array.from({ length: 5 }, () => ({ clientUid: 'a', status: 'completed', sedeId: 'santa_lucia', createdAtMs: hace(2) })),
-    { clientUid: 'b', status: 'delivered_paid', sedeId: 'santa_teresita', createdAtMs: hace(40) },
+    { clientUid: 'b', status: 'delivered_paid', sedeId: 'santa_teresita', createdAtMs: hace(100) }, // inactivo: más de 90 días
     { clientUid: 'b', status: 'cancelled', sedeId: 'santa_lucia', createdAtMs: hace(1) }, // no cuenta
     { clientUid: 'd', status: 'pending_cuadre', sedeId: 'santa_teresita', createdAtMs: hace(3) },
   ]
@@ -30,6 +30,11 @@ test('cuenta clientes con correo y los que aceptan, por segmento', () => {
   assert.deepEqual(r.segmentos.frecuentes, { clientes: 1, aceptan: 1, notificables: 0 })
   assert.deepEqual(r.segmentos.nuevos, { clientes: 2, aceptan: 0, notificables: 0 })
   assert.deepEqual(r.segmentos.cercaPremio, { clientes: 1, aceptan: 1, notificables: 0 })
+})
+
+test('inactivo es más de 90 días sin pedir: 40 días todavía no', () => {
+  const r = calcularAudiencia([{ uid: 'e', email: 'e@x.com' }], [{ clientUid: 'e', status: 'completed', sedeId: 'santa_lucia', createdAtMs: hace(40) }], AHORA)
+  assert.equal(r.segmentos.inactivos30.clientes, 0)
 })
 
 test('sin datos, todos los segmentos existen en cero', () => {
