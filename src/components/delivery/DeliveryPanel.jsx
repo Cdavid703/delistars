@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 import { useAuth } from '../../contexts/AuthContext'
+import Logo from '../common/Logo'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -421,22 +422,25 @@ export default function DeliveryPanel() {
 
       {/* En la mano, en la calle: arriba solo el GPS y los avisos. Lo demás
           vive en «Más», en la barra de abajo. */}
-      <header className="px-4 pt-4 pb-3 flex items-center gap-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
-        <div className="flex-1 min-w-0">
+      <header className="px-4 pb-3 flex flex-col gap-2.5" style={{ paddingTop: 'max(env(safe-area-inset-top), 14px)' }}>
+        <div className="flex items-center gap-2">
+          <Logo variant="light" size="md" className="mr-auto" />
+          <button onClick={toggleLocationSharing} aria-pressed={locationSharing}
+            title={locationSharing ? 'La caja ve dónde estás. Toca para dejar de compartir' : 'Compartir mi ubicación con la caja'}
+            className={`min-h-[40px] rounded-full px-3 flex items-center gap-1.5 font-body text-xs font-bold ${
+              locationSharing ? 'bg-mint/[0.12] text-[#12766B]' : 'bg-cherry/[0.12] text-[#B3261E]'}`}>
+            <span className={`w-2 h-2 rounded-full ${locationSharing ? 'bg-mint' : 'bg-cherry'}`} aria-hidden="true" />
+            {locationSharing ? 'GPS activo' : 'GPS apagado'}
+          </button>
+          <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
+            onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) abrir(o) }} />
+        </div>
+        <div className="min-w-0">
           <p className="font-body text-xs font-semibold text-coal/60 truncate">
             Hola, {nombre}{sede ? ` · ${sede.id === 'all' ? 'Ambas sedes' : sede.name}` : ''}
           </p>
           <h1 className="font-display text-[32px] tracking-wide leading-none text-coal normal-case mt-0.5">{titulo}</h1>
         </div>
-        <button onClick={toggleLocationSharing} aria-pressed={locationSharing}
-          title={locationSharing ? 'La caja ve dónde estás. Toca para dejar de compartir' : 'Compartir mi ubicación con la caja'}
-          className={`min-h-[40px] rounded-full px-3 flex items-center gap-1.5 font-body text-xs font-bold ${
-            locationSharing ? 'bg-mint/[0.12] text-[#12766B]' : 'bg-cherry/[0.12] text-[#B3261E]'}`}>
-          <span className={`w-2 h-2 rounded-full ${locationSharing ? 'bg-mint' : 'bg-cherry'}`} aria-hidden="true" />
-          {locationSharing ? 'GPS activo' : 'GPS apagado'}
-        </button>
-        <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
-          onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) abrir(o) }} />
       </header>
 
       {vista === 'ruta' && (
