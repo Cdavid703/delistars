@@ -154,8 +154,11 @@ services:
       VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
       AUTO_OPEN_BOT_EMAIL: ${AUTO_OPEN_BOT_EMAIL}
       AUTO_OPEN_BOT_PASSWORD: ${AUTO_OPEN_BOT_PASSWORD}
-      # SA de SOLO LECTURA (la del backup) para calcular tiempos de entrega.
-      GOOGLE_APPLICATION_CREDENTIALS: /secrets/firestore-backup-key.json
+      # Cuenta de servicio del scheduler. En producción SCHEDULER_FIREBASE_KEY=
+      # servidor-pedidos.json (rol Usuario de Cloud Datastore): además de leer,
+      # escribe los recorridos de las entregas (§12.1) y la cola de campañas.
+      # Sin la variable usa la de solo lectura (pruebas la cambia por la suya).
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/${SCHEDULER_FIREBASE_KEY:-firestore-backup-key.json}
       # WhatsApp del negocio (CallMeBot): resumen diario + alertas de pedidos
       # sin cotizar. Sin CALLMEBOT_APIKEY los avisos solo se loguean.
       WHATSAPP_ALERT_PHONE: ${WHATSAPP_ALERT_PHONE:-573122275039}
