@@ -1,8 +1,72 @@
-# Estado del proyecto DeliStars — integración
+# Estado del proyecto DeliStars
 
-> Documento de contexto/handoff. Resume qué se hizo, qué falta y los hallazgos de
-> auditoría, para que cualquier sesión (o el colaborador) retome sin perder hilo.
-> Última actualización: 2026-06-20.
+> Documento de contexto/handoff, para que cualquier sesión (o el colaborador) retome
+> sin perder hilo. **Última actualización: 27 oct 2026.** Lo que sigue después de la
+> sección «Estado al 27 oct 2026» es la historia de junio de 2026 (Windows, auditoría,
+> primer despliegue) y se deja como referencia.
+
+## Estado al 27 oct 2026
+
+**La web cubre la especificación** (`docs/BRECHAS-WEB-VS-ESPECIFICACION.md`, sección 0).
+Todo está en producción.
+
+### Dónde se trabaja y cómo se despliega
+
+- Código: `Projects/Delistars-turnos` (worktree en el Mac). La copia `Projects/Delistars`
+  es vieja: no trabajar ahí.
+- **Pruebas:** `git push -f origin HEAD:pruebas` → se despliega solo en
+  https://pruebas.delistars.com (proyecto Firebase de pruebas, base y servidor aparte).
+  Pruebas nunca escribe en clientes reales.
+- **Producción:** los commits aprobados se llevan con `cherry-pick` a `integracion-admin`
+  y el push despliega solo en https://delistars.com. Registro del despliegue en el VPS:
+  `/opt/delistars/deploy.log` (pruebas: `/opt/delistars-pruebas/deploy.log`).
+- No subir a producción con la caja abierta (hasta las 23:30, hora de Bogotá) salvo que
+  David lo pida.
+- Firebase CLI siempre con `--project`.
+- App móvil: `Projects/Delistarsapp`. Su contrato con la web es
+  `Delistarsapp/docs/CONTRATO-API-APP.md`: actualizarlo después de cada cambio de la web.
+
+### Hecho entre el 18 y el 26 de octubre de 2026
+
+- **Modelo y servidor:** modelo de pedido con 7 etapas, excepciones y versión;
+  operaciones del pedido en el backend Express con idempotencia; identidad completa
+  (Google, Microsoft, Apple y correo); código privado para los pedidos de la caja.
+- **Operación:**
+  - Turnos y asignación automática del domiciliario, con máximo 5 pedidos en reparto.
+  - Incidencias de reparto, iguales a las de CarPlay.
+  - Cuadres de efectivo, cola de impresión de comandas, reportes y Mercadeo.
+- **Cliente:**
+  - Chats separados con fotos, reclamos, centro de avisos y enlaces universales.
+  - Pedido para otra persona, también desde la caja.
+  - Dirección favorita, igual que en la app.
+  - Recorridos de 7 días y continuidad sin conexión.
+- **Rediseño:** cliente con modo oscuro según el celular, caja en computador y
+  domiciliario con el diseño elegido en la app («Por recoger» / «En reparto», crema de
+  día y oscuro de noche).
+- **Los lunes no hay domicilios** (pico y placa del domiciliario): el cliente lo ve en el
+  menú, en el carrito y en el formulario, y ese día solo puede elegir «Recoger». La caja
+  lo sabe y no tiene bloqueo.
+
+### Cancelado o decidido no hacer (26 oct 2026)
+
+- Cancelado: notas de voz (web y app) y sonido distinto por sede.
+- No se hace: botón «Nuevo pedido» en la barra superior de la caja en computador;
+  Storage en el proyecto de pruebas (las fotos se prueban en producción).
+
+### Pendiente
+
+- **Google Play Console** (pospuesto por David): la cuenta de desarrollador pide verificar
+  la identidad con un documento oficial (lo sube David) y luego el teléfono. Después:
+  crear la app, la llave de firma de Play y el cliente OAuth de Android para entrar con
+  Google en producción.
+- **Prueba de CarPlay en pruebas** (pospuesta): recorrido de «No se pudo entregar» con las
+  llamadas exactas de la app.
+- **Pedido real de punta a punta** con el panel nuevo del domiciliario, la caja «para
+  otra persona» y la dirección favorita.
+- **Resumen diario por WhatsApp:** el scheduler de producción no lo envía porque falta
+  `CALLMEBOT_APIKEY` en su `.env` (el resumen por correo sí sale).
+
+# Historia (junio de 2026)
 
 ## Dónde está el código
 
