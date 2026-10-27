@@ -8,6 +8,7 @@ import useAgotados from '../../hooks/useAgotados'
 import { opcionesCatalogo, vendibles, seleccionInicial, precioUnidad, faltantes, itemApi, resumenItem } from '../../utils/catalogoCaja'
 import { LogoPago, LogoWhatsApp } from '../common/LogosApps'
 import { lineasParaGuardar, recuperarLineas, borradorConAlgo, borradorVigente } from '../../utils/borradorCaja'
+import { METODOS_POR_QUIEN_PAGA, revisarDestinatario, enlaceDestinatario, mensajeParaQuienRecibe } from '../../utils/destinatario'
 
 // Pedido de la caja desde el catálogo (especificación §10.1). Presencial, por
 // teléfono o por WhatsApp, sin cuenta del comprador. Los productos se arman con
@@ -18,6 +19,7 @@ const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`
 const soloDigitos = (v) => String(v || '').replace(/[^\d]/g, '')
 const CANALES = [{ id: 'presencial', texto: 'En la sede' }, { id: 'telefono', texto: 'Teléfono' }, { id: 'whatsapp', texto: 'WhatsApp' }]
 const METODOS = ['Efectivo', 'Transferencia', 'Nequi', 'Mixto']
+const SIN_OTRO = { activo: false, nombre: '', telefono: '', paga: 'destinatario' }
 
 // Borrador en este aparato (§21.1): si se va la conexión o se recarga, el pedido no se pierde.
 const BORRADOR = 'ds_borrador_pedido_caja'
@@ -150,6 +152,8 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
   const [buscandoDir, setBuscandoDir] = useState(false)
   const [notas, setNotas] = useState(b0?.notas || '')
   const [pago, setPago] = useState(b0?.pago || { metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' })
+  // Lo recibe otra persona (§7.3; 26 oct 2026): igual que en el pedido del cliente.
+  const [otro, setOtro] = useState(b0?.otro || SIN_OTRO)
   // { at, cambios }: se recuperó un borrador; se muestra qué cambió en el menú.
   const [recuperado, setRecuperado] = useState(b0 && !b0.lineas?.length ? { at: b0.at, cambios: [] } : null)
   const [errores, setErrores] = useState([])
@@ -181,18 +185,18 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
   useEffect(() => {
     if (creado || !productos) return undefined
     const t = setTimeout(() => {
-      const b = { at: Date.now(), sedeId, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago,
+      const b = { at: Date.now(), sedeId, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago, otro,
         lineas: lineasParaGuardar(lineas, opciones.adiciones) }
       try { if (borradorConAlgo(b)) localStorage.setItem(BORRADOR, JSON.stringify(b)); else borrarBorrador() } catch { /* sin almacenamiento */ }
     }, 400)
     return () => clearTimeout(t)
-  }, [lineas, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago, sedeId, creado, productos]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lineas, cliente, canal, modo, dir, punto, tarifa, domicilio, notas, pago, otro, sedeId, creado, productos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const descartarBorrador = () => {
     borrarBorrador()
     setLineas([]); setCliente({ nombre: '', telefono: '' }); setCanal('presencial'); setModo('pickup')
     setDir({ texto: '', barrio: '', referencia: '' }); setPunto(null); setTarifa(null); setDomicilio(''); setNotas('')
-    setPago({ metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' }); setRecuperado(null)
+    setPago({ metodo: 'Efectivo', billete: '', mixtoEfectivo: '', mixtoTransferencia: '' }); setOtro(SIN_OTRO); setRecuperado(null)
   }
   const nombres = useMemo(() => Object.fromEntries((productos || []).map((p) => [p.id_producto, p.nombre_producto])), [productos])
   const lista = useMemo(() => {
@@ -203,6 +207,17 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
   const subtotal = lineas.reduce((t, l) => t + precioUnidad(l.p, l.sel, opciones.adiciones) * l.sel.cantidad, 0)
   const valorDomicilio = modo === 'delivery' ? (domicilio !== '' ? Number(domicilio) : (tarifa?.estado === 'ok' ? tarifa.precio : null)) : 0
   const total = valorDomicilio == null ? null : subtotal + valorDomicilio
+  const paraOtro = modo === 'delivery' && otro.activo
+  // Si paga quien recibe, en efectivo al recibir; si paga quien pide, por Transferencia o Nequi.
+  const metodos = paraOtro ? METODOS_POR_QUIEN_PAGA[otro.paga] : METODOS
+  const elegirPaga = (paga) => {
+    setOtro((o) => ({ ...o, paga }))
+    setPago((p) => (METODOS_POR_QUIEN_PAGA[paga].includes(p.metodo) ? p : { ...p, metodo: METODOS_POR_QUIEN_PAGA[paga][0] }))
+  }
+  const activarOtro = (activo) => {
+    setOtro((o) => ({ ...o, activo }))
+    if (activo) setPago((p) => (METODOS_POR_QUIEN_PAGA[otro.paga].includes(p.metodo) ? p : { ...p, metodo: METODOS_POR_QUIEN_PAGA[otro.paga][0] }))
+  }
   const parteEfectivo = pago.metodo === 'Efectivo' ? total : Number(pago.mixtoEfectivo) || 0
   const cambio = pago.billete !== '' && total != null ? Number(pago.billete) - parteEfectivo : null
 
@@ -238,6 +253,9 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       errs.push(`Efectivo + transferencia debe sumar ${pesos(total)}`)
     }
     if (cambio != null && cambio < 0) errs.push('El billete no alcanza')
+    const rd = paraOtro ? revisarDestinatario({ nombre: otro.nombre, telefono: otro.telefono, paga: otro.paga }, { deliveryMode: modo }) : { ok: true }
+    if (!rd.ok) errs.push(rd.error)
+    if (paraOtro && !metodos.includes(pago.metodo)) errs.push(otro.paga === 'destinatario' ? 'Si paga quien recibe, es en efectivo' : 'Si paga quien pide, es por Transferencia o Nequi')
     const agot = lineas.filter((l) => agotados.has(l.p.id_producto)).map((l) => l.p.nombre_producto)
     if (agot.length) errs.push(`Se agotó: ${agot.join(', ')}. Quítalo del pedido`)
     setErrores(errs)
@@ -252,6 +270,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
           ...(punto ? { coords: punto } : {}),
           ...(domicilio !== '' || !punto ? { deliveryPrice: Number(domicilio) || 0 } : {}),
         } : {}),
+        ...(paraOtro ? { destinatario: { nombre: otro.nombre.trim(), telefono: otro.telefono.trim(), paga: otro.paga } } : {}),
         items: lineas.map((l) => itemApi(l.p, l.sel)),
         notas: notas.trim(),
         pago: {
@@ -285,6 +304,25 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
             </button>
           </div>
         )}
+        {creado.destinatario?.token && (() => {
+          const url = enlaceDestinatario(window.location.origin, creado.destinatario.token)
+          const tel = String(creado.destinatario.telefono || '').replace(/\D/g, '').slice(-10)
+          const msg = mensajeParaQuienRecibe({ name: cliente.nombre, sedeName: sedeInfo?.name, destinatario: creado.destinatario }, url)
+          return (
+            <div className="w-full rounded-2xl bg-white border border-coal/10 p-4 flex flex-col gap-2 text-left">
+              <p className="font-body text-sm text-coal">
+                <strong>Lo recibe {creado.destinatario.nombre}.</strong> {creado.destinatario.paga === 'destinatario' ? 'Paga en efectivo al recibirlo.' : 'Ya lo paga quien pidió.'} Mándale el enlace para que vea cuándo llega.
+              </p>
+              {tel && (
+                <a href={`https://wa.me/57${tel}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"
+                  className="btn-secondary w-full justify-center"><LogoWhatsApp size={18} /> Mandárselo por WhatsApp</a>
+              )}
+              <button type="button" className="btn-ghost btn-sm self-start" onClick={() => navigator.clipboard?.writeText(url).catch(() => {})}>
+                <Copy size={14} aria-hidden="true" /> Copiar enlace
+              </button>
+            </div>
+          )
+        })()}
         <button type="button" onClick={onCancel} className="btn-primary w-full">Listo</button>
       </div>
     )
@@ -413,6 +451,24 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
               <input className="input-field w-28 text-sm" inputMode="numeric" value={domicilio} onChange={(e) => setDomicilio(soloDigitos(e.target.value))}
                 placeholder={tarifa?.estado === 'ok' ? String(tarifa.precio) : 'Valor'} aria-label="Valor del domicilio" />
             </div>
+            {/* Lo recibe otra persona (§7.3) */}
+            <label className="flex items-center gap-2 font-body text-sm font-semibold text-coal cursor-pointer select-none">
+              <input type="checkbox" className="h-4 w-4 accent-cherry" checked={otro.activo} onChange={(e) => activarOtro(e.target.checked)} />
+              Lo recibe otra persona
+            </label>
+            {otro.activo && (
+              <div className="rounded-xl border border-coal/10 bg-white p-3 flex flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="input-field text-sm" value={otro.nombre} maxLength={80} onChange={(e) => setOtro((o) => ({ ...o, nombre: e.target.value }))} placeholder="Quién recibe" />
+                  <input className="input-field text-sm" type="tel" value={otro.telefono} onChange={(e) => setOtro((o) => ({ ...o, telefono: e.target.value }))} placeholder="Su celular" />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-body text-xs text-coal/60 mr-1">¿Quién paga?</span>
+                  <Chip activo={otro.paga === 'destinatario'} onClick={() => elegirPaga('destinatario')}>Quien recibe (efectivo)</Chip>
+                  <Chip activo={otro.paga === 'comprador'} onClick={() => elegirPaga('comprador')}>Quien pide (transferencia o Nequi)</Chip>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -420,7 +476,7 @@ export default function PedidoCaja({ sede, onCancel, onCreado }) {
       {/* 4. Pago */}
       <section className="flex flex-col gap-2 xl:col-start-2">
         <div className="flex flex-wrap gap-1.5">
-          {METODOS.map((m) => <Chip key={m} activo={pago.metodo === m} onClick={() => setPago((p) => ({ ...p, metodo: m }))}><span className="inline-flex items-center gap-1.5"><LogoPago medio={m} size={14} />{m}</span></Chip>)}
+          {metodos.map((m) => <Chip key={m} activo={pago.metodo === m} onClick={() => setPago((p) => ({ ...p, metodo: m }))}><span className="inline-flex items-center gap-1.5"><LogoPago medio={m} size={14} />{m}</span></Chip>)}
         </div>
         {pago.metodo === 'Mixto' && (
           <div className="grid grid-cols-2 gap-2">

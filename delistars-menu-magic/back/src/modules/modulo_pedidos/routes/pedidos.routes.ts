@@ -191,11 +191,13 @@ router.post('/:id/editor', activa, requireUser, async (req: Request, res: Respon
  *     description: >
  *       Caja de la sede o admin. { sedeId, deliveryMode, nombre, telefono, canal?: presencial | telefono | whatsapp,
  *       direccion?, coords?, barrio?, referencia?, deliveryPrice? (si no hay coords o para fijarlo a mano), notas?,
- *       items (mismo formato que POST /pedidos), pago: { metodo, billete?, mixtoEfectivo?, mixtoTransferencia? } }.
+ *       items (mismo formato que POST /pedidos), pago: { metodo, billete?, mixtoEfectivo?, mixtoTransferencia? },
+ *       destinatario?: { nombre, telefono, paga: comprador | destinatario } }. Para otra persona (§7.3, solo
+ *       domicilio): si paga quien recibe, Efectivo; si paga quien pide, Transferencia o Nequi (422 metodo).
  *       Precios del catálogo y agotados de la sede (409 agotado_en_sede). Nace confirmado; a domicilio se asigna
  *       al domiciliario en turno o queda por asignar. Sin cuenta: devuelve el código privado. Exige Idempotency-Key.
  *     responses:
- *       200: { description: "{ id, orderNumber, etapa, subtotal, deliveryPrice, total, items, domiciliario, codigo }" }
+ *       200: { description: "{ id, orderNumber, etapa, subtotal, deliveryPrice, total, items, domiciliario, codigo, destinatario: { nombre, telefono, paga, token } | null }" }
  */
 router.post('/caja', activa, requireUser, async (req: Request, res: Response) => {
   try {
