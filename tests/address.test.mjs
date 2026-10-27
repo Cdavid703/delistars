@@ -69,3 +69,13 @@ test('el barrio sale de la dirección de Google cuando viene', () => {
   assert.equal(barrioDeGoogle('Cl. 44B #70a-23, Medellín, Antioquia'), '')
   assert.equal(barrioDeGoogle('Medellín, Antioquia'), '')
 })
+
+import { marcarFavorita, ordenarLugares } from '../src/utils/address.js'
+
+test('una sola favorita y sale primero', () => {
+  const lista = [{ id: 'a', favorita: true }, { id: 'b' }, { id: 'c' }]
+  const nueva = marcarFavorita(lista, 'c')
+  assert.deepEqual(nueva.map((x) => !!x.favorita), [false, false, true])
+  assert.deepEqual(ordenarLugares(nueva).map((x) => x.id), ['c', 'a', 'b'])
+  assert.deepEqual(ordenarLugares([{ id: 'a' }, { id: 'b' }]).map((x) => x.id), ['a', 'b'])
+})

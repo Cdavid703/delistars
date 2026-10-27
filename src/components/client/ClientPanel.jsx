@@ -1835,6 +1835,7 @@ function ClientOrderForm({ user, sede, perfil, onSubmit, onCancel, availableRewa
         <AddressBook
           user={user}
           sede={sede}
+          elegirFavorita
           currentAddress={form.fullAddress}
           onSelect={(a) => setForm(f => ({
             ...f,
