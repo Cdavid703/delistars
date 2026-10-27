@@ -4,110 +4,314 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Soporte · DeliStars</title>
-<meta name="description" content="Ayuda de DeliStars: contacto de las sedes, horarios, problemas con un pedido, devoluciones y cómo eliminar tu cuenta.">
+<meta name="description" content="Ayuda de DeliStars: WhatsApp y teléfono de las sedes, horarios, problemas con un pedido, devoluciones y cómo eliminar tu cuenta.">
+<meta name="theme-color" content="#262626">
 <link rel="icon" href="/logo.svg">
+<script>document.documentElement.className += " js"</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --tinta: #1d1a17; --suave: #5c554e; --linea: #e8e0d6; --fondo: #fbf7f1; --marca: #c8102e; }
+  :root {
+    --coal: #262626; --cream: #FDF6ED; --crema: #F4E7D0; --cherry: #EA3329; --cherry-osc: #C8261D;
+    --mustard: #E88F00; --mint: #13746A; --suave: #6B6560; --linea: #E6DDD0; --blanco: #FFFFFF;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--fondo); color: var(--tinta); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-  header img { width: 44px; height: 44px; }
-  h1 { font-size: 28px; line-height: 1.2; margin: 0; }
-  h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--linea); }
-  h3 { font-size: 16px; margin: 0 0 4px; }
-  p, li { color: var(--tinta); }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--cream); color: var(--coal); font: 16px/1.55 "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  svg { flex-shrink: 0; }
+  .ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .envoltura { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+
+  /* Portada */
+  .portada { position: relative; overflow: hidden; background: var(--coal); color: var(--crema); padding: 28px 0 36px; }
+  .portada::before, .portada::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+  .portada::before { width: 340px; height: 340px; right: -110px; top: -140px; background: var(--cherry); opacity: .9; }
+  .portada::after { width: 160px; height: 160px; right: -50px; bottom: -90px; background: var(--mustard); opacity: .85; }
+  .portada .envoltura { position: relative; z-index: 1; }
+  .marca { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; letter-spacing: .02em; }
+  .marca img { width: 46px; height: auto; }
+  .ceja { margin: 28px 0 0; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--mustard); }
+  h1 { font-family: "Bebas Neue", "DM Sans", sans-serif; font-weight: 400; font-size: clamp(48px, 11vw, 76px); line-height: .95; margin: 6px 0 10px; color: var(--blanco); letter-spacing: .01em; }
+  .bajada { margin: 0; max-width: 520px; color: #E9DCC6; }
+  .atajos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .atajo { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); color: var(--blanco); font-size: 14px; font-weight: 600; text-decoration: none; transition: background .2s, transform .2s; }
+  .atajo:hover { background: rgba(255,255,255,.18); transform: translateY(-1px); }
+  .atajo.wa { background: var(--blanco); color: var(--coal); border-color: var(--blanco); }
+
+  /* Secciones */
+  section { padding: 34px 0 6px; scroll-margin-top: 12px; }
+  .titulo { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
+  .titulo .burbuja { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--cherry); color: var(--blanco); }
+  h2 { font-family: "Bebas Neue", "DM Sans", sans-serif; font-weight: 400; font-size: 34px; line-height: 1; margin: 0; letter-spacing: .01em; }
   .nota { color: var(--suave); font-size: 14px; }
-  ul, ol { padding-left: 22px; }
-  li { margin: 4px 0; }
-  a { color: var(--marca); }
-  .sedes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .ficha { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 14px 16px; }
-  .ficha p { margin: 4px 0; }
-  table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--linea); }
-  tr:last-child td { border-bottom: 0; }
-  th { font-size: 14px; color: var(--suave); font-weight: 600; }
-  nav { margin: 16px 0 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-  nav a { white-space: nowrap; }
+  .tarjeta { background: var(--blanco); border: 1px solid var(--linea); border-radius: 20px; padding: 18px; box-shadow: 0 1px 0 rgba(38,38,38,.03); }
+
+  /* Sedes */
+  .sedes { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .sede { position: relative; overflow: hidden; transition: transform .25s, box-shadow .25s; }
+  .sede:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -18px rgba(38,38,38,.45); }
+  .sede::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; background: var(--cherry); }
+  .sede.teresita::before { background: var(--mustard); }
+  .sede h3 { font-family: "Bebas Neue", "DM Sans", sans-serif; font-weight: 400; font-size: 30px; line-height: 1; margin: 6px 0 10px; }
+  .dato { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; color: var(--coal); font-size: 15px; text-decoration: none; }
+  .dato .ico { width: 18px; height: 18px; margin-top: 2px; color: var(--cherry-osc); }
+  a.dato:hover span { text-decoration: underline; }
+  .botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .boton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 12px; border-radius: 14px; font-size: 15px; font-weight: 700; text-decoration: none; border: 1px solid var(--linea); background: var(--blanco); color: var(--coal); transition: transform .15s, background .2s, border-color .2s; }
+  .boton:hover { border-color: var(--coal); }
+  .boton:active { transform: scale(.98); }
+  .boton.ancho { grid-column: 1 / -1; }
+  .boton.whatsapp { border-color: #25D366; background: #F1FCF5; }
+  .boton.whatsapp:hover { background: #E3F9EA; }
+  .correo { display: flex; align-items: center; gap: 14px; margin-top: 14px; text-decoration: none; }
+  .correo .burbuja { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--cream); color: var(--cherry-osc); }
+  .correo b { display: block; }
+  .correo span { color: var(--suave); font-size: 14px; }
+
+  /* Horario */
+  .horario { display: grid; gap: 16px; grid-template-columns: auto 1fr; align-items: center; background: var(--coal); color: var(--crema); border: 0; }
+  .reloj { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; background: var(--mustard); color: var(--coal); }
+  .reloj .ico { width: 32px; height: 32px; }
+  .horario strong { display: block; font-size: clamp(18px, 5vw, 26px); font-weight: 700; line-height: 1.15; white-space: nowrap; color: var(--blanco); }
+  .horario p { margin: 4px 0 0; color: #D8CBB6; font-size: 14px; }
+  .dias { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .dia { text-align: center; padding: 8px 2px; border-radius: 12px; background: rgba(255,255,255,.08); font-size: 13px; font-weight: 700; }
+  .dia small { display: block; font-size: 10px; font-weight: 600; opacity: .75; margin-top: 2px; }
+  .dia.lunes { background: rgba(232,143,0,.22); color: #FFD08A; }
+  .dia.hoy { outline: 2px solid var(--blanco); outline-offset: -2px; }
+  .aviso { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; padding: 14px 16px; border-radius: 16px; background: #FFF1DA; color: var(--coal); }
+  .aviso .ico { color: #925A00; margin-top: 2px; }
+  .aviso.hoy { background: var(--mustard); }
+  .aviso.hoy .ico { color: var(--coal); }
+
+  /* Pedido */
+  .rejilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .mini { display: flex; flex-direction: column; gap: 8px; }
+  .mini .burbuja { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--cream); color: var(--cherry-osc); }
+  .mini b { font-size: 16px; }
+  .mini p { margin: 0; color: var(--suave); font-size: 14px; }
+  .pasos { counter-reset: paso; list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+  .pasos li { counter-increment: paso; display: flex; gap: 14px; align-items: flex-start; }
+  .pasos li::before { content: counter(paso); flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--cherry); color: var(--blanco); font-weight: 700; font-size: 15px; }
+  .pasos li span { padding-top: 4px; }
+  .plazo { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 8px 14px; border-radius: 999px; background: #FDE7E5; color: var(--cherry-osc); font-weight: 700; font-size: 14px; }
+
+  /* Devoluciones */
+  .opciones { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-top: 12px; }
+  .opcion { border-radius: 18px; padding: 16px; background: var(--cream); }
+  .opcion .ico { width: 26px; height: 26px; color: var(--mint); }
+  .opcion b { display: block; margin-top: 8px; }
+  .opcion p { margin: 4px 0 0; font-size: 14px; color: var(--suave); }
+
+  /* Eliminar cuenta */
+  details { border-top: 1px solid var(--linea); }
+  details:first-of-type { border-top: 0; }
+  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; min-height: 56px; font-weight: 700; }
+  summary::-webkit-details-marker { display: none; }
+  summary .burbuja { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--cream); color: var(--cherry-osc); }
+  summary .flecha { margin-left: auto; transition: transform .25s; color: var(--suave); }
+  details[open] summary .flecha { transform: rotate(180deg); }
+  details p { margin: 0 0 14px 48px; color: var(--suave); }
+
+  .enlace-tarjeta { display: flex; align-items: center; gap: 14px; text-decoration: none; transition: transform .2s; }
+  .enlace-tarjeta:hover { transform: translateX(3px); }
+  .enlace-tarjeta .burbuja { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--coal); color: var(--crema); }
+  .enlace-tarjeta span { color: var(--suave); font-size: 14px; display: block; }
+  .enlace-tarjeta .flecha { margin-left: auto; color: var(--cherry-osc); }
+
+  footer { padding: 40px 0 48px; text-align: center; font-size: 14px; color: var(--suave); }
+  footer a { color: var(--cherry-osc); font-weight: 700; }
+
+  /* Entrada suave al bajar */
+  .js .aparece { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .js .aparece.visible { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js .aparece { opacity: 1; transform: none; transition: none; }
+    .sede, .boton, .atajo, .enlace-tarjeta { transition: none; }
+  }
+  @media (max-width: 420px) {
+    .opciones { grid-template-columns: 1fr; }
+    .dia small { display: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <img src="/logo.svg" alt="">
-    <h1>Soporte DeliStars</h1>
-  </header>
-  <p class="nota">Ayuda para la web <a href="https://delistars.com">delistars.com</a> y la app DeliStars para iPhone y Android.</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-wa" viewBox="0 0 24 24"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></symbol>
+    <clipPath id="gm-clip"><path d="M19.527 4.799c1.212 2.608.937 5.678-.405 8.173-1.101 2.047-2.744 3.74-4.098 5.614-.619.858-1.244 1.75-1.669 2.727-.141.325-.263.658-.383.992-.121.333-.224.673-.34 1.008-.109.314-.236.684-.627.687h-.007c-.466-.001-.579-.53-.695-.887-.284-.874-.581-1.713-1.019-2.525-.51-.944-1.145-1.817-1.79-2.671L19.527 4.799zM8.545 7.705l-3.959 4.707c.724 1.54 1.821 2.863 2.871 4.18.247.31.494.622.737.936l4.984-5.925-.029.01c-1.741.601-3.691-.291-4.392-1.987a3.377 3.377 0 0 1-.209-.716c-.063-.437-.077-.761-.004-1.198l.001-.007zM5.492 3.149l-.003.004c-1.947 2.466-2.281 5.88-1.117 8.77l4.785-5.689-.058-.05-3.607-3.035zM14.661.436l-3.838 4.563a.295.295 0 0 1 .027-.01c1.6-.551 3.403.15 4.22 1.626.176.319.323.683.377 1.045.068.446.085.773.012 1.22l-.003.016 3.836-4.561A8.382 8.382 0 0 0 14.67.439l-.009-.003zM9.466 5.868L14.162.285l-.047-.012A8.31 8.31 0 0 0 11.986 0a8.439 8.439 0 0 0-6.169 2.766l-.016.018 3.665 3.084z"/></clipPath>
+    <symbol id="i-maps" viewBox="0 0 24 24"><g clip-path="url(#gm-clip)"><rect x="0" y="0" width="12" height="10" fill="#1A73E8"/><rect x="12" y="0" width="12" height="10" fill="#EA4335"/><rect x="0" y="10" width="12" height="14" fill="#34A853"/><rect x="12" y="10" width="12" height="14" fill="#FBBC04"/></g></symbol>
+    <symbol id="i-tel" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-correo" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-caja" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+    <symbol id="i-alerta" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-lapiz" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.86.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.86z"/></symbol>
+    <symbol id="i-billetera" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+    <symbol id="i-banco" viewBox="0 0 24 24"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4Z"/></symbol>
+    <symbol id="i-devolver" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-usuario-x" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></symbol>
+    <symbol id="i-celular" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+    <symbol id="i-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="i-escudo" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="i-abajo" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-derecha" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  </defs>
+</svg>
 
-  <nav aria-label="Secciones">
-    <a href="#contacto">Contacto</a><a href="#horarios">Horarios</a><a href="#pedido">Ayuda con un pedido</a>
-    <a href="#devoluciones">Devoluciones</a><a href="#eliminar">Eliminar tu cuenta</a><a href="#privacidad">Privacidad</a>
-  </nav>
-
-  <h2 id="contacto">Cómo contactarnos</h2>
-  <p>Escríbenos por WhatsApp o llámanos a tu sede. Si es sobre un pedido, ten a la mano su número.</p>
-  <div class="sedes">
-    <div class="ficha">
-      <h3>Santa Lucía</h3>
-      <p>Cra. 87 #48E-3, Santa Rosa de Lima, Medellín</p>
-      <p><strong>WhatsApp:</strong> <a href="https://wa.me/573135065720">+57 313 506 5720</a></p>
-      <p><strong>Teléfono:</strong> <a href="tel:+573135065720">+57 313 506 5720</a></p>
-    </div>
-    <div class="ficha">
-      <h3>Santa Teresita</h3>
-      <p>Cl. 35B #87A-165, La América, Medellín</p>
-      <p><strong>WhatsApp:</strong> <a href="https://wa.me/573150634084">+57 315 063 4084</a></p>
-      <p><strong>Teléfono:</strong> <a href="tel:+573150634084">+57 315 063 4084</a></p>
-    </div>
+<header class="portada">
+  <div class="envoltura">
+    <a class="marca" href="/"><img src="/logo.svg" alt="">DeliStars</a>
+    <p class="ceja">Soporte</p>
+    <h1>¿Cómo te<br>ayudamos?</h1>
+    <p class="bajada">Ayuda para la web delistars.com y la app DeliStars para iPhone y Android. Escríbenos a tu sede y te respondemos por ahí.</p>
+    <nav class="atajos" aria-label="Atajos">
+      <a class="atajo wa" href="#contacto"><svg width="18" height="18"><use href="#i-wa"/></svg>Escríbenos</a>
+      <a class="atajo" href="#pedido"><svg class="ico" width="18" height="18"><use href="#i-alerta"/></svg>Problema con un pedido</a>
+      <a class="atajo" href="#devoluciones"><svg class="ico" width="18" height="18"><use href="#i-devolver"/></svg>Devoluciones</a>
+      <a class="atajo" href="#eliminar"><svg class="ico" width="18" height="18"><use href="#i-usuario-x"/></svg>Eliminar cuenta</a>
+    </nav>
   </div>
-  <p><strong>Correo:</strong> <a href="mailto:info@delistars.com">info@delistars.com</a></p>
+</header>
 
-  <h2 id="horarios">Horarios</h2>
-  <table>
-    <tr><th>Días</th><th>Ambas sedes</th></tr>
-    <tr><td>Lunes a jueves</td><td>4:30 p. m. a 11:30 p. m.</td></tr>
-    <tr><td>Viernes</td><td>4:30 p. m. a 12:00 a. m.</td></tr>
-    <tr><td>Sábado</td><td>4:00 p. m. a 12:00 a. m.</td></tr>
-    <tr><td>Domingo</td><td>4:00 p. m. a 11:30 p. m.</td></tr>
-  </table>
-  <p><strong>Los lunes no hay domicilios</strong> (nuestro domiciliario tiene pico y placa): ese día puedes pedir para recoger en la sede.</p>
-  <p class="nota">Si un día una sede abre o cierra a otra hora, lo verás en la web y en la app antes de pedir.</p>
+<main class="envoltura">
+  <section id="contacto">
+    <div class="titulo aparece"><span class="burbuja"><svg class="ico"><use href="#i-chat"/></svg></span><h2>Contáctanos</h2></div>
+    <div class="sedes">
+      <article class="tarjeta sede aparece">
+        <h3>Santa Lucía</h3>
+        <a class="dato" href="https://www.google.com/maps/search/?api=1&amp;query=6.260435,-75.604912" target="_blank" rel="noopener"><svg class="ico"><use href="#i-pin"/></svg><span>Cra. 87 #48E-3, Santa Rosa de Lima, Medellín</span></a>
+        <a class="dato" href="tel:+573135065720"><svg class="ico"><use href="#i-tel"/></svg><span>+57 313 506 5720</span></a>
+        <div class="botones">
+          <a class="boton whatsapp ancho" href="https://wa.me/573135065720" target="_blank" rel="noopener"><svg width="22" height="22"><use href="#i-wa"/></svg>WhatsApp</a>
+          <a class="boton" href="tel:+573135065720"><svg class="ico"><use href="#i-tel"/></svg>Llamar</a>
+          <a class="boton" href="https://www.google.com/maps/dir/?api=1&amp;destination=6.260435,-75.604912" target="_blank" rel="noopener"><svg width="20" height="20"><use href="#i-maps"/></svg>Cómo llegar</a>
+        </div>
+      </article>
+      <article class="tarjeta sede teresita aparece">
+        <h3>Santa Teresita</h3>
+        <a class="dato" href="https://www.google.com/maps/search/?api=1&amp;query=6.244691,-75.613159" target="_blank" rel="noopener"><svg class="ico"><use href="#i-pin"/></svg><span>Cl. 35B #87A-165, La América, Medellín</span></a>
+        <a class="dato" href="tel:+573150634084"><svg class="ico"><use href="#i-tel"/></svg><span>+57 315 063 4084</span></a>
+        <div class="botones">
+          <a class="boton whatsapp ancho" href="https://wa.me/573150634084" target="_blank" rel="noopener"><svg width="22" height="22"><use href="#i-wa"/></svg>WhatsApp</a>
+          <a class="boton" href="tel:+573150634084"><svg class="ico"><use href="#i-tel"/></svg>Llamar</a>
+          <a class="boton" href="https://www.google.com/maps/dir/?api=1&amp;destination=6.244691,-75.613159" target="_blank" rel="noopener"><svg width="20" height="20"><use href="#i-maps"/></svg>Cómo llegar</a>
+        </div>
+      </article>
+    </div>
+    <a class="tarjeta correo aparece" href="mailto:info@delistars.com">
+      <span class="burbuja"><svg class="ico"><use href="#i-correo"/></svg></span>
+      <span><b>info@delistars.com</b><span>Para todo lo demás, también para temas de tus datos</span></span>
+    </a>
+  </section>
 
-  <h2 id="pedido">Ayuda con un pedido</h2>
-  <ul>
-    <li><strong>Saber cómo va:</strong> abre tu pedido en la app o en la web. Ahí ves cada paso y, cuando sale a domicilio, la hora estimada de llegada.</li>
-    <li><strong>Hablar con la sede:</strong> desde el pedido puedes escribirle a la sede por el chat. Si es urgente, escríbenos por WhatsApp.</li>
-    <li><strong>Cambiar o cancelar:</strong> escríbele a la sede lo antes posible, por el chat del pedido o por WhatsApp.</li>
-  </ul>
-  <p><strong>Si algo salió mal</strong> (faltó un producto, llegó en mal estado, el cobro no cuadra):</p>
-  <ol>
-    <li>Abre el pedido en la app o en la web.</li>
-    <li>Toca <strong>Reportar un problema</strong>, cuéntanos qué pasó y, si puedes, agrega una foto.</li>
-    <li>La sede te responde por ahí mismo y puedes seguir el caso hasta que se cierre.</li>
-  </ol>
-  <p>Los problemas se reportan <strong>hasta 24 horas después de la entrega</strong>. Pasado ese tiempo, escríbenos por WhatsApp o al correo.</p>
+  <section id="horarios">
+    <div class="titulo aparece"><span class="burbuja"><svg class="ico"><use href="#i-reloj"/></svg></span><h2>Horarios</h2></div>
+    <div class="tarjeta horario aparece">
+      <span class="reloj"><svg class="ico"><use href="#i-reloj"/></svg></span>
+      <div><strong>5:00 p. m. – 11:00 p. m.</strong><p>Todos los días, en las dos sedes</p></div>
+      <div class="dias" aria-label="Días">
+        <span class="dia lunes" data-dia="1">Lun<small>Recoger</small></span>
+        <span class="dia" data-dia="2">Mar<small>Abierto</small></span>
+        <span class="dia" data-dia="3">Mié<small>Abierto</small></span>
+        <span class="dia" data-dia="4">Jue<small>Abierto</small></span>
+        <span class="dia" data-dia="5">Vie<small>Abierto</small></span>
+        <span class="dia" data-dia="6">Sáb<small>Abierto</small></span>
+        <span class="dia" data-dia="0">Dom<small>Abierto</small></span>
+      </div>
+    </div>
+    <div class="aviso aparece" id="aviso-lunes">
+      <svg class="ico"><use href="#i-alerta"/></svg>
+      <div><b id="aviso-titulo">Los lunes no hay domicilios</b><br>Nuestro domiciliario tiene pico y placa. Ese día puedes pedir para recoger en la sede.</div>
+    </div>
+    <p class="nota aparece">Si un día una sede abre o cierra a otra hora, lo verás en la web y en la app antes de pedir.</p>
+  </section>
 
-  <h2 id="devoluciones">Devolución de un pago</h2>
-  <p>Si la sede aprueba tu reporte con devolución, en el mismo caso eliges cómo recibirla:</p>
-  <ul>
-    <li><strong>Saldo a favor</strong> en tu cuenta, para usarlo en tu próximo pedido.</li>
-    <li><strong>Transferencia</strong> a tu cuenta: te pedimos los datos ahí mismo y te avisamos cuando quede hecha.</li>
-  </ul>
-  <p>Si la sede no aprueba la devolución, te explica el motivo en el caso.</p>
+  <section id="pedido">
+    <div class="titulo aparece"><span class="burbuja"><svg class="ico"><use href="#i-caja"/></svg></span><h2>Ayuda con un pedido</h2></div>
+    <div class="rejilla">
+      <div class="tarjeta mini aparece"><span class="burbuja"><svg class="ico"><use href="#i-caja"/></svg></span><b>Saber cómo va</b><p>Abre tu pedido en la app o en la web: ves cada paso y, cuando sale a domicilio, la hora estimada de llegada.</p></div>
+      <div class="tarjeta mini aparece"><span class="burbuja"><svg class="ico"><use href="#i-chat"/></svg></span><b>Hablar con la sede</b><p>Desde el pedido le escribes a la sede por el chat. Si es urgente, escríbenos por WhatsApp.</p></div>
+      <div class="tarjeta mini aparece"><span class="burbuja"><svg class="ico"><use href="#i-lapiz"/></svg></span><b>Cambiar o cancelar</b><p>Escríbele a la sede lo antes posible, por el chat del pedido o por WhatsApp.</p></div>
+    </div>
+    <div class="tarjeta aparece" style="margin-top:12px">
+      <b>¿Algo salió mal?</b> <span class="nota">Faltó un producto, llegó en mal estado o el cobro no cuadra.</span>
+      <ol class="pasos">
+        <li><span>Abre el pedido en la app o en la web.</span></li>
+        <li><span>Toca <b>Reportar un problema</b>, cuéntanos qué pasó y, si puedes, agrega fotos.</span></li>
+        <li><span>La sede te responde ahí mismo y sigues el caso hasta que se cierre.</span></li>
+      </ol>
+      <span class="plazo"><svg class="ico" width="18" height="18"><use href="#i-reloj"/></svg>Hasta 24 h después de la entrega</span>
+      <p class="nota" style="margin:10px 0 0">Pasado ese tiempo, escríbenos por WhatsApp o al correo.</p>
+    </div>
+  </section>
 
-  <h2 id="eliminar">Eliminar tu cuenta</h2>
-  <ul>
-    <li><strong>En la app:</strong> Mi cuenta → <strong>Eliminar mi cuenta</strong>.</li>
-    <li><strong>En la web:</strong> entra a <a href="https://delistars.com/domicilios/">delistars.com/domicilios</a> con tu cuenta y ve a Mi cuenta → <strong>Eliminar mi cuenta</strong>.</li>
-    <li><strong>Si ya no puedes entrar:</strong> escríbenos a <a href="mailto:info@delistars.com">info@delistars.com</a> desde el correo de tu cuenta, o por WhatsApp desde el celular de tu cuenta, y la eliminamos por ti.</li>
-  </ul>
-  <p>La cuenta se elimina pasados 30 días, si no queda nada pendiente (un pedido en curso, un reporte abierto o un saldo por devolverte). Durante esos días puedes arrepentirte. Se borran tu perfil, direcciones, premios, saldo y acceso, y tus pedidos quedan sin datos personales. Si tienes saldo a favor, te lo transferimos antes. Más detalles en la <a href="/privacidad#eliminar">política de privacidad</a>.</p>
+  <section id="devoluciones">
+    <div class="titulo aparece"><span class="burbuja"><svg class="ico"><use href="#i-devolver"/></svg></span><h2>Devolución de un pago</h2></div>
+    <div class="tarjeta aparece">
+      <p style="margin:0">Si la sede aprueba tu reporte con devolución, en el mismo caso eliges cómo recibirla:</p>
+      <div class="opciones">
+        <div class="opcion"><svg class="ico"><use href="#i-billetera"/></svg><b>Saldo a favor</b><p>Queda en tu cuenta para tu próximo pedido.</p></div>
+        <div class="opcion"><svg class="ico"><use href="#i-banco"/></svg><b>Transferencia</b><p>Nos das tus datos ahí mismo y te avisamos cuando quede hecha.</p></div>
+      </div>
+      <p class="nota" style="margin:12px 0 0">Si la sede no aprueba la devolución, te explica el motivo en el caso.</p>
+    </div>
+  </section>
 
-  <h2 id="privacidad">Privacidad</h2>
-  <p>Cómo recogemos, usamos y protegemos tus datos: <a href="/privacidad">Política de privacidad</a>.</p>
+  <section id="eliminar">
+    <div class="titulo aparece"><span class="burbuja"><svg class="ico"><use href="#i-usuario-x"/></svg></span><h2>Eliminar tu cuenta</h2></div>
+    <div class="tarjeta aparece" style="padding-top:6px;padding-bottom:6px">
+      <details open>
+        <summary><span class="burbuja"><svg class="ico"><use href="#i-celular"/></svg></span>En la app<svg class="ico flecha"><use href="#i-abajo"/></svg></summary>
+        <p>Mi cuenta → <b>Eliminar mi cuenta</b>.</p>
+      </details>
+      <details>
+        <summary><span class="burbuja"><svg class="ico"><use href="#i-web"/></svg></span>En la web<svg class="ico flecha"><use href="#i-abajo"/></svg></summary>
+        <p>Entra a <a href="https://delistars.com/domicilios/">delistars.com/domicilios</a> con tu cuenta y ve a Mi cuenta → <b>Eliminar mi cuenta</b>.</p>
+      </details>
+      <details>
+        <summary><span class="burbuja"><svg class="ico"><use href="#i-correo"/></svg></span>Si ya no puedes entrar<svg class="ico flecha"><use href="#i-abajo"/></svg></summary>
+        <p>Escríbenos a <a href="mailto:info@delistars.com">info@delistars.com</a> desde el correo de tu cuenta, o por WhatsApp desde el celular de tu cuenta, y la eliminamos por ti.</p>
+      </details>
+    </div>
+    <p class="nota aparece">La cuenta se elimina pasados 30 días, si no queda nada pendiente (un pedido en curso, un reporte abierto o un saldo por devolverte). Durante esos días puedes arrepentirte. Se borran tu perfil, direcciones, premios, saldo y acceso, y tus pedidos quedan sin datos personales. Si tienes saldo a favor, te lo transferimos antes.</p>
+  </section>
 
-  <p class="nota" style="margin-top:40px"><a href="/">Volver a DeliStars</a></p>
+  <section id="privacidad">
+    <a class="tarjeta enlace-tarjeta aparece" href="/privacidad">
+      <span class="burbuja"><svg class="ico"><use href="#i-escudo"/></svg></span>
+      <span><b>Política de privacidad</b><span>Cómo recogemos, usamos y protegemos tus datos</span></span>
+      <svg class="ico flecha"><use href="#i-derecha"/></svg>
+    </a>
+  </section>
 </main>
+
+<footer><a href="/">Volver a DeliStars</a></footer>
+
+<script>
+  // Día de hoy en Colombia (UTC-5, sin horario de verano), sin importar el aparato.
+  var hoy = new Date(Date.now() - 5 * 3600e3).getUTCDay();
+  var celda = document.querySelector('.dia[data-dia="' + hoy + '"]');
+  if (celda) celda.classList.add('hoy');
+  if (hoy === 1) {
+    document.getElementById('aviso-lunes').classList.add('hoy');
+    document.getElementById('aviso-titulo').textContent = 'Hoy lunes no hay domicilios';
+  }
+  // Las tarjetas aparecen al bajar.
+  var piezas = document.querySelectorAll('.aparece');
+  if ('IntersectionObserver' in window) {
+    var mirar = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('visible'); mirar.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -40px 0px' });
+    piezas.forEach(function (p) { mirar.observe(p); });
+  } else {
+    piezas.forEach(function (p) { p.classList.add('visible'); });
+  }
+</script>
 </body>
 </html>
