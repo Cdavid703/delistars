@@ -6,6 +6,7 @@ import logo from "@/assets/logo.svg";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/services/api";
 import { CoberturaCheck } from "@/components/CoberturaCheck";
+import { AvisoSinDomicilio } from "@/components/AvisoSinDomicilio";
 
 // Elección de sede. Es el PRIMER contacto con la marca, así que las dos sedes
 // tienen que caber en pantalla sin hacer scroll.
@@ -43,6 +44,9 @@ export const SedeModal = () => {
             ¿En qué sede quieres pedir? <span className="font-semibold text-primary">Tenemos dos.</span>
           </DialogDescription>
         </DialogHeader>
+
+        {/* Los lunes no hay domicilios: lo primero que ve el cliente */}
+        <AvisoSinDomicilio className="mt-2 text-left" />
 
         <div className="grid md:grid-cols-2 gap-2.5 md:gap-4 mt-2 md:mt-4 overflow-y-auto pr-1 pb-1">
           {isLoading ? (
