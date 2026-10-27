@@ -53,3 +53,14 @@ export function barrioDeGoogle(direccion) {
   if (/\d/.test(b) || /medell[ií]n|antioquia|colombia|bello|itag[uü][ií]|envigado/i.test(b)) return ''
   return b
 }
+
+// ── Dirección favorita (§7.1; 26 oct 2026, igual que la app) ──
+// Una sola por cliente, en customers/{uid}.savedPlaces[].favorita. Sale primero
+// y se elige sola al empezar un pedido. La primera dirección que se guarda
+// queda como favorita.
+
+/** Una sola favorita: marca esta y desmarca las demás. */
+export const marcarFavorita = (lista, id) => lista.map((x) => ({ ...x, favorita: x.id === id }))
+
+/** La favorita primero; el resto en el orden en que se guardó. */
+export const ordenarLugares = (lista) => [...lista].sort((a, b) => Number(!!b.favorita) - Number(!!a.favorita))

@@ -1,8 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { doc, getDoc, setDoc, updateDoc, arrayRemove, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../services/firebase'
-import { MapPin, Plus, Check, X, Trash2, Pencil, House, Briefcase, Heart, Users, AlertCircle, Search } from 'lucide-react'
-import { geocodeQuery, fullAddressOf, textoDireccion, barrioDeGoogle } from '../../utils/address'
+import { MapPin, Plus, Check, X, Trash2, Pencil, House, Briefcase, Heart, Users, AlertCircle, Search, Star } from 'lucide-react'
+import { geocodeQuery, fullAddressOf, textoDireccion, barrioDeGoogle, marcarFavorita, ordenarLugares } from '../../utils/address'
 import useBackClose from '../../hooks/useBackClose'
 import { ubicarDireccion } from '../../services/recorrido'
 import { kmLineaRecta } from '../../utils/tarifaDomicilio'
@@ -329,7 +329,9 @@ function AddressBuilder({ sede, initial, onSave, onCancel, aviso = null, onDejar
 // Muestra las direcciones guardadas del cliente (customers/{uid}.savedPlaces) y
 // permite agregar/editar/borrar. Al elegir una, avisa al formulario con
 // onSelect({ fullAddress, barrio, reference, lat, lng }).
-export default function AddressBook({ user, sede, currentAddress, onSelect }) {
+// `elegirFavorita`: al empezar un pedido sin dirección, se elige sola la favorita
+// (26 oct 2026, igual que la app).
+export default function AddressBook({ user, sede, currentAddress, onSelect, elegirFavorita = false }) {
   const [places,   setPlaces]   = useState([])
   const [loaded,   setLoaded]   = useState(false)
   const [builder,  setBuilder]  = useState(null) // { mode:'new'|'edit', place, revisar? }
@@ -337,22 +339,6 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
 
   const uid   = user?.uid
   const canSave = !!uid   // el login anónimo también tiene uid → guarda igual
-
-  useEffect(() => {
-    if (!uid) { setLoaded(true); return }
-    getDoc(doc(db, 'customers', uid)).then(snap => {
-      const list = snap.exists() ? (snap.data().savedPlaces || []) : []
-      setPlaces(Array.isArray(list) ? list : [])
-    }).catch(() => {}).finally(() => setLoaded(true))
-  }, [uid])
-
-  const persist = async (next) => {
-    setPlaces(next)
-    if (!canSave) return
-    try {
-      await setDoc(doc(db, 'customers', uid), { savedPlaces: next, updatedAt: serverTimestamp() }, { merge: true })
-    } catch (_) {}
-  }
 
   const seleccionar = (p) => {
     onSelect({
@@ -363,6 +349,26 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
       lng:         p.lng ?? null,
       pinFuente:   p.pinFuente ?? null,
     })
+  }
+
+  useEffect(() => {
+    if (!uid) { setLoaded(true); return }
+    getDoc(doc(db, 'customers', uid)).then(snap => {
+      const list = snap.exists() ? (snap.data().savedPlaces || []) : []
+      const lugares = Array.isArray(list) ? list : []
+      setPlaces(lugares)
+      // Sin dirección todavía: la favorita (si ya está verificada en el mapa).
+      const fav = lugares.find(x => x.favorita)
+      if (elegirFavorita && !currentAddress && fav && fav.lat != null && fav.pinFuente) seleccionar(fav)
+    }).catch(() => {}).finally(() => setLoaded(true))
+  }, [uid]) // eslint-disable-line react-hooks/exhaustive-deps -- solo al cargar las direcciones
+
+  const persist = async (next) => {
+    setPlaces(next)
+    if (!canSave) return
+    try {
+      await setDoc(doc(db, 'customers', uid), { savedPlaces: next, updatedAt: serverTimestamp() }, { merge: true })
+    } catch (_) {}
   }
 
   const reemplazar = (place) => persist(places.some(x => x.id === place.id)
@@ -401,6 +407,8 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
   }
 
   const handleSaved = async (place) => {
+    // La primera dirección que se guarda queda como favorita (igual que la app).
+    if (!places.length) place = { ...place, favorita: true }
     await reemplazar(place)
     setBuilder(null)
     seleccionar(place)   // seleccionar automáticamente la recién guardada
@@ -424,6 +432,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
   }
 
   const isSelected = (p) => currentAddress && fullAddressOf(p) === currentAddress
+  const hacerFavorita = (p, e) => { e.stopPropagation(); persist(marcarFavorita(places, p.id)) }
 
   return (
     <div className="flex flex-col gap-2">
@@ -435,7 +444,7 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
         </p>
       )}
 
-      {places.map(p => (
+      {ordenarLugares(places).map(p => (
         <button key={p.id} type="button" onClick={() => selectPlace(p)}
           className={`text-left rounded-2xl px-4 py-3 border transition-colors flex items-start gap-3 ${isSelected(p) ? 'border-cherry bg-cherry/5' : 'border-coal/12 bg-white hover:border-cherry/40'}`}>
           {(() => { const IconoEtiqueta = iconoDeEtiqueta(p.label)
@@ -443,6 +452,11 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-body font-semibold text-sm text-coal">{p.label}</p>
+              {p.favorita && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-mint/15 px-2 py-0.5 font-body text-[10px] font-bold text-[#12766B]">
+                  <Star size={10} fill="currentColor" aria-hidden="true" /> Favorita
+                </span>
+              )}
               {isSelected(p) && <Check size={14} className="text-cherry" />}
             </div>
             <p className="font-body text-xs text-coal/60 truncate">{fullAddressOf(p)}</p>
@@ -450,6 +464,12 @@ export default function AddressBook({ user, sede, currentAddress, onSelect }) {
             {revisando === p.id && <p className="font-body text-[11px] text-tangelo">Verificando la ubicación…</p>}
           </div>
           <span className="flex items-center gap-1 flex-shrink-0">
+            {!p.favorita && (
+              <span onClick={e => hacerFavorita(p, e)} role="button" aria-label={`Marcar ${p.label} como favorita`}
+                className="p-1.5 rounded-lg text-coal/40 hover:text-[#12766B] hover:bg-mint/10" title="Marcar como favorita">
+                <Star size={14} />
+              </span>
+            )}
             <span onClick={e => { e.stopPropagation(); setBuilder({ mode: 'edit', place: p }) }}
               className="p-1.5 rounded-lg text-coal/40 hover:text-tangelo hover:bg-tangelo/10" title="Editar">
               <Pencil size={14} />
