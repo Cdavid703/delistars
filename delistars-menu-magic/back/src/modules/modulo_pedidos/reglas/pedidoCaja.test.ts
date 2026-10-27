@@ -30,6 +30,21 @@ describe('pedido de caja desde el catálogo (§10.1)', () => {
     falla(() => validarPedidoCaja({ ...dom, direccion: 'x' }), 'direccion');
     falla(() => validarPedidoCaja({ ...dom, deliveryPrice: -1 }), 'domicilio');
   });
+  it('para otra persona (§7.3): solo domicilio, con nombre, teléfono y quién paga', () => {
+    const dom = { ...base, deliveryMode: 'delivery', direccion: 'Cra. 87 #48E-3', deliveryPrice: 5000 };
+    expect(validarPedidoCaja(dom).destinatario).toBeNull();
+    expect(validarPedidoCaja({ ...dom, destinatario: { nombre: ' Luz  Marina ', telefono: '+57 311 222 3344', paga: 'destinatario' } }).destinatario)
+      .toEqual({ nombre: 'Luz Marina', telefono: '3112223344', paga: 'destinatario' });
+    falla(() => validarPedidoCaja({ ...base, destinatario: { nombre: 'Luz', telefono: '3112223344', paga: 'comprador' } }), 'destinatario_modo');
+    falla(() => validarPedidoCaja({ ...dom, destinatario: { nombre: 'Luz', telefono: '311', paga: 'comprador' } }), 'destinatario_telefono');
+    falla(() => validarPedidoCaja({ ...dom, destinatario: { nombre: 'Luz', telefono: '3112223344' } }), 'destinatario_paga');
+  });
+  it('para otra persona: quien recibe paga en efectivo; quien pide, por transferencia o Nequi', () => {
+    expect(pagoCaja({ metodo: 'Efectivo' }, 38000, 'destinatario')).toMatchObject({ payment: 'Efectivo' });
+    falla(() => pagoCaja({ metodo: 'Nequi' }, 38000, 'destinatario'), 'metodo');
+    expect(pagoCaja({ metodo: 'Transferencia' }, 38000, 'comprador')).toMatchObject({ payment: 'Transferencia' });
+    falla(() => pagoCaja({ metodo: 'Efectivo' }, 38000, 'comprador'), 'metodo');
+  });
   it('pago: efectivo con billete, mixto que suma el total, transferencia', () => {
     expect(pagoCaja({ metodo: 'Efectivo', billete: 50000 }, 38000)).toMatchObject({ payment: 'Efectivo', cashOnDelivery: true, cashBillAmount: 50000, cashChange: 12000 });
     expect(pagoCaja({ metodo: 'Transferencia' }, 38000)).toEqual({ payment: 'Transferencia', cashOnDelivery: false });

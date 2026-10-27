@@ -10,6 +10,7 @@ import type { Usuario } from '../../../middlewares/require-user';
 import { catalogo, valoresFirestore, hoyColombia } from './pedidos.service';
 import { candidatoPara } from './domiciliarios.service';
 import { generarCodigoPedido } from './codigo.service';
+import { nuevoTokenDestinatario, indiceDestinatario } from './destinatario.service';
 
 /**
  * POST /pedidos/caja: pedido presencial, por teléfono o WhatsApp desde el
@@ -44,7 +45,9 @@ export async function crearPedidoCaja(u: Usuario, b: any, ip: string) {
     }
   }
   const total = subtotal + (Number(domicilio.deliveryPrice) || 0);
-  const pago = pagoCaja(b?.pago, total);
+  const pago = pagoCaja(b?.pago, total, d.destinatario?.paga ?? null);
+  // Para otra persona (§7.3): enlace privado de quien recibe, como en el pedido del cliente.
+  const destinatario = d.destinatario ? { ...d.destinatario, token: nuevoTokenDestinatario() } : null;
   const candidato = d.modo === 'delivery' ? await candidatoPara(sede.id) : null;
 
   const orderRef = db.collection('orders').doc();
@@ -73,7 +76,9 @@ export async function crearPedidoCaja(u: Usuario, b: any, ip: string) {
       cashierId: u.uid, cashierEmail: u.email || '', cashierName: u.nombre || '',
       quotedAt: ahora, ...asignacion,
       orderNumber: num, version: 1, createdAt: ahora, updatedAt: ahora,
+      ...(destinatario ? { destinatario } : {}),
     });
+    if (destinatario) tx.set(indiceDestinatario(destinatario.token), { orderId: orderRef.id, creadoAt: ahora });
     if (candidato) tx.set(db.doc(`turnos_domiciliario/${candidato.email}`), { ultimaAsignacionAt: ahora }, { merge: true });
     tx.set(orderRef.collection('historial').doc(), {
       at: ahora, por: u.email || u.uid, rol: 'caja', accion: 'crear',
@@ -87,5 +92,7 @@ export async function crearPedidoCaja(u: Usuario, b: any, ip: string) {
   return {
     id: orderRef.id, orderNumber, etapa: 'confirmado', subtotal, deliveryPrice: Number(domicilio.deliveryPrice) || 0, total,
     items: itemsTexto, domiciliario: candidato ? candidato.nombre || candidato.email : null, codigo,
+    // Para compartir con quien recibe: /domicilios/?recibe=<token>.
+    destinatario: destinatario ? { nombre: destinatario.nombre, telefono: destinatario.telefono, paga: destinatario.paga, token: destinatario.token } : null,
   };
 }

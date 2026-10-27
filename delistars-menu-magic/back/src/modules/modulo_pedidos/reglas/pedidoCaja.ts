@@ -10,6 +10,7 @@
 import { ErrorPedido } from './armado';
 import { METODOS } from './pago';
 import { SEDES, normalizarTelefono, coordsValidas } from './sedes';
+import { revisarDestinatario, METODOS_POR_QUIEN_PAGA } from '../../../shared/destinatario';
 
 export const CANALES = ['presencial', 'telefono', 'whatsapp'] as const;
 export type Canal = typeof CANALES[number];
@@ -38,6 +39,8 @@ export interface DatosPedidoCaja {
   canal: Canal;
   /** Valor del domicilio que escribió la caja (null = calcularlo por recorrido). */
   domicilioManual: number | null;
+  /** Lo recibe otra persona (§7.3; 26 oct 2026): sus datos y quién paga. */
+  destinatario: { nombre: string; telefono: string; paga: 'comprador' | 'destinatario' } | null;
 }
 
 /** Datos del comprador y la entrega. */
@@ -65,17 +68,31 @@ export function validarPedidoCaja(b: any): DatosPedidoCaja {
   if (modo === 'delivery' && domicilioManual == null && !coords) {
     throw new ErrorPedido('domicilio', 'Ubica la dirección en el buscador o escribe el valor del domicilio');
   }
+  // Lo recibe otra persona (§7.3): las mismas reglas que el pedido del cliente.
+  const rd = revisarDestinatario(b?.destinatario, { deliveryMode: modo });
+  if (!rd.ok) throw new ErrorPedido(`destinatario_${rd.campo}`, rd.error ?? 'Revisa los datos de quien recibe');
   return {
     sedeId, modo, nombre, telefono: texto(b?.telefono, 20), phoneKey, direccion, coords,
     barrio: texto(b?.barrio, 80), referencia: texto(b?.referencia, 200), notas: texto(b?.notas, 300), canal, domicilioManual,
+    destinatario: rd.destinatario ?? null,
   };
 }
 
-/** Cómo paga: los mismos campos que escribe la web al pagar (payment, billete, mixto). */
+/**
+ * Cómo paga: los mismos campos que escribe la web al pagar (payment, billete, mixto).
+ * Para otra persona (§7.3): si paga quien recibe, en efectivo al recibir; si paga
+ * quien pide, por Transferencia o Nequi (no está cuando entregan).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function pagoCaja(b: any, total: number): Record<string, unknown> {
+export function pagoCaja(b: any, total: number, paga: 'comprador' | 'destinatario' | null = null): Record<string, unknown> {
   const metodo = b?.metodo;
   if (!METODOS.includes(metodo)) throw new ErrorPedido('metodo', 'Elige cómo paga: Efectivo, Transferencia, Nequi o Mixto');
+  const permitidos: string[] | null = paga ? METODOS_POR_QUIEN_PAGA[paga] : null;
+  if (permitidos && !permitidos.includes(metodo)) {
+    throw new ErrorPedido('metodo', paga === 'destinatario'
+      ? 'Lo paga quien recibe: en efectivo, al recibirlo'
+      : 'Lo paga quien pide: por Transferencia o Nequi');
+  }
   const campos: Record<string, unknown> = { payment: metodo, cashOnDelivery: metodo === 'Efectivo' || metodo === 'Mixto' };
   if (metodo === 'Mixto') {
     const ef = Number(b?.mixtoEfectivo), tr = Number(b?.mixtoTransferencia);
