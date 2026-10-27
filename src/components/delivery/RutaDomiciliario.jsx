@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import {
-  MapPin, Banknote, ArrowRight, Route, CheckCircle, MessageSquare, Menu, BookOpen, Calculator,
-  Store, LogOut, X, Gift, ChevronRight, AlertTriangle,
+  Banknote, Route, CheckCircle, MessageSquare, Menu, BookOpen, Calculator,
+  Store, LogOut, X, ChevronRight, AlertTriangle,
 } from 'lucide-react'
 import { LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import RoleSwitcher from '../common/RoleSwitcher'
@@ -10,20 +10,11 @@ import BotonPushEquipo from '../common/BotonPushEquipo'
 import { BotonCambiarEmpleado } from '../common/CambiarEmpleado'
 import { BotonMisSesiones } from '../common/MisSesiones'
 import { SEDES } from '../../services/roles'
-import { geoDelPedido } from '../../utils/cercania'
-import { cobroDe, etiquetaReparto, fmt, nombreDe, ultimoDeCaja, urlNavegacion } from '../../utils/reparto'
-import useAccionesReparto from './useAccionesReparto'
+import { cobroDe, fmt, nombreDe, ultimoDeCaja, urlNavegacion } from '../../utils/reparto'
 
-// Pantalla principal del domiciliario (rediseño aprobado el 25 oct 2026): una
-// sola cosa grande, la siguiente parada con su botón; las demás en el orden
-// de la ruta; barra inferior con Mi ruta, Entregados, Caja y Más.
-
-const TONOS = {
-  ok:     'bg-mint/[0.12] text-[#12766B]',
-  espera: 'bg-mustard/[0.16] text-[#8A5300]',
-  calle:  'bg-cherry/[0.10] text-[#B3261E]',
-  alerta: 'bg-cherry/[0.12] text-[#B3261E]',
-}
+// Piezas del panel del domiciliario (25 oct 2026): navegar, cobro, barra
+// inferior (Mi ruta, Entregados, Caja y Más), «Más» y las notas de la caja.
+// «Por recoger» y «En reparto» viven en AhoraDomiciliario.jsx (26 oct 2026).
 
 const abrirNavegacion = (app, coords, texto) => window.open(urlNavegacion(app, coords, texto), '_blank')
 
@@ -72,76 +63,6 @@ export function TarjetaCobro({ order, grande = false }) {
         </div>
       ))}
     </div>
-  )
-}
-
-/** La siguiente parada, en grande, con su botón. */
-export function SiguienteParada({ order, geoCache, onAbrir, alListo }) {
-  const coords = geoDelPedido(order, geoCache)
-  const { loading, siguiente } = useAccionesReparto(order, { navCoords: coords, alListo })
-  const etiqueta = etiquetaReparto(order)
-  return (
-    <section className="mx-4 mt-4 rounded-3xl bg-coal text-cream p-4 flex flex-col gap-3 shadow-[0_18px_30px_-22px_rgba(38,38,38,0.8)]">
-      <div className="flex items-center gap-2">
-        <span className="font-body text-[11px] font-bold tracking-widest text-cream/70">SIGUIENTE PARADA</span>
-        <span className={`ml-auto font-body text-[11px] font-bold rounded-full px-2.5 py-1 ${
-          etiqueta.tono === 'ok' ? 'bg-mint/25 text-[#7FD9CC]' : etiqueta.tono === 'espera' ? 'bg-mustard/25 text-[#FFC266]' : 'bg-cherry/30 text-[#FFB3AC]'}`}>
-          {etiqueta.texto}
-        </span>
-      </div>
-      <button onClick={onAbrir} className="text-left flex flex-col gap-2">
-        <span className="flex items-baseline gap-2.5 min-w-0">
-          {order.orderNumber && <span className="font-display text-[40px] leading-[0.9] text-[#FF6B5E]">#{order.orderNumber}</span>}
-          <span className="font-body text-[17px] font-bold truncate">{nombreDe(order)}</span>
-        </span>
-        <span className="flex gap-2.5 items-start">
-          <MapPin size={18} className="text-cream/70 flex-shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="min-w-0">
-            <span className="block font-body text-[15px] font-semibold">{order.fullAddress || 'Sin dirección'}</span>
-            {(order.barrio || order.reference) && (
-              <span className="block font-body text-xs text-cream/70">{[order.barrio, order.reference].filter(Boolean).join(' · ')}</span>
-            )}
-          </span>
-        </span>
-      </button>
-      {order.loyaltyRedemption?.count > 0 && (
-        <p className="font-body text-xs font-bold text-[#7FD9CC] flex items-center gap-1.5"><Gift size={14} aria-hidden="true" /> Incluye premio gratis (ya está cubierto)</p>
-      )}
-      <TarjetaCobro order={order} />
-      <BotonesNavegar coords={coords} texto={order.fullAddress} oscuro />
-      {siguiente ? (
-        <button onClick={siguiente.accion} disabled={loading || siguiente.bloqueado}
-          className={`min-h-[56px] rounded-2xl font-body text-base font-bold flex items-center justify-center gap-2 disabled:opacity-50 text-white ${
-            siguiente.tono === 'mint' ? 'bg-mint' : 'bg-[#C8261D]'}`}>
-          {loading ? 'Guardando…' : <>{siguiente.texto} <ArrowRight size={20} aria-hidden="true" /></>}
-        </button>
-      ) : (
-        <button onClick={onAbrir} className="min-h-[56px] rounded-2xl bg-white text-coal font-body text-base font-bold">Ver qué dijo la caja</button>
-      )}
-    </section>
-  )
-}
-
-/** Una parada que sigue en la ruta. */
-export function ParadaFila({ order, orden, onClick }) {
-  const etiqueta = etiquetaReparto(order)
-  const c = cobroDe(order)
-  return (
-    <button onClick={onClick} className="w-full text-left bg-white border border-coal/10 rounded-[18px] p-3 flex items-center gap-3">
-      <span className="w-8 h-8 rounded-full bg-coal text-cream font-display text-lg flex items-center justify-center flex-shrink-0">{orden}</span>
-      <span className="flex-1 min-w-0 flex flex-col gap-1">
-        <span className="flex items-center gap-1.5 min-w-0">
-          {order.orderNumber && <span className="font-display text-lg leading-none text-[#C8261D]">#{order.orderNumber}</span>}
-          <span className="font-body text-sm font-bold truncate">{nombreDe(order)}</span>
-        </span>
-        <span className="font-body text-xs text-coal/60 truncate">{order.barrio || order.fullAddress}</span>
-        <span className={`self-start font-body text-[11px] font-bold rounded-lg px-2 py-0.5 ${TONOS[etiqueta.tono]}`}>{etiqueta.texto}</span>
-      </span>
-      <span className="flex flex-col items-end gap-0.5 flex-shrink-0">
-        <span className="font-body text-sm font-bold">{fmt(order.totalPrice)}</span>
-        <span className="font-body text-[11px] text-coal/60">{c.efectivo ? 'Efectivo' : c.texto}</span>
-      </span>
-    </button>
   )
 }
 

@@ -21,6 +21,7 @@ html.oscuro .badge-cash { color: rgb(244 231 208); }
 html.oscuro ::selection { color: rgb(244 231 208); }
 
 html.oscuro .bg-coal\/10 { background-color: rgb(244 231 208 / 0.1); }
+html.oscuro .bg-coal\/20 { background-color: rgb(244 231 208 / 0.2); }
 html.oscuro .bg-coal\/5 { background-color: rgb(244 231 208 / 0.05); }
 html.oscuro .bg-cream { background-color: rgb(21 17 13 / 1); }
 html.oscuro .bg-cream\/60 { background-color: rgb(21 17 13 / 0.6); }
@@ -51,6 +52,7 @@ html.oscuro .hover\:bg-smoked:hover { background-color: rgb(43 36 30 / 1); }
 html.oscuro .hover\:bg-smoked\/40:hover { background-color: rgb(43 36 30 / 0.4); }
 html.oscuro .hover\:bg-smoked\/50:hover { background-color: rgb(43 36 30 / 0.5); }
 html.oscuro .hover\:bg-smoked\/60:hover { background-color: rgb(43 36 30 / 0.6); }
+html.oscuro .hover\:bg-smoked\/70:hover { background-color: rgb(43 36 30 / 0.7); }
 html.oscuro .hover\:text-cherry:hover { color: #FF6B5E; }
 html.oscuro .hover\:text-coal:hover { color: rgb(244 231 208 / 1); }
 html.oscuro .hover\:text-coal\/60:hover { color: rgb(244 231 208 / 0.72); }

@@ -52,6 +52,10 @@ export function etiquetaReparto(o) {
  * cambio (manda lo que registró la caja; si no, lo que dijo el cliente).
  */
 export function cobroDe(o) {
+  // Sin forma de pago elegida todavía: se cuenta el total, por si acaso.
+  if (!o?.payment && !o?.cashOnDelivery) {
+    return { efectivo: false, porDefinir: true, monto: Number(o?.totalPrice) || 0, pendiente: false, texto: 'Por definir' }
+  }
   if (!esEfectivo(o)) {
     return { efectivo: false, pendiente: transferenciaPendiente(o), texto: transferenciaPendiente(o) ? 'Transferencia por verificar' : 'Ya pagó' }
   }
@@ -88,4 +92,42 @@ export function urlNavegacion(app, coords, texto = '') {
   }
   return coords ? `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`
     : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${texto}, Medellín, Colombia`)}`
+}
+
+// ── Diseño elegido en la app (26 oct 2026): «Por recoger» y «En reparto» ──
+
+/** Cuántos pedidos puede llevar a la vez (§11.3). */
+export const MAX_EN_REPARTO = 5
+
+/** 'reparto' si ya salió (en camino o en el destino); si no, 'recoger'. */
+export const grupoReparto = (o) => (['in_transit', 'arrived'].includes(o?.status) ? 'reparto' : 'recoger')
+
+/** Cómo va en la cocina, para la lista de «Por recoger». */
+export function estadoCocina(o) {
+  if (o?.status === 'assigned') return { texto: 'Por aceptar', listo: false }
+  const { etapa } = etapaDe(o)
+  if (etapa === 'listo') return { texto: 'Listo para llevar', listo: true }
+  if (etapa === 'en_preparacion') return { texto: 'En cocina', listo: false }
+  if (etapa === 'confirmado') return { texto: 'En cola en la cocina', listo: false }
+  return { texto: 'Por confirmar en la sede', listo: false }
+}
+
+/** Lo que hay por cobrar entre varios pedidos (los de pago por definir cuentan su total). */
+export const porCobrarTotal = (pedidos) => pedidos.reduce((s, o) => {
+  const c = cobroDe(o)
+  return s + (c.efectivo || c.porDefinir ? c.monto : 0)
+}, 0)
+
+/** «1,2 km» si el pedido trae la distancia; si no, null. */
+export function kmDe(o) {
+  const n = Number(o?.deliveryKm)
+  return Number.isFinite(n) && n > 0 ? `${n.toLocaleString('es-CO', { maximumFractionDigits: 1 })} km` : null
+}
+
+/** Minutos para llegar, con la misma hora que ve el cliente (etaLlegadaAt). null si no hay. */
+export function minutosParaLlegar(o, ahora = Date.now()) {
+  if (o?.status !== 'in_transit') return null
+  const t = Number(o?.etaLlegadaAt)
+  if (o?.etaLlegadaAt == null || !Number.isFinite(t)) return null
+  return Math.max(0, Math.round((t - ahora) / 60000))
 }

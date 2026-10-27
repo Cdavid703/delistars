@@ -30,11 +30,12 @@ import { transferenciaPendiente } from '../../utils/cuadres'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
 import { IndicacionesBreves } from '../common/IncidenciaReparto'
-import { EN_RUTA, ENTREGADOS, esEfectivo, ordenarRuta, pasoReparto, etiquetaReparto, fmt, nombreDe, ultimoDeCaja, puedeReportar } from '../../utils/reparto'
+import { EN_RUTA, ENTREGADOS, esEfectivo, ordenarRuta, pasoReparto, etiquetaReparto, fmt, nombreDe, ultimoDeCaja, puedeReportar, grupoReparto } from '../../utils/reparto'
+import { AntesDeSalir, EnReparto } from './AhoraDomiciliario'
 import useAccionesReparto from './useAccionesReparto'
 import { HojaNoEntrega, EstadoNoEntrega } from './NoEntrega'
 import {
-  SiguienteParada, ParadaFila, NavDomiciliario, HojaMas, VistaCaja, TarjetaCobro, BotonesNavegar,
+  NavDomiciliario, HojaMas, VistaCaja, TarjetaCobro, BotonesNavegar,
 } from './RutaDomiciliario'
 
 // El sonido vive en utils/sonidos.js: un solo contexto de audio, que se
@@ -85,10 +86,44 @@ const isToday = ts => {
 }
 
 
+// Colores del diseño elegido en la app (26 oct 2026): «F1 · Día crema» de día y
+// «F · Noche» de noche, según el modo del celular. Las pantallas nuevas los
+// leen como var(--d-*); lo demás (detalle, «Más») usa el modo oscuro de la web.
+const COLORES_DIA = {
+  '--d-fondo': '#FDF6ED', '--d-texto': '#262626', '--d-fuerte': '#262626', '--d-sec': '#6B6560',
+  '--d-tarjeta': '#FFFFFF', '--d-boton': '#262626', '--d-borde': '#D9D3C9', '--d-ok': '#13746A', '--d-warn': '#925A00',
+  '--d-cta': '#EA3329', '--d-cta-texto': '#FFFFFF', '--d-sombra': '0 6px 18px rgba(38,38,38,0.08)',
+}
+const COLORES_NOCHE = {
+  '--d-fondo': '#141414', '--d-texto': '#F4E7D0', '--d-fuerte': '#FFFFFF', '--d-sec': '#BFB6A8',
+  '--d-tarjeta': '#232323', '--d-boton': '#333131', '--d-borde': '#4A4746', '--d-ok': '#49AA9F', '--d-warn': '#E88F00',
+  '--d-cta': '#ED5B3E', '--d-cta-texto': '#1A1A1A', '--d-sombra': 'none',
+}
+
+/** ¿El celular está en modo oscuro? Mientras el panel está abierto pone <html class="oscuro">. */
+function useNocheDelCelular() {
+  const consulta = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
+  const [noche, setNoche] = useState(() => !!consulta?.matches)
+  useEffect(() => {
+    if (!consulta) return undefined
+    const cambio = (e) => setNoche(e.matches)
+    consulta.addEventListener?.('change', cambio)
+    return () => consulta.removeEventListener?.('change', cambio)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const raiz = document.documentElement
+    raiz.classList.toggle('oscuro', noche)
+    return () => raiz.classList.remove('oscuro')
+  }, [noche])
+  return noche
+}
+
 export default function DeliveryPanel() {
   const { user, sede, logout, selectSede, allRoles } = useAuth()
   const [orders,          setOrders]         = useState([])
   const [vista,           setVista]          = useState('ruta')
+  const [pestana,         setPestana]        = useState(null) // null = la elige sola
+  const noche = useNocheDelCelular()
   // { id, notas }: el detalle lee el pedido vivo de `orders` (se recarga cada 5 s).
   const [selected,        setSelected]       = useState(null)
   const [notifCount,      setNotifCount]     = useState(0)
@@ -381,8 +416,11 @@ export default function DeliveryPanel() {
   const totalNearby = nearbyClusters.reduce((s, c) => s + c.length, 0)
 
   const ruta = ordenarRuta([...pendingOrders, ...activeOrders], ordenRuta)
-  const [primera, ...despues] = ruta
-  const efectivoEnRuta = activeOrders.filter(esEfectivo).reduce((s, o) => s + cashAmount(o), 0)
+  // Diseño elegido en la app (26 oct 2026): «Por recoger» y «En reparto». Sin
+  // elegir, abre en «En reparto» si lleva pedidos en la calle.
+  const porRecoger = ruta.filter(o => grupoReparto(o) === 'recoger')
+  const enReparto  = ruta.filter(o => grupoReparto(o) === 'reparto')
+  const pestanaRuta = pestana ?? (enReparto.length ? 'reparto' : 'recoger')
   // Pedidos del día con notas (los activos y los entregados de hoy).
   const pedidosConCaja = orders.filter(o => EN_RUTA.includes(o.status) || o.status === 'assigned' ||
     (ENTREGADOS.includes(o.status) && isToday(o.createdAt)))
@@ -391,7 +429,8 @@ export default function DeliveryPanel() {
   const titulo = vista === 'entregados' ? 'Entregados' : vista === 'caja' ? 'Caja' : 'Mi ruta'
 
   return (
-    <div className="min-h-screen-safe flex flex-col bg-cream" style={{ paddingBottom: 'calc(84px + env(safe-area-inset-bottom))' }}>
+    <div className="min-h-screen-safe flex flex-col bg-[var(--d-fondo)] text-[var(--d-texto)]"
+      style={{ ...(noche ? COLORES_NOCHE : COLORES_DIA), paddingBottom: 'calc(84px + env(safe-area-inset-bottom))' }}>
       {avisoCerca && (
         <div className="fixed top-3 inset-x-3 z-[120] mx-auto max-w-lg rounded-2xl border-2 border-mint bg-cream shadow-xl p-4 animate-fade-in">
           <div className="flex items-start gap-3">
@@ -422,30 +461,25 @@ export default function DeliveryPanel() {
 
       {/* En la mano, en la calle: arriba solo el GPS y los avisos. Lo demás
           vive en «Más», en la barra de abajo. */}
-      <header className="px-4 pb-3 flex flex-col gap-2.5" style={{ paddingTop: 'max(env(safe-area-inset-top), 14px)' }}>
-        <div className="flex items-center gap-2">
-          <Logo variant="light" size="md" className="mr-auto" />
-          <button onClick={toggleLocationSharing} aria-pressed={locationSharing}
-            title={locationSharing ? 'La caja ve dónde estás. Toca para dejar de compartir' : 'Compartir mi ubicación con la caja'}
-            className={`min-h-[40px] rounded-full px-3 flex items-center gap-1.5 font-body text-xs font-bold ${
-              locationSharing ? 'bg-mint/[0.12] text-[#12766B]' : 'bg-cherry/[0.12] text-[#B3261E]'}`}>
-            <span className={`w-2 h-2 rounded-full ${locationSharing ? 'bg-mint' : 'bg-cherry'}`} aria-hidden="true" />
-            {locationSharing ? 'GPS activo' : 'GPS apagado'}
-          </button>
-          <CampanaAvisos destinos={[user?.email?.toLowerCase()]}
-            onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) abrir(o) }} />
-        </div>
-        <div className="min-w-0">
-          <p className="font-body text-xs font-semibold text-coal/60 truncate">
+      <header className="px-4 pb-3 flex flex-col gap-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <div className="flex items-center gap-2.5">
+          <Logo variant={noche ? 'dark' : 'light'} size="md" />
+          <p className="flex-1 min-w-0 text-sm font-bold text-[var(--d-sec)] truncate">
             Hola, {nombre}{sede ? ` · ${sede.id === 'all' ? 'Ambas sedes' : sede.name}` : ''}
           </p>
-          <h1 className="font-display text-[32px] tracking-wide leading-none text-coal normal-case mt-0.5">{titulo}</h1>
+          <CampanaAvisos destinos={[user?.email?.toLowerCase()]} oscuro={noche}
+            onAbrirPedido={(id) => { const o = orders.find(x => x.id === id); if (o) abrir(o) }} />
         </div>
+        {vista !== 'ruta' && (
+          <h1 className="font-display text-[32px] tracking-wide leading-none normal-case text-[var(--d-fuerte)]">{titulo}</h1>
+        )}
       </header>
 
       {vista === 'ruta' && (
         <>
           <TurnoDomiciliario email={user?.email} pendientes={activeOrders.length + pendingOrders.length}
+            enReparto={enReparto.length} compartiendo={locationSharing} onUbicacion={toggleLocationSharing}
+            sinUbicacion={typeof navigator !== 'undefined' && !navigator.geolocation}
             onDatos={(d) => setOrdenRuta(Array.isArray(d.ordenRuta) ? d.ordenRuta : [])}
             onEstado={(estado) => {
               // En turno se comparte la ubicación con la caja; al terminar sin pedidos, se apaga.
@@ -454,56 +488,58 @@ export default function DeliveryPanel() {
             }} />
 
           {notifCount > 0 && (
-            <p className="mx-4 mt-3 bg-[#C8261D] text-white rounded-2xl px-4 py-3 flex items-center gap-3 font-body font-semibold text-sm">
+            <p className="mx-4 mt-3 bg-[#C8261D] text-white rounded-2xl px-4 py-3 flex items-center gap-3 font-semibold text-sm">
               <Bell size={18} className="flex-shrink-0" aria-hidden="true" />
               {notifCount === 1 ? '¡Tienes 1 pedido por aceptar!' : `¡Tienes ${notifCount} pedidos por aceptar!`}
             </p>
           )}
 
-          {primera ? (
-            <SiguienteParada key={primera.id} order={primera} geoCache={geoCache}
-              onAbrir={() => abrir(primera)} alListo={recargar} />
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-3 py-14">
-              <Route size={32} className="text-coal/25" aria-hidden="true" />
-              <p className="font-body text-coal/50 text-center">No tienes pedidos en curso</p>
-            </div>
-          )}
-
-          {despues.length > 0 && (
-            <>
-              <div className="mx-4 mt-5 mb-2 flex items-baseline justify-between gap-2">
-                <p className="font-display text-[22px] tracking-wide text-coal normal-case">Después</p>
-                <p className="font-body text-xs text-coal/60">
-                  {efectivoEnRuta > 0 ? `Cobrar en ruta: ${fmt(efectivoEnRuta)}` : 'En el orden de la ruta'}
-                </p>
-              </div>
-              <div className="mx-4 flex flex-col gap-2">
-                {despues.map((o, i) => <ParadaFila key={o.id} order={o} orden={i + 2} onClick={() => abrir(o)} />)}
-              </div>
-            </>
-          )}
+          <div role="tablist" aria-label="Mis pedidos" className="mx-4 mt-3 grid grid-cols-2 gap-1 rounded-2xl p-1 bg-[var(--d-tarjeta)] shadow-[var(--d-sombra)]">
+            {[['recoger', 'Por recoger', porRecoger.length], ['reparto', 'En reparto', enReparto.length]].map(([id, texto, n]) => {
+              const activa = pestanaRuta === id
+              return (
+                <button key={id} role="tab" aria-selected={activa} onClick={() => setPestana(id)}
+                  className={`min-h-[44px] rounded-xl text-[15px] font-bold flex items-center justify-center gap-1.5 ${
+                    activa ? 'bg-[var(--d-boton)] text-white' : 'text-[var(--d-sec)]'}`}>
+                  {texto}
+                  {n > 0 && <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] flex items-center justify-center ${
+                    activa ? 'bg-white/20' : id === 'recoger' ? 'bg-[var(--d-cta)] text-[var(--d-cta-texto)]' : 'bg-[var(--d-borde)]'}`}>{n}</span>}
+                </button>
+              )
+            })}
+          </div>
 
           {/* Pedidos cercanos y orden sugerido (con 2 o más pedidos) */}
-          {routableOrders.length >= 2 && (
+          {pestanaRuta === 'recoger' && routableOrders.length >= 2 && (
             <button onClick={() => setShowRoute(true)}
-              className={`mx-4 mt-3 rounded-2xl px-4 py-3 flex items-center gap-3 text-left border ${
-                nearbyClusters.length > 0 ? 'bg-mint/15 border-mint/40' : 'bg-white border-coal/10'}`}>
+              className="mx-4 mt-2.5 rounded-2xl px-4 py-2.5 flex items-center gap-3 text-left border-[1.5px] border-[var(--d-borde)]">
               {nearbyClusters.length > 0
-                ? <Target size={20} className="text-mint flex-shrink-0" aria-hidden="true" />
-                : <Route size={20} className="text-[#C8261D] flex-shrink-0" aria-hidden="true" />}
-              <span className="flex-1 min-w-0">
-                <span className="block font-body text-sm font-bold text-coal leading-tight">
-                  {nearbyClusters.length === 0 ? `Sugerir orden de entrega (${routableOrders.length} pedidos)`
-                    : totalNearby === 2 ? '¡2 pedidos a menos de 400 m!'
-                    : `¡${totalNearby} pedidos en ${nearbyClusters.length === 1 ? 'la misma zona' : `${nearbyClusters.length} zonas`} (≤ 400 m)!`}
-                </span>
-                <span className="block font-body text-xs text-coal/60">
-                  {Object.keys(geoCache).length < routableOrders.length ? 'Calculando ubicaciones…' : 'Toca para ver la ruta sugerida'}
-                </span>
+                ? <Target size={18} className="text-[var(--d-ok)] flex-shrink-0" aria-hidden="true" />
+                : <Route size={18} className="text-[var(--d-sec)] flex-shrink-0" aria-hidden="true" />}
+              <span className="flex-1 min-w-0 text-sm font-bold leading-tight">
+                {nearbyClusters.length === 0 ? `Sugerir orden de entrega (${routableOrders.length} pedidos)`
+                  : totalNearby === 2 ? '¡2 pedidos a menos de 400 m!'
+                  : `¡${totalNearby} pedidos en ${nearbyClusters.length === 1 ? 'la misma zona' : `${nearbyClusters.length} zonas`} (≤ 400 m)!`}
               </span>
-              <ChevronRight size={18} className="text-coal/40 flex-shrink-0" aria-hidden="true" />
+              <ChevronRight size={18} className="text-[var(--d-sec)] flex-shrink-0" aria-hidden="true" />
             </button>
+          )}
+
+          {pestanaRuta === 'recoger' && porRecoger.length > 0 && (
+            <AntesDeSalir pedidos={porRecoger} enReparto={enReparto.length} sede={sede} geoCache={geoCache}
+              onAbrir={(o) => abrir(o)} alSalir={() => { recargar(); setPestana('reparto') }} />
+          )}
+          {pestanaRuta === 'reparto' && enReparto.length > 0 && (
+            <EnReparto key={enReparto[0].id} pedidos={enReparto} porRecoger={porRecoger.length} geoCache={geoCache}
+              onAbrir={(o, opc) => abrir(o, opc)} alListo={recargar} irARecoger={() => setPestana('recoger')} />
+          )}
+          {(pestanaRuta === 'recoger' ? porRecoger : enReparto).length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
+              <Route size={32} className="text-[var(--d-sec)] opacity-50" aria-hidden="true" />
+              <p className="text-[var(--d-sec)]">
+                {pestanaRuta === 'recoger' ? 'No hay domicilios esperándote en la sede.' : 'No llevas pedidos en la calle.'}
+              </p>
+            </div>
           )}
         </>
       )}
@@ -1280,10 +1316,10 @@ const DRIVER_MANUAL_SECTIONS = [
       { type: 'steps', items: [
         'Abre la app y selecciona tu sede (o "Ambas sedes" para recibir pedidos de Santa Lucía y Santa Teresita al mismo tiempo).',
         'Inicia el turno: mientras estés en turno te llegan los pedidos ya asignados, sin tener que aceptarlos.',
-        'En "Mi ruta" la tarjeta oscura es tu siguiente parada; debajo van las demás, en el orden de la ruta.',
-        'Toca "Salir con el pedido" cuando salgas hacia el cliente.',
-        'Toca "Llegué al destino" cuando estés frente al cliente.',
-        'Toca "Cobré y entregué" (o "Entregué el pedido" si ya pagó). Si fue en efectivo, queda en tu cuadre.',
+        'En "Por recoger" ves los domicilios que te esperan en la sede: barra verde = listo, naranja = en cocina, y lo que hay por cobrar.',
+        'Toca "Salir con los listos" (máximo 5 en la calle). Si quieres esperar los demás, "Esperar y llevar".',
+        'En "En reparto" la parada actual va en grande: minutos, dirección, cobro, Google Maps, Waze, Llamar y WhatsApp.',
+        'Toca "Llegué" frente al cliente y "Entregado" al entregar. Si fue en efectivo, queda en tu cuadre.',
         'Al terminar el turno, en "Entregados" toca "Ver mi cuadre de turno" y entrégale el efectivo a la caja.',
       ]},
     ],
@@ -1328,23 +1364,23 @@ const DRIVER_MANUAL_SECTIONS = [
   {
     id: 'navegacion', icon: Route, title: 'Navegación al cliente',
     content: [
-      { type: 'p', text: 'En tu siguiente parada y en el detalle de cada pedido encontrarás dos botones de navegación:' },
+      { type: 'p', text: 'En "En reparto" y en el detalle de cada pedido encontrarás dos botones de navegación:' },
       { type: 'table', rows: [
         ['Google Maps', 'Abre Google Maps con la dirección del cliente lista para navegar'],
         ['Waze',        'Abre Waze con la dirección del cliente lista para navegar'],
       ]},
-      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Con "GPS activo" arriba, la caja también te ubica aunque no tengas pedido.' },
+      { type: 'tip', text: 'Tu ubicación GPS se comparte automáticamente con el cliente cuando el pedido está "En camino". Con la flecha de ubicación encendida en la franja del turno, la caja también te ubica aunque no tengas pedido.' },
     ],
   },
   {
     id: 'efectivo', icon: Banknote, title: 'Pedidos en efectivo',
     content: [
-      { type: 'p', text: 'La tarjeta naranja "Cobrar en efectivo" te dice cuánto cobrar, con qué billete paga y cuánto cambio llevar:' },
+      { type: 'p', text: 'En "En reparto", "COBRAR" te dice cuánto cobrar, con qué billete paga y cuánto cambio llevar:' },
       { type: 'table', rows: [
         ['Paga exacto',    'El cliente tiene el dinero exacto — no necesitas traer cambio'],
         ['Necesita cambio','El cajero indica cuánto paga el cliente y cuánto debes devolver'],
       ]},
-      { type: 'tip', text: 'Al tocar "Cobré y entregué" en un pedido en efectivo, queda en tu cuadre hasta que le entregues la plata a la caja.' },
+      { type: 'tip', text: 'Al tocar "Entregado" en un pedido en efectivo, queda en tu cuadre hasta que le entregues la plata a la caja.' },
     ],
   },
   {
@@ -1364,9 +1400,9 @@ const DRIVER_MANUAL_SECTIONS = [
       { type: 'p', text: 'La app tiene dos modos de compartir tu ubicación:' },
       { type: 'table', rows: [
         ['Automático',    'Cuando tienes un pedido "En camino", tu GPS se comparte automáticamente con el cliente'],
-        ['GPS activo',    'Toca el botón "GPS" arriba para que la caja te ubique en todo momento, aunque no tengas pedido. Se prende solo al iniciar el turno'],
+        ['Ubicación con la caja', 'La flecha de la franja del turno: encendida, la caja te ubica en todo momento, aunque no tengas pedido. Se prende sola al iniciar el turno'],
       ]},
-      { type: 'tip', text: 'Apaga el GPS (botón de arriba) cuando termines el turno para ahorrar batería.' },
+      { type: 'tip', text: 'Al terminar el turno se deja de compartir la ubicación (si no llevas pedidos), para ahorrar batería.' },
     ],
   },
   {
