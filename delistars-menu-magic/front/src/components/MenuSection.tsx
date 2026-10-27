@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { AvisoSinDomicilio } from "@/components/AvisoSinDomicilio";
 
 import { ProductCard } from "@/components/ProductCard";
 import { ProductDialog } from "@/components/ProductDialog";
@@ -285,11 +286,14 @@ export const MenuSection = () => {
           </div>
         </section>
       ) : (
-        // Categorías PLEGABLES. Con todo desplegado el menú medía 39 pantallas
-        // en celular y había que pasar 27 para llegar a las bebidas. Cerradas,
-        // el cliente ve el menú completo de un vistazo y abre lo que le
-        // interesa. La primera viene abierta para que la página no luzca vacía.
-        categorias.map((cat) => {
+        <>
+        {/* Los lunes no hay domicilios: también aquí, donde se arma el pedido */}
+        <div className="container"><AvisoSinDomicilio className="mb-3" /></div>
+        {/* Categorías PLEGABLES. Con todo desplegado el menú medía 39 pantallas
+            en celular y había que pasar 27 para llegar a las bebidas. Cerradas,
+            el cliente ve el menú completo de un vistazo y abre lo que le
+            interesa. La primera viene abierta para que la página no luzca vacía. */}
+        {categorias.map((cat) => {
           const categoryProducts = productosDe(cat.id_categoria);
           const emoji = EMOJI_MAP[cat.nombre_categoria] || "🍽️";
           const categoryId = idDeCategoria(cat.nombre_categoria);
@@ -331,7 +335,8 @@ export const MenuSection = () => {
               )}
             </section>
           );
-        })
+        })}
+        </>
       )}
 
       <ProductDialog product={selected} onClose={() => setSelected(null)} />

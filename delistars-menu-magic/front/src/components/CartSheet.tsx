@@ -8,7 +8,7 @@ import { Minus, Plus, Trash2, ShoppingBag, Clock, ArrowLeft, Mail } from "lucide
 import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
 import { useStaffAuth } from "@/hooks/useStaffAuth";
 import { usePlatformStatus } from "@/hooks/usePlatformStatus";
-import { useSinDomicilio } from "@/components/AvisoSinDomicilio";
+import { useSinDomicilio } from "@/hooks/useSinDomicilio";
 import { optimizeImage } from "@/lib/utils";
 import { agotadoEnItem } from "@/lib/agotados";
 

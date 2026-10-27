@@ -10,7 +10,6 @@ import { isStaff } from "@/lib/staff";
 import { useAllRoles } from "@/hooks/useAllRoles";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { LogoGoogle, LogoMicrosoft } from "@/components/LogosMarca";
-import { AvisoSinDomicilio } from "@/components/AvisoSinDomicilio";
 
 export const Navbar = () => {
   const { count, setOpen, sede, setSede } = useCart();
@@ -84,7 +83,6 @@ export const Navbar = () => {
         scrolled ? "bg-background/90 backdrop-blur-md shadow-card" : "bg-transparent"
       }`}
     >
-      <AvisoSinDomicilio />
       <div className="container flex items-center justify-between gap-2 py-3 px-4 sm:px-6">
         <a href="#top" className="flex items-center gap-2 hover-scale shrink-0">
           <img src={logo} alt="DeliStars logo" width={64} height={64} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" />
