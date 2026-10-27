@@ -108,7 +108,7 @@ export default function MenuMas({
             <Moon size={22} className="text-cherry flex-shrink-0" aria-hidden="true" />
             <span className="flex-1 min-w-0">
               <span className="block font-body text-[15px] font-semibold">Modo oscuro</span>
-              <span className="block font-body text-xs text-coal/60">{tema === 'oscuro' ? 'Activado en este aparato' : 'Para usarla de noche'}</span>
+              <span className="block font-body text-xs text-coal/60">{tema === 'oscuro' ? 'Activado en este aparato' : 'Sigue el modo de tu celular'}</span>
             </span>
             <Interruptor activo={tema === 'oscuro'} onChange={(v) => setTema(v ? 'oscuro' : 'claro')} etiqueta="Modo oscuro" />
           </div>
