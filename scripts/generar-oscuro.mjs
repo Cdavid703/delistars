@@ -1,4 +1,4 @@
-// Genera src/oscuro.css: el modo oscuro de la pantalla del cliente.
+// Genera src/oscuro.css: el modo oscuro del cliente y del domiciliario.
 // Corre con: node scripts/generar-oscuro.mjs   (después de cambiar colores en
 // las pantallas del cliente, para que las clases nuevas también tengan su oscuro).
 //
@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const CARPETAS = ['src/components/client', 'src/components/common', 'src/pages']
+const CARPETAS = ['src/components/client', 'src/components/common', 'src/components/delivery', 'src/pages']
 const ARCHIVOS = ['src/App.jsx']
 
 function listar(dir) {

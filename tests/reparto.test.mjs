@@ -41,3 +41,26 @@ test('cobro exacto y pago digital', () => {
   assert.equal(cobroDe({ payment: 'Nequi' }).pendiente, true)
   assert.equal(cobroDe({ payment: 'Mixto', totalPrice: 40000, mixtoEfectivo: 10000 }).monto, 10000)
 })
+
+import { estadoCocina, porCobrarTotal, kmDe, minutosParaLlegar, grupoReparto } from '../src/utils/reparto.js'
+
+test('estado en la cocina y grupo', () => {
+  assert.deepEqual(estadoCocina({ status: 'accepted', etapa: 'listo' }), { texto: 'Listo para llevar', listo: true })
+  assert.equal(estadoCocina({ status: 'preparing' }).texto, 'En cocina')
+  assert.equal(grupoReparto({ status: 'arrived' }), 'reparto')
+  assert.equal(grupoReparto({ status: 'preparing' }), 'recoger')
+})
+
+test('por cobrar: efectivo y por definir cuentan, lo pagado no', () => {
+  assert.equal(porCobrarTotal([
+    { payment: 'Efectivo', totalPrice: 43500 }, { payment: 'Nequi', totalPrice: 30000 }, { totalPrice: 20000 },
+  ]), 63500)
+  assert.equal(cobroDe({ totalPrice: 20000 }).porDefinir, true)
+})
+
+test('km y minutos para llegar', () => {
+  assert.equal(kmDe({ deliveryKm: 1.24 }), '1,2 km')
+  assert.equal(kmDe({}), null)
+  assert.equal(minutosParaLlegar({ status: 'in_transit', etaLlegadaAt: 600000 }, 0), 10)
+  assert.equal(minutosParaLlegar({ status: 'arrived', etaLlegadaAt: 600000 }, 0), null)
+})

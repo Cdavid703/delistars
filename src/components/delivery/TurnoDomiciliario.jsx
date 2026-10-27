@@ -1,28 +1,22 @@
 import { useEffect, useState } from 'react'
 import { doc, onSnapshot } from 'firebase/firestore'
-import { Play, Pause, Square } from 'lucide-react'
+import { Play, Pause, MoreHorizontal, Navigation, NavigationOff, Bike } from 'lucide-react'
+import { MAX_EN_REPARTO } from '../../utils/reparto'
 import { db } from '../../services/firebase'
 import { llamarApi, ErrorApi } from '../../services/pedidosApi'
 
 // Turno del domiciliario (Fase 5, especificación §11.1): iniciar, pausar y
 // terminar son acciones explícitas. Solo en turno y sin pausa le llegan los
 // pedidos que la caja confirma, ya asignados (sin tener que aceptarlos).
-// Rediseño del 25 oct 2026: tarjeta de color con el estado en grande.
-const ESTILO = {
-  activo: { fondo: 'bg-mint text-white', titulo: 'En turno', detalle: 'Te llegan los pedidos', borde: 'border-white/60' },
-  pausa:  { fondo: 'bg-mustard text-coal', titulo: 'En pausa', detalle: 'No te llegan pedidos nuevos', borde: 'border-coal/50' },
-  fuera:  { fondo: 'bg-coal text-cream', titulo: 'Fuera de turno', detalle: 'Inicia el turno para recibir pedidos', borde: 'border-cream/50' },
-}
+// Diseño elegido en la app (26 oct 2026): franja de una línea en turno;
+// tarjeta corta con el botón grande en pausa o fuera de turno.
 
-const horaDe = (t) => {
-  const ms = t?.toMillis?.() ?? (typeof t === 'number' ? t : null)
-  return ms ? new Date(ms).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : ''
-}
-
-/** `onDatos(turno)`: el documento del turno (p. ej. su `ordenRuta`). */
-export default function TurnoDomiciliario({ email, pendientes = 0, onEstado, onDatos }) {
+/**
+ * `enReparto`: cuántos lleva en la calle (cupo de 5). `compartiendo` y
+ * `onUbicacion`: la ubicación con la caja. `sinUbicacion`: el aparato no la da.
+ */
+export default function TurnoDomiciliario({ email, pendientes = 0, onEstado, onDatos, enReparto = 0, compartiendo = false, onUbicacion, sinUbicacion = false }) {
   const [estado, setEstado] = useState(null) // null = cargando
-  const [desde, setDesde] = useState(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -32,7 +26,6 @@ export default function TurnoDomiciliario({ email, pendientes = 0, onEstado, onD
       (snap) => {
         const d = snap.exists() ? snap.data() : {}
         setEstado(d.estado || 'fuera')
-        setDesde(d.desde || null)
         onDatos?.(d)
       },
       () => setEstado('fuera'))
@@ -40,8 +33,9 @@ export default function TurnoDomiciliario({ email, pendientes = 0, onEstado, onD
   useEffect(() => { if (estado) onEstado?.(estado) }, [estado]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cambiar = async (accion) => {
-    if (accion === 'terminar' && pendientes > 0 &&
-      !window.confirm(`Tienes ${pendientes} pedido(s) sin terminar. Si terminas el turno no te llegan nuevos, pero esos siguen siendo tuyos. ¿Terminar?`)) return
+    if (accion === 'terminar' && !window.confirm(pendientes > 0
+      ? `Tienes ${pendientes} pedido(s) sin terminar. Si terminas el turno no te llegan nuevos, pero esos siguen siendo tuyos. ¿Terminar?`
+      : 'Terminar turno: dejan de llegarte domicilios nuevos. ¿Terminar?')) return
     setBusy(true); setMsg('')
     try {
       const r = await llamarApi('POST', 'equipo/turno', { accion })
@@ -53,44 +47,77 @@ export default function TurnoDomiciliario({ email, pendientes = 0, onEstado, onD
   }
 
   if (!estado) return null
-  const e = ESTILO[estado] || ESTILO.fuera
-  const boton = `min-h-[44px] px-3.5 rounded-2xl border-2 ${e.borde} font-body text-[13px] font-bold inline-flex items-center gap-1.5 disabled:opacity-50`
-  const detalle = estado === 'activo' && horaDe(desde) ? `${e.detalle} · desde ${horaDe(desde)}` : e.detalle
+  const terminar = () => cambiar('terminar')
 
-  return (
-    <section className={`mx-4 rounded-[20px] px-4 py-3.5 ${e.fondo}`}>
-      <div className="flex items-center gap-3">
-        {estado !== 'fuera' && (
-          <span className={`w-3 h-3 rounded-full flex-shrink-0 ${estado === 'activo' ? 'bg-cream animate-pulse' : 'bg-coal'}`} aria-hidden="true" />
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-display text-[22px] tracking-wide leading-none normal-case">{e.titulo}</p>
-          <p className="font-body text-xs opacity-85 mt-1">{detalle}</p>
+  // En turno: una franja de una línea (diseño elegido en la app, 26 oct 2026):
+  // estado, ubicación, cupo, «Pausar» y «Terminar» en «⋯».
+  if (estado === 'activo') {
+    return (
+      <div className="mx-4 flex flex-col gap-2">
+        <div className="rounded-2xl bg-[var(--d-tarjeta)] shadow-[var(--d-sombra)] pl-3.5 pr-2 py-2 flex items-center gap-2.5 text-[var(--d-texto)]">
+          <span className="relative w-3.5 h-3.5 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+            <span className="absolute inset-0 rounded-full bg-mint/50 animate-ping" />
+            <span className="w-2.5 h-2.5 rounded-full bg-mint" />
+          </span>
+          <span className="font-bold text-[15px]">En turno</span>
+          <button onClick={onUbicacion} aria-pressed={compartiendo}
+            title={compartiendo ? 'La caja ve dónde estás. Toca para dejar de compartir' : 'Compartir mi ubicación con la caja'}
+            className={`w-8 h-8 -mx-1 rounded-full flex items-center justify-center ${compartiendo ? 'text-[var(--d-ok)]' : 'text-[var(--d-sec)] opacity-60'}`}>
+            {compartiendo ? <Navigation size={15} aria-hidden="true" /> : <NavigationOff size={15} aria-hidden="true" />}
+            <span className="sr-only">{compartiendo ? 'Compartiendo ubicación' : 'Ubicación apagada'}</span>
+          </button>
+          <span className="flex items-center gap-1" aria-label={`En reparto ${enReparto} de ${MAX_EN_REPARTO}`}>
+            {Array.from({ length: MAX_EN_REPARTO }, (_, i) => (
+              <span key={i} className={`w-1.5 h-3.5 rounded-sm ${i < enReparto ? 'bg-[var(--d-cta)]' : 'bg-[var(--d-borde)]'}`} aria-hidden="true" />
+            ))}
+            <span className="ml-1 text-xs text-[var(--d-sec)] tabular-nums">{enReparto}/{MAX_EN_REPARTO}</span>
+          </span>
+          <span className="flex-1" />
+          <button onClick={() => cambiar('pausar')} disabled={busy}
+            className="h-9 px-3 rounded-full bg-[var(--d-fondo)] text-sm font-bold flex items-center gap-1 disabled:opacity-50">
+            <Pause size={14} aria-hidden="true" /> Pausar
+          </button>
+          <button onClick={terminar} disabled={busy} aria-label="Terminar turno"
+            className="w-9 h-9 rounded-full bg-[var(--d-fondo)] flex items-center justify-center disabled:opacity-50">
+            <MoreHorizontal size={18} aria-hidden="true" />
+          </button>
         </div>
-        <div className="flex gap-1.5 flex-shrink-0">
-          {estado === 'fuera' && (
-            <button onClick={() => cambiar('iniciar')} disabled={busy} className={`${boton} bg-mint text-white border-mint`}>
-              <Play size={15} aria-hidden="true" /> {busy ? '…' : 'Iniciar turno'}
-            </button>
-          )}
-          {estado === 'activo' && (
-            <button onClick={() => cambiar('pausar')} disabled={busy} className={boton}>
-              <Pause size={15} aria-hidden="true" /> Pausar
-            </button>
-          )}
-          {estado === 'pausa' && (
-            <button onClick={() => cambiar('reanudar')} disabled={busy} className={`${boton} bg-coal text-cream border-coal`}>
-              <Play size={15} aria-hidden="true" /> Seguir
-            </button>
-          )}
-          {estado !== 'fuera' && (
-            <button onClick={() => cambiar('terminar')} disabled={busy} className={boton} aria-label="Terminar turno">
-              <Square size={14} aria-hidden="true" /> Terminar
-            </button>
-          )}
+        {!compartiendo && sinUbicacion && (
+          <p className="rounded-xl bg-cherry/10 px-3 py-2 text-xs font-semibold text-[var(--d-texto)]">
+            Este celular no deja compartir la ubicación: tus clientes no te ven en el mapa.
+          </p>
+        )}
+        {msg && <p className="text-xs text-[var(--d-sec)] px-1">{msg}</p>}
+      </div>
+    )
+  }
+
+  // En pausa o fuera de turno: tarjeta corta con el botón grande para reanudar o iniciar.
+  const pausa = estado === 'pausa'
+  return (
+    <section className="mx-4 rounded-2xl bg-[var(--d-tarjeta)] shadow-[var(--d-sombra)] p-4 flex flex-col gap-3 text-[var(--d-texto)]">
+      <div className="flex items-center gap-3">
+        <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white ${pausa ? 'bg-mustard' : 'bg-[var(--d-sec)]'}`}>
+          <Bike size={20} aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-bold text-[15px]">{pausa ? 'En pausa' : 'Fuera de turno'}</p>
+          <p className="text-sm text-[var(--d-sec)]">
+            {pausa ? 'No te llegan pedidos nuevos.' : 'Inicia el turno para recibir pedidos.'}
+            {enReparto > 0 ? ` Llevas ${enReparto} en reparto.` : ''}
+          </p>
         </div>
       </div>
-      {msg && <p className="font-body text-xs mt-2 opacity-90">{msg}</p>}
+      <button onClick={() => cambiar(pausa ? 'reanudar' : 'iniciar')} disabled={busy}
+        className="h-14 rounded-2xl bg-[var(--d-cta)] text-[var(--d-cta-texto)] text-lg font-black flex items-center justify-center gap-2 disabled:opacity-50">
+        <Play size={18} aria-hidden="true" /> {busy ? 'Un momento…' : pausa ? 'Reanudar' : 'Iniciar turno'}
+      </button>
+      {pausa && (
+        <button onClick={terminar} disabled={busy} className="self-center min-h-[40px] text-sm font-bold underline text-[var(--d-sec)]">
+          Terminar turno
+        </button>
+      )}
+      {msg && <p className="text-xs text-[var(--d-sec)]">{msg}</p>}
     </section>
   )
 }
