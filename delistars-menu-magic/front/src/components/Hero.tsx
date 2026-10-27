@@ -7,6 +7,7 @@ import { useRef, useState, useEffect } from "react";
 import { apiService, type Product as ApiProduct } from "@/services/api";
 import { optimizeImage } from "@/lib/utils";
 import { descripcionEnLinea } from "@/lib/descripcion";
+import { AvisoSinDomicilio } from "@/components/AvisoSinDomicilio";
 
 interface HeroSlide {
   image: string;
@@ -66,6 +67,7 @@ export const Hero = () => {
     <section id="top" className="relative pt-28 pb-16 md:pt-36 md:pb-24 overflow-hidden">
       <div className="container grid md:grid-cols-2 gap-10 items-center">
         <div className="space-y-6 animate-fade-in">
+          <AvisoSinDomicilio />
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary text-secondary-foreground text-sm font-medium shadow-card">
             <Sparkles className="w-4 h-4" /> Sabor que brilla
             <span className="w-px h-3.5 bg-foreground/20 mx-0.5" />
