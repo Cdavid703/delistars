@@ -55,16 +55,25 @@ Todo está en producción.
 
 ### Pendiente
 
-- **Google Play Console** (pospuesto por David): la cuenta de desarrollador pide verificar
-  la identidad con un documento oficial (lo sube David) y luego el teléfono. Después:
-  crear la app, la llave de firma de Play y el cliente OAuth de Android para entrar con
-  Google en producción.
-- **Prueba de CarPlay en pruebas** (pospuesta): recorrido de «No se pudo entregar» con las
-  llamadas exactas de la app.
-- **Pedido real de punta a punta** con el panel nuevo del domiciliario, la caja «para
-  otra persona» y la dirección favorita.
-- **Resumen diario por WhatsApp:** el scheduler de producción no lo envía porque falta
-  `CALLMEBOT_APIKEY` en su `.env` (el resumen por correo sí sale).
+- **Google Play** (lo lleva la sesión de la app): cuenta verificada y app creada el 27 oct
+  2026 (en prueba interna; la huella de la llave de Play ya está en `assetlinks.json`).
+  Falta la ficha de la tienda, los cuestionarios de contenido y la prueba cerrada con 12
+  probadores durante 14 días antes de pedir producción.
+
+### Cerrado el 27–28 oct 2026
+
+- **Pedido real de punta a punta** (#004 de Santa Lucía, 27 oct): 37 min, sin errores. El
+  domiciliario puede salir sin que la caja marque «Listo»; David decidió dejarlo así.
+- **Avisos al celular del equipo:** fallaban desde el 25 oct (la cuenta `servidor-pedidos`
+  no tenía permiso de Cloud Messaging); David le dio el rol el 27 oct.
+- **«No se pudo entregar» en pruebas (28 oct):** recorrido completo por la API con cuentas
+  de prueba: no responde → esperar → regresar → regreso declarado → devuelto (caja), y no
+  puedo acceder → reintentar → entregado. Permisos, motivos cerrados, reintento con la
+  misma `Idempotency-Key` y avisos a la caja y al domiciliario, todo como se esperaba.
+- **Storage en pruebas** (28 oct): plan Blaze, bucket en us-central1, reglas del repo y
+  alerta de presupuesto de $4.000 COP (≈ USD 1).
+- **Resumen diario por WhatsApp:** sacado del plan (decisión de David, 28 oct). El resumen
+  por correo sigue.
 
 # Historia (junio de 2026)
 
