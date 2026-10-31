@@ -32,11 +32,11 @@ describe('impresión de comandas (§19)', () => {
     expect(planSolicitar(caja, pedido(), {}, [], true, T).texto).toContain('PRUEBA — NO PREPARAR');
   });
 
-  it('no hay dos en cola; una vigente ya impresa solo se repite como copia con motivo; si cambió, sale actualizada', () => {
+  it('no hay dos en cola; una vigente ya impresa solo se repite como copia (motivo opcional); si cambió, sale actualizada', () => {
     falla(() => planSolicitar(caja, pedido(), {}, [{ estado: 'enviando' }], false, T), 'en_cola', 409);
     const impresa = pedido({ comanda: { estado: 'enviada', version: 1 } });
     falla(() => planSolicitar(caja, impresa, {}, [{ estado: 'enviada' }], false, T), 'ya_impresa', 409);
-    falla(() => planSolicitar(caja, impresa, { copia: true, motivo: 'x' }, [], false, T), 'motivo', 422);
+    expect(planSolicitar(caja, impresa, { copia: true }, [], false, T)).toMatchObject({ tipo: 'copia', motivo: null });
     expect(planSolicitar(caja, impresa, { copia: true, motivo: 'Se mojó' }, [], false, T)).toMatchObject({ tipo: 'copia', motivo: 'Se mojó' });
     falla(() => planSolicitar(caja, pedido(), { copia: true, motivo: 'Se mojó' }, [], false, T), 'sin_original', 409);
     const cambiado = pedido({ version: 2, comanda: { estado: 'enviada', version: 1 } });

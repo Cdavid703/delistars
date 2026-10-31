@@ -44,11 +44,11 @@ export function planSolicitar(u: Usuario, p: Doc, b: Doc, previos: Doc[], prueba
   let motivo: string | null = null;
   if (b?.copia) {
     if (!vigenteImpresa) throw new ErrorPedido('sin_original', 'Todavía no se ha impreso esta versión: imprime la comanda, no una copia', 409);
-    motivo = String(b.motivo ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
-    if (motivo.length < 3) throw new ErrorPedido('motivo', 'Escribe por qué imprimes una copia', 422);
+    // El motivo es opcional (decisión del 30 oct 2026): la caja reimprime sin explicar.
+    motivo = String(b.motivo ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || null;
     tipo = 'copia';
   } else if (vigenteImpresa) {
-    throw new ErrorPedido('ya_impresa', 'Esta comanda ya se imprimió. Si necesitas otra, imprime una copia con el motivo', 409);
+    throw new ErrorPedido('ya_impresa', 'Esta comanda ya se imprimió. Si necesitas otra, imprime una copia', 409);
   } else if (ultima) {
     tipo = 'actualizada';
   }

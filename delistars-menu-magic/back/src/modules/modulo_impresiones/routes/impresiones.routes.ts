@@ -25,7 +25,7 @@ function responderError(res: Response, err: unknown) {
  *     summary: La caja pide imprimir la comanda de un pedido
  *     description: >
  *       Encabezado Idempotency-Key. { orderId, copia?: true, motivo?, origen?: 'web'|'app' } →
- *       { id, estado: 'pendiente', tipo: original|actualizada|copia }. 409 en_cola, ya_impresa, sin_original, cancelado; 422 motivo.
+ *       { id, estado: 'pendiente', tipo: original|actualizada|copia }. 409 en_cola, ya_impresa, sin_original, cancelado. El motivo de la copia es opcional.
  * /api/v1/impresiones/prueba:
  *   post:
  *     tags: [Impresiones]

@@ -983,7 +983,8 @@ export function DriverOrderDetail({ order, onClose, abrirNotas = false, parada =
                   </div>
                 </div>
                 <BotonesNavegar coords={navCoords} texto={localAddr} />
-                {order.phone && precision !== 'pin' && (
+                {/* Siempre visible (30 oct 2026): aun con el pin de Google, a veces no dan con la casa */}
+                {order.phone && (
                   <a href={waPedirUbicacion} target="_blank" rel="noreferrer"
                     className="min-h-[48px] rounded-2xl bg-white border-2 border-[#25D366] font-body text-sm font-bold text-coal flex items-center justify-center gap-2">
                     <LogoWhatsApp size={20} /> Pedirle la ubicación por WhatsApp

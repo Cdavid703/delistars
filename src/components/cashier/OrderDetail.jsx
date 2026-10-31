@@ -26,7 +26,7 @@ import {
   Send, FileCheck, CheckCircle, Search, Pencil, Receipt, Check,
   CircleCheck, CircleX, Store, Banknote, Route
 } from 'lucide-react'
-import ComandaPedido from './ComandaPedido'
+import ComandaPedido, { BotonImprimirComanda, useComanda } from './ComandaPedido'
 import { LogoWhatsApp, LogoGoogleMaps, LogoWaze } from '../common/LogosApps'
 import ContactosParaOtro from '../common/ContactosParaOtro'
 import { IncidenciaCaja, EditorIndicaciones, DevolverPlataCaja } from '../common/IncidenciaReparto'
@@ -55,6 +55,8 @@ const fmtTime = (ts) => {
 export default function OrderDetail({ order, onClose, drivers = [], alarmActive = false, onDismissAlarm, onReassign, unreadClientMsgs = 0, enPanel = false }) {
   const { user, role } = useAuth()
   const esAdmin = role === ROLES.ADMIN
+  const comanda = useComanda(order)
+  const imprimible = !['cancelled', 'rejected'].includes(order.status)
 
   // Un solo editor por pedido (§10.3): al abrir el detalle la caja toma el control
   // si está libre y lo suelta al cerrar. Si otra persona lo tiene, queda en solo
@@ -723,6 +725,7 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 <BellOff size={14} /> Silenciar
               </button>
             )}
+            {imprimible && <BotonImprimirComanda order={order} c={comanda} />}
             <button onClick={onClose} className="btn-icon"><X size={20} /></button>
           </div>
         </div>
@@ -1667,8 +1670,8 @@ export default function OrderDetail({ order, onClose, drivers = [], alarmActive 
                 )}
               </div>
             )}
-            {/* Comanda de cocina (Fase 7, §19): la imprime el aparato marcado como impresora */}
-            {!['cancelled', 'rejected'].includes(order.status) && <ComandaPedido order={order} />}
+            {/* Comanda de cocina (§19): se imprime con la impresora del encabezado; aquí solo los avisos */}
+            {imprimible && <ComandaPedido c={comanda} />}
             {/* Facturación — botón grande y claro, en todos los pedidos */}
             <button
               onClick={toggleFacturado}
